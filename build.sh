@@ -74,7 +74,7 @@ fi
 rm -rf "$WORK/exchange-src"
 mkdir -p "$WORK/exchange-src"
 cp -R "$SRC/." "$WORK/exchange-src/"
-cp "$HERE"/fortran/*.f90 "$WORK/exchange-src/src/"
+cp "$HERE"/fortran/*.f90 "$HERE"/fortran/*.c "$WORK/exchange-src/src/"
 for p in "$PATCHES"/*.patch; do
   patch --quiet -p1 -d "$WORK/exchange-src" < "$p"
 done

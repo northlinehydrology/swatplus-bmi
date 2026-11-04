@@ -1,3 +1,19 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index efa4e69..33f8c1e 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -160,6 +160,11 @@ endif()
+ 
+ 
+ file(GLOB sources src/*.f90)
++# exchange mode: fork, chdir and stream rewiring for branching (Mac and Linux)
++if(NOT WIN32)
++    enable_language(C)
++    list(APPEND sources src/bmi_fork.c)
++endif()
+ add_executable(${SWATPLUS_EXE} ${sources})
+ 
+ #############################################################################
 diff --git a/src/command.f90 b/src/command.f90
 index fc8e026..4b9dddc 100644
 --- a/src/command.f90
