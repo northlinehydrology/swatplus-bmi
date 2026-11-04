@@ -229,6 +229,51 @@ class Exchange:
         b._paused()
         return b
 
+    def save_state(self, path: str | os.PathLike) -> Path:
+        """Save SWAT+'s state at this pause to the folder ``path``.
+
+        The folder holds ``state.bin`` (every module variable, written by
+        the generated serializer) and ``run/``, a copy of the run folder
+        with every output file complete up to this pause.
+        """
+        if self.ended:
+            raise ExchangeError("the simulation has ended; nothing left to save")
+        out = Path(path).resolve()
+        if out.exists():
+            raise FileExistsError(f"{out} already exists")
+        out.mkdir(parents=True)
+        q = lambda p: '"' + str(p).replace('"', '') + '"'
+        self._send(f"save {q(out / 'state.bin')}")
+        self._expect("@ok")
+        shutil.copytree(self.run_dir, out / "run", ignore=shutil.ignore_patterns("exchange.err"))
+        (out / "day").write_text(f"{self.days_done}\n")
+        return out
+
+    @classmethod
+    def load_state(cls, executable, path: str | os.PathLike, run_dir: str | os.PathLike) -> "Exchange":
+        """A new SWAT+ process in ``run_dir`` with the state saved in ``path``.
+
+        ``run_dir`` becomes a copy of the saved run folder. SWAT+ starts
+        there, runs forward to the saved day without computing it, reads the
+        saved state over its own, and the saved output files are put back,
+        so it carries on exactly as the saved run would have.
+        """
+        src = Path(path).resolve()
+        run = Path(run_dir).resolve()
+        if run.exists():
+            shutil.rmtree(run)
+        shutil.copytree(src / "run", run)
+        x = cls(executable, run)
+        q = lambda p: '"' + str(p).replace('"', '') + '"'
+        x._send(f"load {q(src / 'state.bin')}")
+        x._expect("@restore")
+        for f in (src / "run").iterdir():           # put back the saved files SWAT+ rewrote at startup
+            if f.is_file() and f.name != "exchange.err":
+                shutil.copy2(f, run / f.name)
+        x._send("restored")
+        x._paused()
+        return x
+
     def finish(self, timeout: float | None = None) -> int:
         """Let SWAT+ run to the end without pausing and complete its outputs."""
         if self.proc is not None and self.proc.poll() is not None:

@@ -17,8 +17,11 @@ from __future__ import annotations
 
 import copy
 import datetime as dt
+import io
 import os
 import shutil
+import tarfile
+import tempfile
 import tomllib
 import warnings
 from pathlib import Path
@@ -138,6 +141,41 @@ class SwatPlusBmi(Bmi):
         other = copy.copy(self)
         other._x = self._x.branch(run_dir)
         return other
+
+    def save_state(self, path: str | os.PathLike) -> Path:
+        """Save the model's state to the folder ``path``; see ``load_state``.
+
+        Works on every platform. Not part of BMI 2.0; the name follows the
+        CSDMS proposal for get_state/set_state (bmi PR #112).
+        """
+        return self._x.save_state(path)
+
+    def load_state(self, path: str | os.PathLike) -> None:
+        """Replace this model's run with the state saved in the folder ``path``.
+
+        The SWAT+ process running now is stopped, the run folder becomes a
+        copy of the saved one, and a new process carries on from the saved
+        day exactly as the saved run would have.
+        """
+        exe, run_dir = self._x.executable, self._x.run_dir
+        self._x.stop()
+        self._x = Exchange.load_state(exe, path, run_dir)
+
+    def get_state(self) -> bytes:
+        """The model's whole state as bytes (a tar of a save_state folder)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = self.save_state(Path(tmp) / "state")
+            buf = io.BytesIO()
+            with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+                tar.add(folder, arcname="state")
+            return buf.getvalue()
+
+    def set_state(self, state: bytes) -> None:
+        """Replace this model's run with a state from get_state."""
+        with tempfile.TemporaryDirectory() as tmp:
+            with tarfile.open(fileobj=io.BytesIO(state), mode="r:gz") as tar:
+                tar.extractall(tmp, filter="data")
+            self.load_state(Path(tmp) / "state")
 
     def run_to_end(self) -> None:
         """Run the rest of the simulation without pausing and complete SWAT+'s outputs."""
