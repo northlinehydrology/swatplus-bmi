@@ -1,5 +1,9 @@
 # swatplus-bmi
 
+[![PyPI](https://img.shields.io/pypi/v/swatplus-bmi)](https://pypi.org/project/swatplus-bmi/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23963201.svg)](https://doi.org/10.5281/zenodo.23963201)
+[![test](https://github.com/northlinehydrology/swatplus-bmi/actions/workflows/test.yml/badge.svg)](https://github.com/northlinehydrology/swatplus-bmi/actions/workflows/test.yml)
+
 Run [SWAT+](https://github.com/swat-model/swatplus) one day at a time under outside control,
 through the Basic Model Interface ([BMI 2.0](https://bmi.readthedocs.io), CSDMS).
 
@@ -11,7 +15,7 @@ identical to an unpatched run, every output file, start to finish.** A paused ru
 saved and loaded, or branched in memory, so a warm-up is run once and every scenario starts
 from the same state.
 
-**Status:** working for SWAT+ 62.0.1; first release 0.1.0. Tested on the two example projects that
+**Status:** working for SWAT+ 62.0.1; first release 0.1.0 ([PyPI](https://pypi.org/project/swatplus-bmi/), [Zenodo](https://doi.org/10.5281/zenodo.23963201)). Tested on the two example projects that
 ship with SWAT+ (below). See [COMPATIBILITY.md](COMPATIBILITY.md) and the design note,
 [docs/design.md](docs/design.md).
 
@@ -376,7 +380,8 @@ compared with SWAT+'s own output, and water balances checked. Anyone can run the
 
 ## Citing, contributing, license
 
-- **Citing:** see [CITATION.cff](CITATION.cff).
+- **Citing:** cite the archived software, [doi:10.5281/zenodo.23963201](https://doi.org/10.5281/zenodo.23963201)
+  (all versions; each release also has its own DOI). Details in [CITATION.cff](CITATION.cff).
 - **Contributing:** see [CONTRIBUTING.md](CONTRIBUTING.md). Issues and pull requests are welcome,
   especially SWAT+ projects that exercise code the tests don't yet cover.
 - **License:** the exchange mode (`fortran/`, `patches/`) and any SWAT+ built with it are under
