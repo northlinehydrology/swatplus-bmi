@@ -50,5 +50,5 @@ Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
 ## License of contributions
 
 Contributions to `fortran/` and `patches/` are under the GNU LGPL 2.1, like SWAT+. Everything
-else is under the MIT license. By opening a pull request you agree to license your
+else is under the BSD 3-Clause license. By opening a pull request you agree to license your
 contribution that way.

@@ -8,7 +8,8 @@ version = "0.1.0"
 description = "SWAT+ through the Basic Model Interface (BMI 2.0), stepped one day at a time"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "BSD-3-Clause AND LGPL-2.1-only"
+license-files = ["LICENSE", "LICENSES/*"]
 authors = [{ name = "Andrew Sommerlot", email = "andrewsommerlot@gmail.com" }]
 dependencies = ["bmipy>=2.0", "numpy>=1.24"]
 

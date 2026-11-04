@@ -9,7 +9,7 @@ authors:
     # orcid: https://orcid.org/0000-0000-0000-0000
 version: 0.1.0
 license:
-  - MIT
+  - BSD-3-Clause
   - LGPL-2.1-only
 repository-code: "https://github.com/northlinehydrology/swatplus-bmi"
 keywords:

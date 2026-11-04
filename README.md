@@ -372,7 +372,7 @@ compared with SWAT+'s own output, and water balances checked. Anyone can run the
   especially SWAT+ projects that exercise code the tests don't yet cover.
 - **License:** the exchange mode (`fortran/`, `patches/`) and any SWAT+ built with it are under
   the GNU LGPL 2.1, the license of SWAT+. The Python wrapper is a separate program that runs
-  SWAT+ as its own process. It, and everything else here, is under the MIT license. See
+  SWAT+ as its own process. It, and everything else here, is under the BSD 3-Clause license. See
   [LICENSE](LICENSE).
 
 SWAT+ is developed by USDA-ARS and Texas A&M AgriLife Research. This project is independent of

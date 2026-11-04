@@ -5,6 +5,6 @@ swatplus-bmi is under two licenses.
   license of SWAT+ itself. See LICENSES/LGPL-2.1.txt.
 
 - Everything else, including the Python wrapper in src/swatplus_bmi/, the
-  tests, tools and documentation: MIT. See LICENSES/MIT.txt. The wrapper is
+  tests, tools and documentation: BSD 3-Clause. See LICENSES/BSD-3-Clause.txt. The wrapper is
   a separate program: it starts SWAT+ as its own process and talks to it
   over standard input and output, and is not linked with it.
