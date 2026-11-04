@@ -82,7 +82,7 @@ class Exchange:
         self.proc = subprocess.Popen(
             [str(self.executable.resolve()), "--exchange"],
             cwd=self.run_dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=self._err, bufsize=0)
+            stderr=self._err)           # buffered: replies are read a line at a time, commands flushed
         self._in, self._out = self.proc.stdin, self.proc.stdout
         self.pid = self.proc.pid
         self.catalog = self._read_catalog()
@@ -224,8 +224,8 @@ class Exchange:
         b.run_dir, b.proc, b.pid, b._err = new, None, pid, None
         b._log = new / "exchange.log"
         b._fifos = fifo_dir
-        b._in = open(f_in, "wb", buffering=0)      # same order the branch opens them
-        b._out = open(f_out, "rb", buffering=0)
+        b._in = open(f_in, "wb")                    # same order the branch opens them
+        b._out = open(f_out, "rb")
         b._paused()
         return b
 
