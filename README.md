@@ -96,6 +96,13 @@ SWAT+ goes back to its own inputs. SWAT+ still applies its own limits: a
 demand is capped at the place of use's `rate_max`, and a channel
 withdrawal can't take more water than the channel has.
 
+Use the water allocation demand for withdrawals, not a negative point source.
+SWAT+ 62.0.1 doesn't limit a point source diversion to the water in the
+channel: on a day when the diversion is larger than the channel's other
+inflow, SWAT+ records it in full but takes none of the excess. The wrapper
+warns when a negative point source is set (docs/design.md, "Found in SWAT+
+62.0.1").
+
 ### Warm up once, branch every scenario (Mac and Linux)
 
 ```python
@@ -124,6 +131,7 @@ index. Grids with no objects in a project are left out.
 |---|---|---|---|
 | `channel_exit_water__volume_flow_rate` | channels | no | m3 s-1 |
 | `channel_water__volume` | channels | no | m3 |
+| `channel_entrance_water__volume_flow_rate` (net inflow) | channels | no | m3 s-1 |
 | `aquifer_water__volume` | aquifers | no | m3 |
 | `soil_water_sat-zone_top__depth` (depth to water table) | aquifers | no | m |
 | `aquifer_exit_water__volume_flow_rate` | aquifers | no | m3 s-1 |

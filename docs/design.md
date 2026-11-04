@@ -127,6 +127,7 @@ the CSDMS list; do that before a release.
 |---|---|---|---|---|---|
 | `channel_exit_water__volume_flow_rate` | cha | out | m3 s-1 | `ch_out_d(i)%flo` | the `flo_out` column of `channel_sd_day.txt` |
 | `channel_water__volume` | cha | out | m3 | `ch_stor(i)%flo` | `flo_stor` |
+| `channel_entrance_water__volume_flow_rate` | cha | out | m3 s-1 | `ch_in_d(i)%flo` | net inflow, `flo_in`; negative when a point source diversion is larger than the other inflow (see Found in SWAT+ 62.0.1, item 2) |
 | `aquifer_water__volume` | aqu | out | m3 | `aqu_d(i)%stor` (mm) x 10 x area (ha) | `stor` in `aquifer_day.txt` |
 | `soil_water_sat-zone_top__depth` | aqu | out | m | `aqu_d(i)%dep_wt` | depth to the water table, `dep_wt` |
 | `aquifer_exit_water__volume_flow_rate` | aqu | out | m3 s-1 | `ob(iob)%hd(1)%flo` | return flow, `flo` in `aquifer_day.txt` |
@@ -319,9 +320,18 @@ These are worth reporting upstream, separately from the exchange mode:
    m3/day. A daily recall of 86.4 raises channel inflow by 0.001 m3/s.
    (Shown by the point source tests.)
 2. A recall used as a withdrawal (negative flow) isn't limited to the water
-   in the channel. When it is larger than the channel's other inflow,
-   SWAT+ records the full withdrawal but routes nothing, and the channel
-   balance is off by the unmet part. (Shown by the curtailment test.)
+   in the channel. When it is larger than the channel's other inflow, the
+   net inflow is negative, and `ch_rtmusk.f90` adds inflow to storage only
+   `if (ht1%flo > 1.e-6)`. So nothing is taken and outflow is zero, but
+   `recall_day.txt` records the full withdrawal, and the channel balance is
+   off by the untaken part. `recall_nut.f90` limits the diversion's
+   nutrients to what's in the channel, but nothing limits the water. In the
+   curtailment test, 7,539 of 182,339 m3 recorded (4.1%) was never taken,
+   on 198 low-flow days. (Shown by the curtailment test; draft issue in
+   docs/upstream-issue-recall-diversion.md.) The wrapper warns when a
+   negative point source is set, and `channel_entrance_water__volume_flow_rate`
+   shows the shortfall. Withdrawals that must be limited to the water
+   available belong in water allocation.
 3. In `wallo_withdraw.f90`, for an aquifer point of diversion, storage is
    reduced before the withdrawal is computed from it:
    `aqu_d(j)%stor = (1. - rto) * aqu_d(j)%stor`, then
