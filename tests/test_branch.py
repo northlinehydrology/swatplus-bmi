@@ -7,6 +7,7 @@ taking different decisions can be checked against unbroken runs taking the
 same decisions.
 """
 
+import shutil
 import sys
 
 import numpy as np
@@ -22,7 +23,6 @@ pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="branching needs
 def fresh(dest):
     d = RUNS / dest
     if d.exists():
-        import shutil
         shutil.rmtree(d)
     return d
 
@@ -45,8 +45,7 @@ def test_branch_then_both_continue_is_stock(day):
     parent.finalize()
     child.finalize()
 
-    assert differences(stock, parent.run_dir if hasattr(parent, "_x") and parent._x else
-                       RUNS / f"Osu_1hru-br{day}-parent") == []
+    assert differences(stock, RUNS / f"Osu_1hru-br{day}-parent") == []
     assert differences(stock, RUNS / f"Osu_1hru-br{day}-child") == []
 
 
