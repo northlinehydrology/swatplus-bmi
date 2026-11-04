@@ -40,7 +40,7 @@ and talks to it over standard input and output; nothing is linked.
 
 ## Where SWAT+ pauses
 
-The daily loop is in `time_control.f90`. The patch adds three calls there,
+The daily loop is in `time_control.f90`. The patch adds four calls there,
 one in `main.f90.in` and one in `command.f90`. Each returns at once when
 exchange mode is off.
 
