@@ -1,0 +1,14 @@
+{
+  "title": "swatplus-bmi: stepping the SWAT+ watershed model one day at a time through the Basic Model Interface",
+  "upload_type": "software",
+  "description": "<p>swatplus-bmi runs SWAT+ one day at a time under outside control, through the Basic Model Interface (BMI 2.0). A small patch adds an exchange mode to SWAT+, off by default, in which SWAT+ pauses before each day; a Python wrapper reads state (channel flow, aquifer storage, depth to water, recharge) and sets fluxes for the next day (point source flow, water allocation demand). Stepped this way, SWAT+'s output is byte-for-byte identical to an unpatched run. Paused runs can be branched (fork) or saved and loaded, with the state serializer generated from SWAT+'s module declarations for each release.</p><p>Licenses: the exchange mode and patched SWAT+ are under the GNU LGPL 2.1 (the license of SWAT+); the Python wrapper and everything else are under the BSD 3-Clause license.</p>",
+  "creators": [
+    {"name": "Sommerlot, Andrew", "affiliation": "Northline Hydrology"}
+  ],
+  "license": "BSD-3-Clause",
+  "keywords": ["hydrology", "watershed modeling", "SWAT+", "Basic Model Interface", "BMI", "model coupling"],
+  "related_identifiers": [
+    {"identifier": "https://github.com/swat-model/swatplus", "relation": "isSupplementTo", "scheme": "url"},
+    {"identifier": "10.1111/1752-1688.12482", "relation": "references", "scheme": "doi"}
+  ]
+}
