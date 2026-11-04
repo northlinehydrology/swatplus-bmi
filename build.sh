@@ -43,6 +43,13 @@ if [ ! -d "$SRC/src" ]; then
   git clone --quiet --depth 1 --branch "$TAG" https://github.com/swat-model/swatplus.git "$SRC"
 fi
 
+# the build date SWAT+ writes into its output headers: the tag's commit date,
+# so every build of a tag writes the same headers
+if [ -z "${SOURCE_DATE_EPOCH:-}" ]; then
+  SOURCE_DATE_EPOCH="$(git -C "$SRC" log -1 --format=%ct 2>/dev/null || date +%s)"
+fi
+export SOURCE_DATE_EPOCH
+
 build () {   # build <source dir> <build dir> <name in bin/>
   local src="$1" bld="$2" name="$3"
   "$CMAKE" -S "$src" -B "$bld" -DCMAKE_BUILD_TYPE=Release -DTAG="$TAG" > "$bld.configure.log" 2>&1 \
