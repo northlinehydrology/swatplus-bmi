@@ -11,7 +11,7 @@ identical to an unpatched run, every output file, start to finish.** A paused ru
 saved and loaded, or branched in memory, so a warm-up is run once and every scenario starts
 from the same state.
 
-**Status:** working for SWAT+ 62.0.1. Not yet released. Tested on the two example projects that
+**Status:** working for SWAT+ 62.0.1; first release 0.1.0. Tested on the two example projects that
 ship with SWAT+ (below). See [COMPATIBILITY.md](COMPATIBILITY.md) and the design note,
 [docs/design.md](docs/design.md).
 
@@ -110,34 +110,44 @@ flows the model hasn't computed yet when it starts.*
 48% fewer days. With 100 scenarios it's about 70% fewer. Each scenario is identical to running
 it from the start.*
 
-## Install and build
+## Install
 
-Needs git, make, gfortran (or Intel ifx) and [uv](https://docs.astral.sh/uv/). `uv sync`
-installs Python, the package, pytest and CMake from the lock file.
+Needs Python 3.11 or later, git, make and gfortran (or Intel ifx). CMake comes with the package.
 
 ```bash
-git clone <this repository> swatplus-bmi && cd swatplus-bmi
-uv sync
-uv run ./build.sh --stock
+pip install swatplus-bmi          # or: uv add swatplus-bmi
+swatplus-bmi build                # fetch SWAT+ 62.0.1, patch it, build it (a few minutes)
 ```
 
-`build.sh` fetches SWAT+ 62.0.1 and copies in the exchange module. It applies the patch, then
-generates the state serializer from SWAT+'s own module declarations. Then it builds
-`bin/swatplus-62.0.1-exchange`. `--stock` also builds the unpatched release
-(`bin/swatplus-62.0.1-stock`), which the tests compare against. `--nosave` builds a variant used
-to check which saved locals carry state (see [Saving state](#saving-state)). The wrapper finds the
-executable in `bin/`, in `$SWATPLUS_EXCHANGE`, or wherever the config file says.
+`swatplus-bmi build` puts the SWAT+ executable in a folder of your own: `SWATPLUS_BMI_HOME` if
+set, otherwise `~/Library/Application Support/swatplus-bmi` on macOS and
+`~/.local/share/swatplus-bmi` on Linux. The wrapper finds it there. `swatplus-bmi where` prints
+its path. Steps:
 
-Run the tests (about two minutes on one core) and the notebook:
+1. Fetch the SWAT+ release.
+2. Copy in the exchange module and apply the patch.
+3. Generate the state serializer from SWAT+'s own module declarations.
+4. Build with CMake.
+
+On macOS, gfortran comes with Homebrew's `gcc`; on Debian and Ubuntu, `apt install gfortran`.
+
+### From a source checkout
+
+For development and the tests, with [uv](https://docs.astral.sh/uv/):
 
 ```bash
-uv run pytest                                          # the main suite
-uv run pytest -m full                                  # also Ames_sub1, 46 years (about 15 minutes)
+git clone https://github.com/northlinehydrology/swatplus-bmi && cd swatplus-bmi
+uv sync
+uv run ./build.sh --stock --nosave     # into bin/; the tests need all three builds
+uv run pytest                          # the main suite (about two minutes on one core)
+uv run pytest -m full                  # also Ames_sub1, 46 years (about 15 minutes)
 uv run --group examples marimo edit examples/tour.py   # the notebook
 ```
 
-Without uv: `pip install -e . --group dev` (pip 25.1 or later) in a virtual environment of your
-own, then the same commands without `uv run`.
+`--stock` builds the unpatched release, which the tests compare against. `--nosave` builds a
+variant used to check which saved locals carry state (see [Saving state](#saving-state)). The
+wrapper finds the executable in `bin/` in a source checkout, in `$SWATPLUS_EXCHANGE`, in the
+folder `swatplus-bmi build` writes to, or wherever the config file says.
 
 ## Using it
 
