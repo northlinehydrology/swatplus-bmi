@@ -1,0 +1,180 @@
+# swatplus-bmi
+
+Run [SWAT+](https://github.com/swat-model/swatplus) one day at a time under
+outside control, through the Basic Model Interface
+([BMI 2.0](https://bmi.readthedocs.io), CSDMS).
+
+A small patch adds an exchange mode to SWAT+, off by default. In exchange
+mode SWAT+ pauses before each day. While it is paused, a caller can read
+state (channel flow, aquifer storage, depth to water) and set fluxes for
+the next day (a point source's flow, a water allocation demand). A Python
+BMI wrapper drives it. Stepped this way, SWAT+'s output is byte-for-byte
+identical to a stock run, every output file, start to finish.
+
+This allows same-day feedback, which a model run to the end can't do:
+curtail a withdrawal when yesterday's flow was low, keep a pass-by flow,
+stop pumping at a drawdown limit, or couple SWAT+ to another model that
+answers back. On Mac and Linux a paused run can also be branched: warm up
+once, then start every scenario from the same state.
+
+Status: working for SWAT+ 62.0.1, tested on the Osu_1hru example that ships
+with SWAT+. Not yet released. See [COMPATIBILITY.md](COMPATIBILITY.md) and
+[docs/design.md](docs/design.md).
+
+## Install and build
+
+Needs git, CMake 3.22 or later, make, gfortran (or Intel ifx), and Python
+3.11 or later.
+
+```bash
+git clone <this repository> swatplus-bmi && cd swatplus-bmi
+python -m venv .venv && .venv/bin/pip install cmake -e ".[test]"
+CMAKE=.venv/bin/cmake ./build.sh --stock
+```
+
+`build.sh` fetches SWAT+ 62.0.1, copies in the exchange module, applies the
+patch and builds `bin/swatplus-62.0.1-exchange`. `--stock` also builds the
+unpatched release (`bin/swatplus-62.0.1-stock`), which the tests compare
+against. The wrapper looks for the executable in `bin/`, in
+`$SWATPLUS_EXCHANGE`, or wherever the config file says.
+
+Run the tests (about two minutes on one core):
+
+```bash
+.venv/bin/python -m pytest
+```
+
+## Using it
+
+A SWAT+ project folder (the one with `file.cio`) is the config:
+
+```python
+import numpy as np
+from swatplus_bmi import SwatPlusBmi
+
+m = SwatPlusBmi()
+m.initialize("path/to/TxtInOut")       # SWAT+ starts, paused before day 1
+print(m.get_time_units())               # days since 2010-01-01 00:00:00
+print(m.get_output_var_names())
+
+q = np.empty(m.get_grid_size(m.get_var_grid("channel_exit_water__volume_flow_rate")),
+             dtype=np.float32)
+while m.get_current_time() < m.get_end_time():
+    m.update()                          # one day
+    m.get_value("channel_exit_water__volume_flow_rate", q)   # m3/s, one per channel
+m.finalize()                            # SWAT+ completes its output files
+```
+
+Or a TOML file, to run a copy of the project so the original stays clean:
+
+```toml
+project = "path/to/TxtInOut"
+run_dir = "runs/scenario-a"            # copied from project, then run there
+executable = "bin/swatplus-62.0.1-exchange"   # optional
+```
+
+### Same-day feedback
+
+Cut a water user's demand to zero the day after a day whose flow was below
+a threshold:
+
+```python
+DMD = "place_of_use_water__demand_volume_flow_rate"     # m3/s
+QOUT = "channel_exit_water__volume_flow_rate"
+
+i = m.get_object_index(QOUT, "cha01")
+q = np.empty(m.get_grid_size(m.get_var_grid(QOUT)), np.float32)
+while m.get_current_time() < m.get_end_time():
+    m.get_value(QOUT, q)                                # yesterday's flow
+    if q[i] < 0.0012:
+        m.set_value(DMD, np.array([0.0], np.float32))   # for the next day only
+    m.update()
+```
+
+A value set between updates applies to the next day only; after that day
+SWAT+ goes back to its own inputs. SWAT+ still applies its own limits: a
+demand is capped at the place of use's `rate_max`, and a channel
+withdrawal can't take more water than the channel has.
+
+### Warm up once, branch every scenario (Mac and Linux)
+
+```python
+base = SwatPlusBmi()
+base.initialize("runs/warmup.toml")
+base.update_until(3 * 365)                  # warm-up
+a = base.branch("runs/scenario-a")          # copies of the paused process,
+b = base.branch("runs/scenario-b")          # each in its own folder
+base.finalize()
+# a and b now continue independently from the same state
+```
+
+Each branch matches, bit for bit, the same scenario run unbroken from the
+start.
+
+### Objects and grids
+
+Each SWAT+ object type is a BMI grid of type `points`: one point per object,
+longitude as x and latitude as y. `get_grid_object_names(grid)` gives the
+SWAT+ object names, and `get_object_index(var, name)` gives an object's
+index. Grids with no objects in a project are left out.
+
+## Variables
+
+| Variable | Objects | Set? | Units |
+|---|---|---|---|
+| `channel_exit_water__volume_flow_rate` | channels | no | m3 s-1 |
+| `channel_water__volume` | channels | no | m3 |
+| `aquifer_water__volume` | aquifers | no | m3 |
+| `soil_water_sat-zone_top__depth` (depth to water table) | aquifers | no | m |
+| `aquifer_exit_water__volume_flow_rate` | aquifers | no | m3 s-1 |
+| `point_source_water__volume_flow_rate` | daily recall objects | yes | m3 s-1 |
+| `place_of_use_water__demand_volume_flow_rate` | water allocation places of use | yes | m3 s-1 |
+| `place_of_use_water__withdrawal_volume_flow_rate` | water allocation places of use | no | m3 s-1 |
+
+All values are 4-byte reals. Values read while paused are those at the end
+of the day just completed. The design note gives the SWAT+ variable behind
+each one.
+
+## The protocol
+
+The Python wrapper and SWAT+ talk in text lines over SWAT+'s standard input
+and output, so nothing is linked and no sockets or C are needed for
+stepping. Start SWAT+ with `--exchange` in its project folder. It sends a
+catalog (`@grid`, `@obj`, `@var` lines, then `@ready`), then
+`@paused <days done> <year> <day of year>`, and waits. Commands:
+
+```
+run [n]               run n days (default 1)    -> @paused ... or @ended <days>
+get <variable>        -> @value <n> <v1> ... <vn>
+set <variable> <i> <value>   object i (1-based), next day only   -> @ok
+flush | ping          -> @ok
+branch ...            fork the paused process (Mac, Linux)   -> @branched <pid>
+finish                run to the end and complete the outputs
+stop                  stop now   -> @bye
+```
+
+Any program that can write and read lines can drive SWAT+ this way. The
+details are in [docs/design.md](docs/design.md).
+
+## Limits
+
+- Daily steps only.
+- Only fluxes can be set (point source flow, water allocation demand), never
+  storage, land use, soils or parameters; those are scenario inputs.
+- Branching uses fork, so Mac and Linux only, until the serializer for
+  `save_state`/`load_state` exists (designed in docs/design.md, not built).
+- `get_value_ptr` is declined: the values live in the SWAT+ process.
+- NextGen can use SWAT+ only as a domain-wide model (one formulation for
+  the whole SWAT+ project), because SWAT+ routes its own channel network.
+- Soft and hard calibration runs are refused in exchange mode.
+- Supported SWAT+ versions: 62.0.1 ([COMPATIBILITY.md](COMPATIBILITY.md)).
+
+## License
+
+The exchange mode (`fortran/`, `patches/`) and any SWAT+ built with it are
+under the GNU LGPL 2.1, the license of SWAT+. The Python wrapper is a
+separate program that runs SWAT+ as its own process. It and everything
+else here are under the MIT license. See [LICENSE](LICENSE).
+
+SWAT+ is developed by USDA-ARS and Texas A&M AgriLife Research. This
+project is independent of them.
