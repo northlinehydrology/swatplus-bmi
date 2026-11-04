@@ -6,9 +6,12 @@
 !!    with the argument --exchange; with it off, none of this code changes
 !!    what SWAT+ does.
 !!
-!!    In exchange mode SWAT+ pauses once a day, after the day's weather,
-!!    decision tables and start-of-day water allocation and before the
-!!    command (routing) loop, and waits for commands on standard input.
+!!    In exchange mode SWAT+ pauses once a day, after the day's weather and
+!!    decision tables and before the start-of-day water allocation, and
+!!    waits for commands on standard input. Values read while paused are
+!!    those of the day just completed. Values set while paused are put in
+!!    place after the start-of-day water allocation and before the command
+!!    (routing) loop, so SWAT+'s own daily inputs don't overwrite them.
 !!    Replies go to standard output, one per line, each starting with "@".
 !!    SWAT+'s own console messages go to exchange.log in the run folder.
 !!    The protocol is described in docs/design.md of swatplus-bmi.
@@ -21,7 +24,7 @@
       implicit none
 
       private
-      public :: exch_on, exch_open, exch_start, exch_pause, exch_end
+      public :: exch_on, exch_open, exch_start, exch_pause, exch_apply, exch_end
 
       logical :: exch_on = .false.        !! exchange mode is on
       integer :: cmd_unit = input_unit    !! commands in
@@ -35,21 +38,25 @@
       !! values set for the next day
       real, dimension(:), allocatable :: rec_flo         !! m3/day     |point source (recall) flow
       logical, dimension(:), allocatable :: rec_flo_on
+      real, dimension(:), allocatable :: dmd_flo         !! m3/day     |place of use demand
+      logical, dimension(:), allocatable :: dmd_flo_on
 
-      integer, parameter :: nvar = 6
+      integer, parameter :: nvar = 8
       character(len=48), dimension(nvar) :: var_name = [character(len=48) ::     &
             "channel_exit_water__volume_flow_rate",                             &
             "channel_water__volume",                                            &
             "aquifer_water__volume",                                            &
             "soil_water_sat-zone_top__depth",                                   &
             "aquifer_exit_water__volume_flow_rate",                             &
-            "point_source_water__volume_flow_rate"]
+            "point_source_water__volume_flow_rate",                             &
+            "place_of_use_water__demand_volume_flow_rate",                      &
+            "place_of_use_water__withdrawal_volume_flow_rate"]
       character(len=8), dimension(nvar) :: var_grid = [character(len=8) ::      &
-            "cha", "cha", "aqu", "aqu", "aqu", "rec"]
+            "cha", "cha", "aqu", "aqu", "aqu", "rec", "pou", "pou"]
       character(len=8), dimension(nvar) :: var_units = [character(len=8) ::     &
-            "m3 s-1", "m3", "m3", "m", "m3 s-1", "m3 s-1"]
+            "m3 s-1", "m3", "m3", "m", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1"]
       character(len=3), dimension(nvar) :: var_role = [character(len=3) ::      &
-            "out", "out", "out", "out", "out", "in"]
+            "out", "out", "out", "out", "out", "in", "in", "out"]
 
       contains
 
@@ -92,6 +99,7 @@
       use hydrograph_module, only : sp_ob, sp_ob1, ob
       use calibration_data_module, only : cal_soft, cal_hard
       use basin_module, only : prog
+      use maximum_data_module, only : db_mx
 
       integer :: iyr = 0
       integer :: yr = 0
@@ -123,6 +131,8 @@
 
       allocate (rec_flo(sp_ob%recall), source = 0.)
       allocate (rec_flo_on(sp_ob%recall), source = .false.)
+      allocate (dmd_flo(db_mx%wallo_pou), source = 0.)
+      allocate (dmd_flo_on(db_mx%wallo_pou), source = .false.)
 
       call reply ("@hello swatplus-exchange " // itoa(protocol))
       call reply ("@model " // trim(adjustl(prog)))
@@ -131,6 +141,7 @@
       call send_grid ("cha", sp_ob1%chandeg, sp_ob%chandeg)
       call send_grid ("aqu", sp_ob1%aqu, sp_ob%aqu)
       call send_grid ("rec", sp_ob1%recall, sp_ob%recall)
+      call send_pou_grid
       do iv = 1, nvar
         call reply ("@var " // trim(var_name(iv)) // " " // trim(var_grid(iv)) // " " //   &
                     trim(var_role(iv)) // " " // trim(var_units(iv)))
@@ -143,9 +154,8 @@
 !!    --------------------------------------------------------------------
       subroutine exch_pause
 
-!!    called in time_control each day after wallo_start_day and before
-!!    call command: reports the days done, waits for commands, then puts
-!!    any values set for the day in place
+!!    called in time_control each day before wallo_start_day: reports the
+!!    days done and waits for commands
 
       use time_module
 
@@ -156,13 +166,42 @@
         call serve (.false.)
       end if
 
-      call apply_sets
-
       if (.not. run_free) run_left = run_left - 1
       days_done = days_done + 1
 
       return
       end subroutine exch_pause
+
+!!    --------------------------------------------------------------------
+      subroutine exch_apply
+
+!!    called in time_control each day after wallo_start_day and before
+!!    call command: puts values set while paused in place for the day,
+!!    then forgets them
+
+      use time_module
+      use hydrograph_module, only : sp_ob1, ob, recall
+
+      integer :: i = 0
+      integer :: irec = 0
+
+      if (.not. exch_on) return
+
+      do i = 1, size(rec_flo)
+        if (.not. rec_flo_on(i)) cycle
+        irec = ob(sp_ob1%recall + i - 1)%num
+        recall(irec)%hd(time%day,time%yrs)%flo = rec_flo(i)
+        rec_flo_on(i) = .false.
+      end do
+
+      do i = 1, size(dmd_flo)
+        if (.not. dmd_flo_on(i)) cycle
+        call set_demand (i, dmd_flo(i))
+        dmd_flo_on(i) = .false.
+      end do
+
+      return
+      end subroutine exch_apply
 
 !!    --------------------------------------------------------------------
       subroutine exch_end
@@ -260,6 +299,8 @@
 
       use hydrograph_module, only : sp_ob, sp_ob1, ob, ch_out_d, ch_stor
       use aquifer_module, only : aqu_d
+      use water_allocation_module, only : poud_met
+      use maximum_data_module, only : db_mx
 
       character(len=*), intent(in) :: name
       real, dimension(:), allocatable :: val
@@ -310,6 +351,18 @@
           val(i) = ob(iob)%hd(1)%flo / 86400.              !m3 -> m3/s
         end do
 
+      case ("place_of_use_water__demand_volume_flow_rate")
+        allocate (val(db_mx%wallo_pou), source = 0.)
+        do i = 1, db_mx%wallo_pou
+          val(i) = poud_met(i)%duty_tot%duty / 86400.      !m3 -> m3/s
+        end do
+
+      case ("place_of_use_water__withdrawal_volume_flow_rate")
+        allocate (val(db_mx%wallo_pou), source = 0.)
+        do i = 1, db_mx%wallo_pou
+          val(i) = poud_met(i)%duty_tot%deliv / 86400.     !m3 -> m3/s
+        end do
+
       case default
         call reply ("@error unknown variable: " // name)
         return
@@ -324,6 +377,7 @@
       subroutine set_value (name, i, v)
 
       use hydrograph_module, only : sp_ob
+      use maximum_data_module, only : db_mx
 
       character(len=*), intent(in) :: name
       integer, intent(in) :: i
@@ -339,6 +393,18 @@
         rec_flo(i) = v * 86400.                           !m3/s -> m3/day
         rec_flo_on(i) = .true.
 
+      case ("place_of_use_water__demand_volume_flow_rate")
+        if (i < 1 .or. i > db_mx%wallo_pou) then
+          call reply ("@error index out of range")
+          return
+        end if
+        if (v < 0.) then
+          call reply ("@error a demand can't be negative")
+          return
+        end if
+        dmd_flo(i) = v * 86400.                           !m3/s -> m3/day
+        dmd_flo_on(i) = .true.
+
       case default
         call reply ("@error not a settable variable: " // name)
         return
@@ -350,25 +416,28 @@
       end subroutine set_value
 
 !!    --------------------------------------------------------------------
-      subroutine apply_sets
+      subroutine set_demand (ipou, dmd)
 
-!!    puts values set while paused in place for today, then forgets them
+!!    replaces the demand wallo_start_day set for a place of use, and the
+!!    duty of each of its points of diversion, the way wallo_start_day
+!!    does: capped at the place of use's maximum rate and split by the
+!!    points of diversion's fractions
 
-      use time_module
-      use hydrograph_module, only : sp_ob, sp_ob1, ob, recall
+      use water_allocation_module, only : pou, poud_met
 
-      integer :: i = 0
-      integer :: irec = 0
+      integer, intent(in) :: ipou
+      real, intent(in) :: dmd                             !m3/day
+      integer :: ipod = 0
 
-      do i = 1, size(rec_flo)
-        if (.not. rec_flo_on(i)) cycle
-        irec = ob(sp_ob1%recall + i - 1)%num
-        recall(irec)%hd(time%day,time%yrs)%flo = rec_flo(i)
-        rec_flo_on(i) = .false.
+      pou(ipou)%demand = Min(pou(ipou)%rate_max * 86400., dmd)
+      poud_met(ipou)%duty_tot%duty = pou(ipou)%demand
+      do ipod = 1, pou(ipou)%pods
+        pou(ipou)%pod(ipod)%duty = pou(ipou)%pod(ipod)%frac * pou(ipou)%demand
+        poud_met(ipou)%pod(ipod)%duty = pou(ipou)%pod(ipod)%duty
       end do
 
       return
-      end subroutine apply_sets
+      end subroutine set_demand
 
 !!    --------------------------------------------------------------------
       subroutine send_grid (gname, ifirst, n)
@@ -392,6 +461,30 @@
 
       return
       end subroutine send_grid
+
+!!    --------------------------------------------------------------------
+      subroutine send_pou_grid
+
+!!    water allocation places of use have no spatial object of their own;
+!!    they go out with no location
+
+      use water_allocation_module, only : pou
+      use maximum_data_module, only : db_mx
+      use, intrinsic :: ieee_arithmetic, only : ieee_value, ieee_quiet_nan
+
+      character(len=200) :: line = ""
+      integer :: i = 0
+      real :: nan = 0.
+
+      nan = ieee_value (nan, ieee_quiet_nan)
+      call reply ("@grid pou " // itoa(db_mx%wallo_pou))
+      do i = 1, db_mx%wallo_pou
+        write (line, '(a,1x,i0,1x,a,3(1x,es15.8e2))') "pou", i, trim(pou(i)%name), nan, nan, nan
+        call reply ("@obj " // trim(line))
+      end do
+
+      return
+      end subroutine send_pou_grid
 
 !!    --------------------------------------------------------------------
       subroutine send_array (val)

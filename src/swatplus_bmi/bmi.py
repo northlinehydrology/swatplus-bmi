@@ -2,9 +2,10 @@
 
 SWAT+ runs as its own process in exchange mode (see ``exchange.py``); this
 class is the BMI face of that process. Each object type SWAT+ exposes
-(channels, aquifers, point sources) is a BMI grid of type ``points``, one
-point per SWAT+ object, in the order of SWAT+'s connection files, with
-longitude as x and latitude as y. ``get_grid_object_names`` gives the SWAT+
+(channels, aquifers, point sources, water allocation places of use) is a
+BMI grid of type ``points``, one point per SWAT+ object, in the order of
+SWAT+'s input files, with longitude as x and latitude as y (places of use
+have no location; their coordinates are NaN). ``get_grid_object_names`` gives the SWAT+
 object names for a grid.
 
 Only fluxes can be set. A value set between updates applies to the next day
@@ -27,7 +28,7 @@ from .exchange import Exchange, ExchangeError
 
 __all__ = ["SwatPlusBmi"]
 
-GRID_ORDER = ["cha", "aqu", "rec", "dmd"]
+GRID_ORDER = ["cha", "aqu", "rec", "pou"]
 
 
 def find_executable(given: str | None = None) -> Path:

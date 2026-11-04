@@ -20,14 +20,14 @@ index 8fe25aa..196511e 100644
  
        write (*,1000)
 diff --git a/src/time_control.f90 b/src/time_control.f90
-index d357b05..8fab844 100644
+index d357b05..1e9c605 100644
 --- a/src/time_control.f90
 +++ b/src/time_control.f90
 @@ -53,6 +53,7 @@
        use output_ls_pesticide_module
        use water_body_module
        use water_allocation_module
-+      use bmi_exchange_module, only : exch_start, exch_pause, exch_end
++      use bmi_exchange_module, only : exch_start, exch_pause, exch_apply, exch_end
        
        implicit none
        
@@ -40,16 +40,21 @@ index d357b05..8fab844 100644
        do curyr = 1, time%nbyr
      !!!!!  uncomment next three lines for RELEASE version only (Srin/Karim)
            !call DATE_AND_TIME (b(1), b(2), b(3), date_time)
-@@ -255,6 +258,8 @@
+@@ -252,9 +255,13 @@
+           ch_morph(:) = ch_morphz
+           ch_morph_ord(:) = ch_morphz
+               
++          call exch_pause           !! exchange mode: pause and exchange values
++
            !! allocation at start of day - withdrawal from outside source, water tower and canals
            if (db_mx%wallo_pou > 0) call wallo_start_day
  
-+          call exch_pause           !! exchange mode: pause, exchange values
++          call exch_apply           !! exchange mode: put values set for the day in place
 +
            call command              !! command loop 
            
            ! reset base0 heat units and yr_skip at end of year for southern hemisphere
-@@ -390,6 +395,8 @@
+@@ -390,6 +397,8 @@
          !! update simulation year
          time%yrc = time%yrc + 1
        end do            !!     end annual loop
