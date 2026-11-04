@@ -15,6 +15,7 @@ declined: the values live in the SWAT+ process, not in this one.
 
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import os
 import shutil
@@ -122,6 +123,19 @@ class SwatPlusBmi(Bmi):
     def run_dir(self) -> Path:
         """The folder SWAT+ runs in and writes its outputs to."""
         return self._x.run_dir
+
+    def branch(self, run_dir: str | os.PathLike) -> "SwatPlusBmi":
+        """A second model that continues from this one's current state.
+
+        The paused SWAT+ process is duplicated (fork), so a warm-up can be
+        run once and every scenario started from it. The new model runs and
+        writes its outputs in ``run_dir``, a copy of this model's run
+        folder made now; both models carry on independently. Mac and Linux
+        only. Not part of BMI 2.0.
+        """
+        other = copy.copy(self)
+        other._x = self._x.branch(run_dir)
+        return other
 
     def run_to_end(self) -> None:
         """Run the rest of the simulation without pausing and complete SWAT+'s outputs."""

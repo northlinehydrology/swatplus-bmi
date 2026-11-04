@@ -11,9 +11,13 @@ This module knows nothing about BMI; ``swatplus_bmi.bmi`` builds on it.
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 import os
+import shutil
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -64,27 +68,24 @@ class Exchange:
     before day ``days_done + 1`` (or has ended, once ``ended`` is true).
     """
 
-    def __init__(self, executable: str | os.PathLike, run_dir: str | os.PathLike,
-                 *, _streams=None):
+    def __init__(self, executable: str | os.PathLike, run_dir: str | os.PathLike):
         self.run_dir = Path(run_dir)
         self.executable = Path(executable)
         self.days_done = 0
         self.ended = False
         self.year = 0
         self.day_of_year = 0
+        self.pid = None
+        self._fifos = None
         self._log = self.run_dir / "exchange.log"
-        if _streams is None:
-            self._err = open(self.run_dir / "exchange.err", "wb")
-            self.proc = subprocess.Popen(
-                [str(self.executable.resolve()), "--exchange"],
-                cwd=self.run_dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                stderr=self._err, bufsize=0)
-            self._in, self._out = self.proc.stdin, self.proc.stdout
-        else:                              # a branch: talks over named pipes
-            self._err = None
-            self.proc = None
-            self._in, self._out = _streams
-        self.catalog = self._read_catalog() if _streams is None else None
+        self._err = open(self.run_dir / "exchange.err", "wb")
+        self.proc = subprocess.Popen(
+            [str(self.executable.resolve()), "--exchange"],
+            cwd=self.run_dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=self._err, bufsize=0)
+        self._in, self._out = self.proc.stdin, self.proc.stdout
+        self.pid = self.proc.pid
+        self.catalog = self._read_catalog()
 
     # -- low level ------------------------------------------------------
 
@@ -116,7 +117,7 @@ class Exchange:
         return rest
 
     def _died(self, what: str) -> str:
-        code = self.proc.wait(timeout=30) if self.proc else None
+        code = self.proc.wait(timeout=30) if self.proc else "unknown: a branch"
         msg = f"{what} (exit code {code})"
         err = self.run_dir / "exchange.err"
         if err.exists() and err.stat().st_size:
@@ -193,6 +194,41 @@ class Exchange:
         self._send(f"set {name} {int(index) + 1} {np.format_float_scientific(v, unique=True)}")
         self._expect("@ok")
 
+    def branch(self, run_dir: str | os.PathLike) -> "Exchange":
+        """A copy of this paused SWAT+ process that goes on in ``run_dir``.
+
+        SWAT+ writes out its buffers, the run folder is copied to
+        ``run_dir``, and the process is duplicated with fork. Both copies
+        are paused at the same point with the same state; each continues on
+        its own and writes its own outputs. Mac and Linux only.
+        """
+        if sys.platform == "win32":
+            raise ExchangeError("branch needs fork, which Windows doesn't have")
+        if self.ended:
+            raise ExchangeError("the simulation has ended; nothing left to branch")
+        new = Path(run_dir).resolve()
+        if new.exists():
+            raise FileExistsError(f"{new} already exists")
+        self._send("flush")
+        self._expect("@ok")
+        shutil.copytree(self.run_dir, new, ignore=shutil.ignore_patterns("exchange.err"))
+        fifo_dir = Path(tempfile.mkdtemp(prefix="swatplus-branch-"))
+        f_in, f_out = fifo_dir / "commands", fifo_dir / "replies"
+        os.mkfifo(f_in)
+        os.mkfifo(f_out)
+        q = lambda p: '"' + str(p).replace('"', '') + '"'
+        self._send(f"branch {q(new)} {q(self.run_dir.resolve())} {q(f_in)} {q(f_out)}")
+        pid = int(self._expect("@branched")[0])
+
+        b = copy.copy(self)
+        b.run_dir, b.proc, b.pid, b._err = new, None, pid, None
+        b._log = new / "exchange.log"
+        b._fifos = fifo_dir
+        b._in = open(f_in, "wb", buffering=0)      # same order the branch opens them
+        b._out = open(f_out, "rb", buffering=0)
+        b._paused()
+        return b
+
     def finish(self, timeout: float | None = None) -> int:
         """Let SWAT+ run to the end without pausing and complete its outputs."""
         if self.proc is not None and self.proc.poll() is not None:
@@ -212,7 +248,10 @@ class Exchange:
         # read anything left (console lines on a shared stdout) so SWAT+ never blocks on a full pipe
         while self._out.readline():
             pass
-        code = self.proc.wait(timeout=timeout) if self.proc else 0
+        if self.proc is not None:
+            code = self.proc.wait(timeout=timeout)
+        else:                    # a branch is not our child: it has ended when its replies close
+            code = 0
         self._close()
         return code
 
@@ -223,6 +262,9 @@ class Exchange:
                     f.close()
             except OSError:
                 pass
+        if self._fifos is not None:
+            shutil.rmtree(self._fifos, ignore_errors=True)
+            self._fifos = None
 
     def __del__(self):
         try:
