@@ -119,9 +119,13 @@ run the daily loop more than once.
 ## Variables
 
 All values are 4-byte reals in SI units. Flows that SWAT+ keeps in m3/day
-are converted to m3/s. Names follow the CSDMS Standard Names pattern
-(object, then quantity). They haven't yet been checked one by one against
-the CSDMS list; do that before a release.
+are converted to m3/s. Names follow CSDMS Standard Names (object, then quantity).
+`channel_water__volume`, `channel_water__volume_inflow_rate` and
+`channel_water__volume_outflow_rate` are on the CSDMS list (TopoFlow names,
+checked Nov 4, 2026). The others are new, built the same way:
+`soil_water_table_surface__depth` follows CSDMS's
+`soil_water_table_surface__elevation`, and the aquifer and place-of-use
+names follow the channel ones. CSDMS lists no aquifer or withdrawal names.
 
 | Variable | Grid | In/out | Units | SWAT+ source | Notes |
 |---|---|---|---|---|---|
