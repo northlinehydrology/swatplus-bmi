@@ -6,7 +6,7 @@ refuses any other version.
 
 | SWAT+ | Released | Status | Tested on |
 |---|---|---|---|
-| 62.0.1 | 2026-10-19 | **Supported** | macOS 14 arm64, gfortran 16.1 (local); Ubuntu and macOS in the nightly build |
+| 62.0.1 | 2026-10-19 | **Supported** | macOS 14 arm64, gfortran 16.1 (local). CI on Ubuntu and macOS is set up but hasn't run yet (the repository isn't pushed). |
 | main | rolling | Watched: built and tested nightly with the 62.0.1 patch, as an early warning. Not supported. | nightly build |
 | 62.0.0 | 2026-06-18 | Not supported: the patch doesn't apply (`time_control.f90` differs) | — |
 | 61.x and earlier | 2024–2026 | Not supported: no water allocation places of use, and the patch doesn't apply | — |
