@@ -129,3 +129,23 @@ def test_a_state_from_another_build_is_refused(tmp_path):
     n.initialize(str(project("Osu_1hru", "Osu_1hru-st-bad-b")))
     with pytest.raises(ExchangeError, match="different build"):
         n.load_state(snap)
+
+
+@pytest.mark.full
+def test_save_load_continue_is_stock_ames():
+    """Ames_sub1 prints the soil carbon layer files, whose header flag is a saved
+    local that carries state (patches/<tag>/carried-locals.toml)."""
+    need(STOCK, EXCHANGE)
+    stock = project("Ames_sub1", "Ames_sub1-st-stock")
+    run_stock(stock)
+    m = SwatPlusBmi()
+    m.initialize(str(project("Ames_sub1", "Ames_sub1-st-saved")))
+    m.update_until(3000)
+    snap = m.save_state(fresh("Ames_sub1-st-snapshot"))
+    m.finalize()
+    n = SwatPlusBmi()
+    n.initialize(str(project("Ames_sub1", "Ames_sub1-st-loaded")))
+    n.load_state(snap)
+    n.update_until(n.get_end_time())
+    n.finalize()
+    assert differences(stock, RUNS / "Ames_sub1-st-loaded") == []
