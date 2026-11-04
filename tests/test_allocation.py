@@ -151,3 +151,54 @@ def test_curtailment_rule_triggers_on_the_right_days_and_balances():
              - np.diff(np.r_[0.0, cha["flo_stor"]]))
     scale = q_in + cha["precip"] + cha["evap"] + cha["seep"] + q_out + w + cha["flo_stor"]
     assert (np.abs(resid) <= 1e-3 * scale + 1e-3).all()
+
+
+def add_aquifer_allocation(rate):
+    def edit(run):
+        add_allocation(run)
+        (run / "place_of_use.wro").write_text(
+            "place_of_use.wro: one well taking water from aqu001, no returns\n"
+            "1\n"
+            "num name typ typ_num pods pors dtbl_mx rate_max dtbl_pod_fr dtbl_por_fr\n"
+            f"1 well01 out 1 1 0 null {rate} null null\n"
+            "1 1 aqu001 aqu 1 null 0 null 100.0 null 1000000. 1.0 n\n")
+        (run / "point_of_diver.wro").write_text(
+            "point_of_diver.wro: aqu001 supplies well01\n"
+            "1\n"
+            "num name typ typ_num pous pou_num pou_name pod_num typ typ_num right\n"
+            "1 aqu001 aqu 1 1 1 well01 1 out 1 senior\n")
+    return edit
+
+
+def test_aquifer_withdrawal_delivers_less_than_it_removes_swatplus_62_0_1():
+    """Documents a SWAT+ 62.0.1 bug, so the test fails when it's fixed.
+
+    wallo_withdraw.f90 (aquifer point of diversion) reduces storage first,
+    aqu_d%stor = (1 - rto) * stor, then computes the delivery from the
+    reduced storage, rto * stor. The aquifer loses rto x S, but the user
+    receives rto x (1 - rto) x S. Here, a 0.002 m3/s well on aqu001 for 100
+    days, against the same run with no well.
+    """
+    need(EXCHANGE)
+    rate, days = 0.002, 100
+    vol, got = {}, {}
+    for tag, r in (("none", 0.0), ("well", rate)):
+        run = project("Osu_1hru", f"Osu_1hru-aqu-{tag}", edit=add_aquifer_allocation(r))
+        m = SwatPlusBmi()
+        m.initialize(str(run))
+        v, w = [m.get_value("aquifer_water__volume", np.empty(1, np.float32))[0]], []
+        while m.get_current_time() < days:
+            m.update()
+            v.append(m.get_value("aquifer_water__volume", np.empty(1, np.float32))[0])
+            w.append(m.get_value(WDR, np.empty(1, np.float32))[0] * 86400)
+        m.finalize()
+        vol[tag], got[tag] = np.array(v, dtype=float), np.array(w, dtype=float)
+
+    removed = np.diff(vol["none"] - vol["well"])                # m3/day the well took from the aquifer
+    delivered = got["well"]                                      # m3/day the user received
+    np.testing.assert_allclose(removed, rate * 86400, rtol=1e-4)
+    # the aquifer loses the demand, the user gets less: by rto = removed / storage before
+    stor = vol["well"][:-1] + removed                            # storage before the withdrawal (recharge ~0)
+    rto = removed / stor
+    assert (delivered < removed).all()
+    np.testing.assert_allclose(delivered, removed * (1 - rto), rtol=2e-3)
