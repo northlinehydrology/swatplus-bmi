@@ -266,10 +266,16 @@ up to the pause. `load_state(path)` carries on from it in a new process.
   daily, with a daily point source and with a water allocation user, its
   output is byte-for-byte identical to stock (`tests/test_saved_locals.py`).
   So on those code paths no saved local carries state. This holds only for
-  the procedures these projects run. Ames_sub1 (12 HRUs, crop management)
-  is the next check (`pytest -m full`), and a coverage build
-  (`gfortran --coverage`) would show which procedures have been exercised.
-  The save/load tests check the same thing directly.
+  the procedures these projects run. A coverage build (stock compiled with
+  `--coverage`, the five Osu_1hru variants run, `gcov -f` over the
+  counters) shows how far that is. It ran 432 of SWAT+'s 1,394 procedures,
+  including 325 of the 537 with saved locals: 2,906 of the 5,379 saved
+  locals, about 54%. Those not run are mostly gwflow (24), salt and
+  other constituents (39), reservoir (20), calibration (19) and pesticide
+  (15) code, and parts of the wetland code. Ames_sub1 (12 HRUs, crop
+  management) is the next check (`pytest -m full`), and a project with
+  reservoirs and pesticides would widen it further. The save/load tests
+  check the same thing directly for whatever a project runs.
 - **Random numbers.** SWAT+ doesn't use Fortran's generator. Its own
   (`aunif.f90`) keeps its seeds in module variables (`rndseed`,
   `rndseed_cond` in `climate_module`), so they are saved.
