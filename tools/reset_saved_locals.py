@@ -17,7 +17,10 @@ locals carries state SWAT+ relies on: if its output is identical to stock,
 none does on the code paths those projects run. Locals with an explicit
 SAVE, pointers, parameters and module variables are left alone.
 
-    python tools/reset_saved_locals.py <SWAT+ src/> <output src/>
+    python tools/reset_saved_locals.py <SWAT+ src/> <output src/> [carried-locals.toml]
+
+With a carried-locals.toml, the locals listed there are left alone, so the
+copy then shows whether the list is complete.
 
 Only for this experiment; the output is never meant to be committed.
 """
@@ -65,7 +68,10 @@ def statements(lines):
         i += 1
 
 
-def rewrite_decl(text):
+KEEP: set[tuple[str, str]] = set()      # (procedure, local) known to carry state: left as they are
+
+
+def rewrite_decl(text, unit=""):
     """A declaration without initializers, and the assignments that replace them; None to leave it."""
     if "::" not in text:
         return None
@@ -76,6 +82,8 @@ def rewrite_decl(text):
     if any(a in ("parameter", "save", "pointer") or a.startswith("intent(") for a in attrs):
         return None
     if not any(init is not None for _, _, init in names):
+        return None
+    if any((unit, n) in KEEP for n, _, _ in names):
         return None
     head = text.split("::", 1)[0].strip()
     items, assigns = [], []
@@ -131,7 +139,7 @@ def rewrite_file(src: Path, dst: Path):
             out.extend(phys)
             continue
         if UNIT.match(text) and not low.startswith("end"):
-            stack.append({"spec": True, "pending": []})
+            stack.append({"spec": True, "pending": [], "name": UNIT.match(text).group(2).lower()})
             out.extend(phys)
             continue
         if END_UNIT.match(text):
@@ -147,7 +155,7 @@ def rewrite_file(src: Path, dst: Path):
         top = stack[-1]
         if top["spec"]:
             if DECL_WORD.match(text) and DECL.match(text):
-                r = rewrite_decl(text)
+                r = rewrite_decl(text, top["name"])
                 if r is None:
                     out.extend(phys)
                 else:
@@ -170,6 +178,10 @@ def rewrite_file(src: Path, dst: Path):
 
 def main():
     src, dst = Path(sys.argv[1]), Path(sys.argv[2])
+    if len(sys.argv) > 3:                       # a carried-locals.toml: leave those alone
+        import tomllib
+        for e in tomllib.loads(Path(sys.argv[3]).read_text()).get("local", []):
+            KEEP.add((e["procedure"].lower(), e["name"].lower()))
     if dst.exists():
         shutil.rmtree(dst)
     shutil.copytree(src, dst)

@@ -1,0 +1,12 @@
+# Saved locals in SWAT+ 62.0.1 that carry state between calls.
+#
+# A local belongs here if resetting it on every call changes SWAT+'s output
+# (tests/test_saved_locals.py, build.sh --nosave). tools/carried_locals.py
+# moves each into bmi_locals_module.f90 so the state serializer saves it.
+# Checked on Osu_1hru (five variants) and Ames_sub1, Nov 4, 2026.
+
+[[local]]
+file = "soil_nutcarb_write_legacy.f90"
+procedure = "soil_nutcarb_write_legacy"
+name = "write_hdr"
+why = "set false once the soil carbon layer headers are written; Ames_sub1 prints hru_cbn_lyr and hru_seq_lyr"

@@ -7,8 +7,8 @@
 #
 #   ./build.sh                 # bin/swatplus-62.0.1-exchange
 #   ./build.sh --stock         # also bin/swatplus-62.0.1-stock
-#   ./build.sh --nosave        # also bin/swatplus-62.0.1-nosave: stock with every
-#                              # saved local reset on each call (tools/reset_saved_locals.py)
+#   ./build.sh --nosave        # also bin/swatplus-62.0.1-nosave: stock with every saved
+#                              # local reset on each call except those in carried-locals.toml
 #   ./build.sh --jobs 2        # parallel compile jobs (default 2)
 #   SWATPLUS_SRC=/path ./build.sh   # use an existing checkout of the tag
 #
@@ -89,7 +89,8 @@ if [ "$NOSAVE" = 1 ]; then
   rm -rf "$WORK/nosave-src"
   mkdir -p "$WORK/nosave-src"
   cp -R "$SRC/." "$WORK/nosave-src/"
-  "${PYTHON:-python3}" "$HERE/tools/reset_saved_locals.py" "$SRC/src" "$WORK/nosave-src/src"
+  "${PYTHON:-python3}" "$HERE/tools/reset_saved_locals.py" "$SRC/src" "$WORK/nosave-src/src" \
+    "$PATCHES/carried-locals.toml"
   build "$WORK/nosave-src" "$WORK/nosave-build" "swatplus-$TAG-nosave"
 fi
 
@@ -98,8 +99,10 @@ rm -rf "$WORK/exchange-src"
 mkdir -p "$WORK/exchange-src"
 cp -R "$SRC/." "$WORK/exchange-src/"
 cp "$HERE"/fortran/*.f90 "$HERE"/fortran/*.c "$WORK/exchange-src/src/"
-# the state serializer, generated from this release's module declarations
-"${PYTHON:-python3}" "$HERE/tools/gen_serializer.py" "$SRC/src" "$WORK/exchange-src/src/bmi_state_module.f90"
+# the saved locals that carry state, moved into a module, then the state
+# serializer, generated from this release's module declarations
+"${PYTHON:-python3}" "$HERE/tools/carried_locals.py" "$PATCHES/carried-locals.toml" "$WORK/exchange-src/src"
+"${PYTHON:-python3}" "$HERE/tools/gen_serializer.py" "$WORK/exchange-src/src" "$WORK/exchange-src/src/bmi_state_module.f90"
 for p in "$PATCHES"/*.patch; do
   patch --quiet -p1 -d "$WORK/exchange-src" < "$p"
 done
