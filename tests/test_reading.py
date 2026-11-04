@@ -65,6 +65,14 @@ def test_channel_flow_matches_daily_output(series):
         assert np.count_nonzero(ref) > 1000               # a real series, not zeros
 
 
+def test_channel_inflow_matches_daily_output(series):
+    run, got, objs, _ = series
+    cha = daily_table(run / "channel_sd_day.txt")
+    name = "channel_entrance_water__volume_flow_rate"
+    for j, obj in enumerate(objs[name]):
+        np.testing.assert_allclose(got[name][:, j], cha[obj]["flo_in"], rtol=5e-4, atol=1e-12)
+
+
 def test_channel_storage_matches_daily_output(series):
     run, got, objs, _ = series
     cha = daily_table(run / "channel_sd_day.txt")

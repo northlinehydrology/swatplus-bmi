@@ -48,10 +48,11 @@
       real, dimension(:), allocatable :: pou_dmd_day     !! m3/day     |place of use demand
       real, dimension(:), allocatable :: pou_wdr_day     !! m3/day     |place of use withdrawal
 
-      integer, parameter :: nvar = 8
+      integer, parameter :: nvar = 9
       character(len=48), dimension(nvar) :: var_name = [character(len=48) ::     &
             "channel_exit_water__volume_flow_rate",                             &
             "channel_water__volume",                                            &
+            "channel_entrance_water__volume_flow_rate",                         &
             "aquifer_water__volume",                                            &
             "soil_water_sat-zone_top__depth",                                   &
             "aquifer_exit_water__volume_flow_rate",                             &
@@ -59,11 +60,11 @@
             "place_of_use_water__demand_volume_flow_rate",                      &
             "place_of_use_water__withdrawal_volume_flow_rate"]
       character(len=8), dimension(nvar) :: var_grid = [character(len=8) ::      &
-            "cha", "cha", "aqu", "aqu", "aqu", "rec", "pou", "pou"]
+            "cha", "cha", "cha", "aqu", "aqu", "aqu", "rec", "pou", "pou"]
       character(len=8), dimension(nvar) :: var_units = [character(len=8) ::     &
-            "m3 s-1", "m3", "m3", "m", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1"]
+            "m3 s-1", "m3", "m3 s-1", "m3", "m", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1"]
       character(len=3), dimension(nvar) :: var_role = [character(len=3) ::      &
-            "out", "out", "out", "out", "out", "in", "in", "out"]
+            "out", "out", "out", "out", "out", "out", "in", "in", "out"]
 
       contains
 
@@ -485,7 +486,7 @@
 !!    --------------------------------------------------------------------
       subroutine send_values (name)
 
-      use hydrograph_module, only : sp_ob, sp_ob1, ob, ch_out_d, ch_stor
+      use hydrograph_module, only : sp_ob, sp_ob1, ob, ch_in_d, ch_out_d, ch_stor
       use aquifer_module, only : aqu_d
       use maximum_data_module, only : db_mx
 
@@ -508,6 +509,15 @@
         do i = 1, sp_ob%chandeg
           iob = sp_ob1%chandeg + i - 1
           val(i) = ch_stor(ob(iob)%num)%flo               !m3
+        end do
+
+      case ("channel_entrance_water__volume_flow_rate")
+        !! net inflow; negative when a point source diversion is larger than
+        !! the other inflow, and SWAT+ then routes nothing
+        allocate (val(sp_ob%chandeg), source = 0.)
+        do i = 1, sp_ob%chandeg
+          iob = sp_ob1%chandeg + i - 1
+          val(i) = ch_in_d(ob(iob)%num)%flo               !m3/s
         end do
 
       case ("aquifer_water__volume")
