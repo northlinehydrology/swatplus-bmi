@@ -269,6 +269,18 @@ nothing, but that can't be proved from declarations. Two ways to settle it:
 The first is the plan; it also tells the SWAT+ developers which procedures
 rely on saved locals, which is worth knowing for its own sake.
 
+**Result so far (Nov 4, 2026).** `tools/reset_saved_locals.py` rewrites
+5,372 saved locals in 531 files (the others have an explicit SAVE, or are
+pointers or parameters, and are left alone). `build.sh --nosave` builds that
+variant. On Osu_1hru with the project's own printing, with everything
+printed daily, with a daily point source and with a water allocation user,
+its output is byte-for-byte identical to stock (`tests/test_saved_locals.py`).
+So on those code paths no saved local carries state, and the serializer can
+cover module variables only. This holds only for the procedures these
+projects run. Ames_sub1 (12 HRUs, crop management) is the next check
+(`pytest -m full`), and a coverage build (`gfortran --coverage`) would show
+which of the 537 procedures have been exercised.
+
 SWAT+ doesn't use Fortran's random number generator. It has its own
 (`aunif.f90`), with seeds in module variables (`rndseed` and `rndseed_cond`
 in `climate_module`), so the serializer covers them.
