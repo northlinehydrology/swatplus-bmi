@@ -357,6 +357,14 @@ CI (GitHub Actions, not yet run because the repository isn't public yet) runs th
 Ubuntu and macOS on every push. Each night it also runs the full-length tests and builds SWAT+
 main with the current patch, as an early warning for the next SWAT+ release.
 
+## AI use
+
+swatplus-bmi was designed and directed by Andrew Sommerlot and built with an AI coding
+assistant (Claude, by Anthropic), which wrote most of the code, tests and documentation under
+his direction and review. Whether it's right doesn't rest on the assistant. It rests on the
+tests against unmodified SWAT+: every output file compared byte for byte, every variable
+compared with SWAT+'s own output, and water balances checked. Anyone can run them.
+
 ## Citing, contributing, license
 
 - **Citing:** see [CITATION.cff](CITATION.cff).
