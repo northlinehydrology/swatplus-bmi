@@ -120,8 +120,9 @@ run the daily loop more than once.
 
 All values are 4-byte reals in SI units. Flows that SWAT+ keeps in m3/day
 are converted to m3/s. Names follow CSDMS Standard Names (object, then quantity).
-`channel_water__volume`, `channel_water__volume_inflow_rate` and
-`channel_water__volume_outflow_rate` are on the CSDMS list (TopoFlow names,
+`channel_water__volume`, `channel_water__volume_inflow_rate`,
+`channel_water__volume_outflow_rate` and `soil_water_table__recharge_rate`
+are on the CSDMS list (TopoFlow names,
 checked Nov 4, 2026). The others are new, built the same way:
 `soil_water_table_surface__depth` follows CSDMS's
 `soil_water_table_surface__elevation`, and the aquifer and place-of-use
@@ -135,6 +136,7 @@ names follow the channel ones. CSDMS lists no aquifer or withdrawal names.
 | `aquifer_water__volume` | aqu | out | m3 | `aqu_d(i)%stor` (mm) x 10 x area (ha) | `stor` in `aquifer_day.txt` |
 | `soil_water_table_surface__depth` | aqu | out | m | `aqu_d(i)%dep_wt` | depth to the water table, `dep_wt` |
 | `aquifer_water__volume_outflow_rate` | aqu | out | m3 s-1 | `ob(iob)%hd(1)%flo` | return flow, `flo` in `aquifer_day.txt` |
+| `soil_water_table__recharge_rate` | aqu | out | m s-1 | `aqu_d(i)%rchrg` (mm/day) | `rchrg` in `aquifer_day.txt`; a CSDMS name; what MODFLOW 6's recharge package takes |
 | `point_source_water__volume_flow_rate` | rec | in and out | m3 s-1 | `recall(i)%hd(day,yr)%flo` | daily recall objects only; negative is a withdrawal |
 | `place_of_use_water__volume_demand_rate` | pou | in and out | m3 s-1 | `pou(i)%demand` | reading gives the day's demand; setting replaces SWAT+'s for the next day |
 | `place_of_use_water__volume_withdrawal_rate` | pou | out | m3 s-1 | `poud_met(i)%duty_tot%deliv` | what was actually taken |

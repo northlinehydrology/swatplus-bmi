@@ -135,6 +135,7 @@ index. Grids with no objects in a project are left out.
 | `aquifer_water__volume` | aquifers | no | m3 |
 | `soil_water_table_surface__depth` (depth to water table) | aquifers | no | m |
 | `aquifer_water__volume_outflow_rate` | aquifers | no | m3 s-1 |
+| `soil_water_table__recharge_rate` | aquifers | no | m s-1 |
 | `point_source_water__volume_flow_rate` | daily recall objects | yes | m3 s-1 |
 | `place_of_use_water__volume_demand_rate` | water allocation places of use | yes | m3 s-1 |
 | `place_of_use_water__volume_withdrawal_rate` | water allocation places of use | no | m3 s-1 |
