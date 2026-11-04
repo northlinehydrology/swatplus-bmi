@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
 
 [project]
 name = "swatplus-bmi"
@@ -10,8 +10,27 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "BSD-3-Clause AND LGPL-2.1-only"
 license-files = ["LICENSE", "LICENSES/*"]
-authors = [{ name = "Andrew Sommerlot", email = "andrewsommerlot@gmail.com" }]
-dependencies = ["bmipy>=2.0", "numpy>=1.24"]
+authors = [{ name = "Northline Hydrology", email = "info@northlinehydrology.com" }]
+dependencies = ["bmipy>=2.0", "numpy>=1.24", "cmake>=3.22"]
+keywords = ["hydrology", "SWAT+", "BMI", "Basic Model Interface", "watershed", "model coupling"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Fortran",
+    "Topic :: Scientific/Engineering :: Hydrology",
+]
+
+[project.urls]
+Homepage = "https://github.com/northlinehydrology/swatplus-bmi"
+Documentation = "https://github.com/northlinehydrology/swatplus-bmi#readme"
+Issues = "https://github.com/northlinehydrology/swatplus-bmi/issues"
+Changelog = "https://github.com/northlinehydrology/swatplus-bmi/blob/main/CHANGELOG.md"
+
+[project.scripts]
+swatplus-bmi = "swatplus_bmi.build:main"
 
 [dependency-groups]
 dev = ["pytest>=7", "cmake>=3.22"]
@@ -20,8 +39,20 @@ examples = [
     "matplotlib>=3.11.2",
 ]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/swatplus_bmi"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"build.sh" = "swatplus_bmi/_assets/build.sh"
+"patches" = "swatplus_bmi/_assets/patches"
+"fortran" = "swatplus_bmi/_assets/fortran"
+"tools" = "swatplus_bmi/_assets/tools"
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "build.sh", "patches", "fortran", "tools", "tests", "examples", "docs",
+           "README.md", "COMPATIBILITY.md", "CHANGELOG.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md",
+           "CITATION.cff", "LICENSE", "LICENSES"]
+exclude = ["tests/runs", "examples/runs"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -43,8 +43,8 @@ done
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PATCHES="$HERE/patches/${PATCH:-$TAG}"
-WORK="$HERE/build/$TAG"
-BIN="$HERE/bin"
+WORK="${SWATPLUS_BMI_WORK:-$HERE/build}/$TAG"
+BIN="${SWATPLUS_BMI_BIN:-$HERE/bin}"
 CMAKE="${CMAKE:-cmake}"
 
 [ -d "$PATCHES" ] || { echo "SWAT+ ${PATCH:-$TAG} is not supported: no patch in patches/ (see COMPATIBILITY.md)" >&2; exit 1; }

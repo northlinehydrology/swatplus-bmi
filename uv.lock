@@ -1640,6 +1640,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "bmipy" },
+    { name = "cmake" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
@@ -1657,6 +1658,7 @@ examples = [
 [package.metadata]
 requires-dist = [
     { name = "bmipy", specifier = ">=2.0" },
+    { name = "cmake", specifier = ">=3.22" },
     { name = "numpy", specifier = ">=1.24" },
 ]
 

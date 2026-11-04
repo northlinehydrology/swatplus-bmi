@@ -37,16 +37,18 @@ GRID_ORDER = ["cha", "aqu", "rec", "pou"]
 
 
 def find_executable(given: str | None = None) -> Path:
-    """The exchange-mode SWAT+ executable: given, $SWATPLUS_EXCHANGE, or bin/."""
+    """The exchange-mode SWAT+ executable: given, $SWATPLUS_EXCHANGE, bin/ in a source
+    checkout, or the folder ``swatplus-bmi build`` writes to."""
     for cand in (given, os.environ.get("SWATPLUS_EXCHANGE")):
         if cand:
             return Path(cand).expanduser()
-    here = Path(__file__).resolve().parents[2] / "bin"
-    found = sorted(here.glob("swatplus-*-exchange"))
-    if found:
-        return found[-1]
-    raise FileNotFoundError("no SWAT+ exchange executable: build one with ./build.sh, "
-                            "or set SWATPLUS_EXCHANGE or 'executable' in the config file")
+    from .build import home
+    for folder in (Path(__file__).resolve().parents[2] / "bin", home() / "bin"):
+        found = sorted(folder.glob("swatplus-*-exchange"))
+        if found:
+            return found[-1]
+    raise FileNotFoundError("no SWAT+ exchange executable: run `swatplus-bmi build` "
+                            "(or ./build.sh in a source checkout), or set SWATPLUS_EXCHANGE")
 
 
 class SwatPlusBmi(Bmi):
