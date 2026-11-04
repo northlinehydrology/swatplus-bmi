@@ -27,8 +27,12 @@ def daily_table(path, name_col="name"):
         cols = out.setdefault(row[name_col], {h: [] for h in head})
         for h in head:
             cols[h].append(row[h])
-    return {k: {h: np.array(v, dtype=float) if h != name_col else v for h, v in c.items()}
-            for k, c in out.items()}
+    def arr(v):
+        try:
+            return np.array(v, dtype=float)
+        except ValueError:                               # a text column
+            return v
+    return {k: {h: arr(v) for h, v in c.items()} for k, c in out.items()}
 
 
 @pytest.fixture(scope="module")
