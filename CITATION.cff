@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+message: "If you use swatplus-bmi in your work, please cite it as below."
+title: "swatplus-bmi: stepping the SWAT+ watershed model one day at a time through the Basic Model Interface"
+type: software
+authors:
+  - family-names: Sommerlot
+    given-names: Andrew
+    affiliation: Northline Hydrology
+    # orcid: https://orcid.org/0000-0000-0000-0000
+version: 0.1.0
+license:
+  - MIT
+  - LGPL-2.1-only
+repository-code: "https://github.com/northlinehydrology/swatplus-bmi"
+keywords:
+  - hydrology
+  - watershed modeling
+  - SWAT+
+  - Basic Model Interface
+  - BMI
+  - model coupling
+references:
+  - type: article
+    title: "Introduction to SWAT+, a completely restructured version of the Soil and Water Assessment Tool"
+    authors:
+      - family-names: Bieger
+        given-names: Katrin
+      - name: "and others"
+    journal: "Journal of the American Water Resources Association"
+    year: 2017
+    doi: 10.1111/1752-1688.12482
