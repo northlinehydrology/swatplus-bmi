@@ -31,6 +31,9 @@ jobs:
       - uses: ./.github/actions/setup
       - run: ./build.sh --stock --jobs 4 --tag "$SWATPLUS_TAG"
       - run: python -m pytest -q
+      - name: Full-length comparisons (nightly)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: python -m pytest -q -m full
       - if: failure()
         run: tail -50 build/*/*.log || true
 
