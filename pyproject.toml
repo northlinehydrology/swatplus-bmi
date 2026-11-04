@@ -14,6 +14,10 @@ dependencies = ["bmipy>=2.0", "numpy>=1.24"]
 
 [dependency-groups]
 dev = ["pytest>=7", "cmake>=3.22"]
+examples = [
+    "marimo>=0.25.2",
+    "matplotlib>=3.11.2",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
