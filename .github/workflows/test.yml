@@ -29,11 +29,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      - run: ./build.sh --stock --nosave --jobs 4 --tag "$SWATPLUS_TAG"
-      - run: python -m pytest -q
+      - run: uv run ./build.sh --stock --nosave --jobs 4 --tag "$SWATPLUS_TAG"
+      - run: uv run pytest -q
       - name: Full-length comparisons (nightly)
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        run: python -m pytest -q -m full
+        run: uv run pytest -q -m full
       - if: failure()
         run: tail -50 build/*/*.log || true
 
@@ -51,9 +51,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      - run: ./build.sh --stock --jobs 4 --tag main --patch 62.0.1
+      - run: uv run ./build.sh --stock --jobs 4 --tag main --patch 62.0.1
       - run: |
           git -C build/main/swatplus log -1 --format="SWAT+ main at %h (%cd)" --date=short
-      - run: python -m pytest -q
+      - run: uv run pytest -q
       - if: failure()
         run: tail -50 build/*/*.log || true
