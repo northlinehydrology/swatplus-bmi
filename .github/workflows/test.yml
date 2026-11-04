@@ -1,0 +1,56 @@
+# Build SWAT+ with the exchange mode and run the full test suite.
+#
+# supported: the supported SWAT+ releases (COMPATIBILITY.md), on every push,
+#   pull request and night.
+# canary: SWAT+ main with the newest supported patch, nightly and on demand,
+#   as an early warning that the next SWAT+ release may need a new patch.
+#   Main is not supported; a failure here doesn't fail the run.
+
+name: test
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 7 * * *"          # nightly, 07:17 UTC
+  workflow_dispatch:
+
+jobs:
+  supported:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+        swatplus: ["62.0.1"]
+    runs-on: ${{ matrix.os }}
+    name: SWAT+ ${{ matrix.swatplus }} on ${{ matrix.os }}
+    env:
+      SWATPLUS_TAG: ${{ matrix.swatplus }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: ./build.sh --stock --jobs 4 --tag "$SWATPLUS_TAG"
+      - run: python -m pytest -q
+      - if: failure()
+        run: tail -50 build/*/*.log || true
+
+  canary:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    name: SWAT+ main (62.0.1 patch) on ${{ matrix.os }}
+    env:
+      SWATPLUS_TAG: main
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: ./build.sh --stock --jobs 4 --tag main --patch 62.0.1
+      - run: |
+          git -C build/main/swatplus log -1 --format="SWAT+ main at %h (%cd)" --date=short
+      - run: python -m pytest -q
+      - if: failure()
+        run: tail -50 build/*/*.log || true

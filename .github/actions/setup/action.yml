@@ -1,0 +1,21 @@
+name: setup
+description: gfortran, Python and the swatplus-bmi package with test dependencies and CMake
+runs:
+  using: composite
+  steps:
+    - name: Fortran compiler (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y gfortran
+    - name: Fortran compiler (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        brew list gcc >/dev/null 2>&1 || brew install gcc
+        echo "FC=$(ls "$(brew --prefix)"/bin/gfortran-* | sort -V | tail -1)" >> "$GITHUB_ENV"
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Python package
+      shell: bash
+      run: pip install cmake -e ".[test]"
