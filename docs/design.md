@@ -257,25 +257,45 @@ up to the pause. `load_state(path)` carries on from it in a new process.
 
 - **The 7 module pointers.** SWAT+ points each at a table entry just
   before it uses it. The save/load tests pass with them left out.
-- **The saved locals.** In Fortran a local with an initializer
-  (`real :: rto = 0.`) keeps its value between calls, so 5,379 locals in
-  537 procedures are technically state. `tools/reset_saved_locals.py`
-  rewrites 5,372 of them to be set on every call instead (the rest have an
-  explicit SAVE, or are pointers or parameters). `build.sh --nosave` builds
-  that variant. On Osu_1hru with its own printing, with everything printed
-  daily, with a daily point source and with a water allocation user, its
-  output is byte-for-byte identical to stock (`tests/test_saved_locals.py`).
-  So on those code paths no saved local carries state. This holds only for
-  the procedures these projects run. A coverage build (stock compiled with
+- **Saved locals, except the few that carry state.** In Fortran a local
+  with an initializer (`real :: rto = 0.`) keeps its value between calls,
+  so 5,379 locals in 537 procedures are technically state. A local can't
+  be reached from outside its procedure, so the serializer can't save it
+  where it is. To find which ones matter, `tools/reset_saved_locals.py`
+  rewrites the locals to be set on every call instead (5,372 of them; the
+  rest have an explicit SAVE, or are pointers or parameters), and
+  `build.sh --nosave` builds that variant.
+  - On Osu_1hru, in five variants, its output is identical to stock.
+  - On Ames_sub1 it isn't. `write_hdr` in `soil_nutcarb_write_legacy.f90`
+    is a "header written" flag, and resetting it writes the soil carbon
+    layer headers again. A save/load test on Ames showed the same two files
+    differing, and nothing else.
+  - Locals like that are listed per release in
+    `patches/<tag>/carried-locals.toml`; for 62.0.1 the list is that one.
+    `tools/carried_locals.py` moves each into a generated module
+    (`bmi_locals_module.f90`) at build time, and the procedure uses it
+    under its old name. A module variable keeps its value between calls
+    just as a saved local does, so SWAT+ behaves the same; the tests that
+    compare against stock still pass. The serializer then saves it.
+  - The no-saved-locals build leaves listed locals alone, so its test
+    checks that the list is complete. With the list, Ames_sub1 matches
+    stock, and so does saving and loading on Ames
+    (`tests/test_saved_locals.py` and `tests/test_state.py`, under
+    `-m full`).
+
+  The list is complete only for the procedures these projects run. A
+  coverage build (stock compiled with
   `--coverage`, the five Osu_1hru variants run, `gcov -f` over the
   counters) shows how far that is. It ran 432 of SWAT+'s 1,394 procedures,
   including 325 of the 537 with saved locals: 2,906 of the 5,379 saved
   locals, about 54%. Those not run are mostly gwflow (24), salt and
   other constituents (39), reservoir (20), calibration (19) and pesticide
   (15) code, and parts of the wetland code. Ames_sub1 (12 HRUs, crop
-  management) is the next check (`pytest -m full`), and a project with
-  reservoirs and pesticides would widen it further. The save/load tests
-  check the same thing directly for whatever a project runs.
+  management) adds more (not yet counted), and a project with reservoirs
+  and pesticides would widen it further. A new release, or a project that
+  runs code the tests haven't, should be checked with `build.sh --nosave`
+  and `pytest -m full` before relying on save and load. Branching is not
+  affected: a fork copies the saved locals with everything else.
 - **Random numbers.** SWAT+ doesn't use Fortran's generator. Its own
   (`aunif.f90`) keeps its seeds in module variables (`rndseed`,
   `rndseed_cond` in `climate_module`), so they are saved.

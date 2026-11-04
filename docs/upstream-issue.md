@@ -21,7 +21,7 @@ As far as I can tell SWAT+ has no way to do this today: weather and recall input
 
 Separately, and optionally: saving and restoring model state, so a warm-up can be run once and every scenario started from it. BMI 2.0 has no save or restore function. I generate the serializer from the module declarations with a script rerun for each release, rather than writing it by hand, because the state spans 65 modules, about 2,000 variables and 523 derived types. Saving at day N, loading in a new process and continuing gives output identical to an unbroken run. A loaded run needs to get back to the saved day, so the pause call becomes `if (exch_pause()) cycle`, which skips days while a state is loading. On Mac and Linux a fork of the paused process also gives in-memory branching.
 
-While building this I checked whether any of SWAT+'s implicitly saved locals (locals with initializers, about 5,400 of them) carry state between calls: a build that resets them all on every call gives identical output on the test projects, so they don't, at least on those code paths. That may be useful to you independently.
+While building this I checked whether any of SWAT+'s implicitly saved locals (locals with initializers, about 5,400 of them) carry state between calls. A build that resets them all on every call gives identical output on the bundled test projects except for one: `write_hdr` in `soil_nutcarb_write_legacy.f90`, a "header written" flag. That may be useful to you independently.
 
 **Questions:**
 
