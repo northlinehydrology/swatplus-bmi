@@ -363,8 +363,7 @@ the channel, a well on the aquifer), and `Ames_sub1` (12 HRUs, 1975-2020) under 
 | Saving and loading | the same, across processes; values read back exactly; another build's state refused |
 | Saved locals | a build that resets them on every call matches stock, except the listed ones |
 
-CI (GitHub Actions, not yet run because the repository isn't public yet) runs the suite on
-Ubuntu and macOS on every push. Each night it also runs the full-length tests and builds SWAT+
+CI (GitHub Actions) runs the suite on Ubuntu and macOS on every push. Each night it also runs the full-length tests and builds SWAT+
 main with the current patch, as an early warning for the next SWAT+ release.
 
 ## AI use
