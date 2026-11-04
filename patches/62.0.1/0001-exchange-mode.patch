@@ -1,3 +1,24 @@
+diff --git a/src/command.f90 b/src/command.f90
+index fc8e026..4b9dddc 100644
+--- a/src/command.f90
++++ b/src/command.f90
+@@ -27,6 +27,7 @@
+       use soil_module
+       use recall_module
+       use water_allocation_module
++      use bmi_exchange_module, only : exch_record
+       implicit none
+       
+       external :: aqu_1d_control, aqu_cs_output, aqu_pesticide_output, aqu_salt_output, aquifer_output, &
+@@ -437,6 +438,8 @@
+       !! write object output for entire simulation
+       call obj_output
+       
++      call exch_record            !! exchange mode: keep the day's values printing zeroes
++
+       !! print all output files
+       if (time%yrs > pco%nyskip) then
+       
 diff --git a/src/main.f90.in b/src/main.f90.in
 index 8fe25aa..196511e 100644
 --- a/src/main.f90.in

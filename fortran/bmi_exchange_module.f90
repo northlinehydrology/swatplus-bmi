@@ -24,7 +24,7 @@
       implicit none
 
       private
-      public :: exch_on, exch_open, exch_start, exch_pause, exch_apply, exch_end
+      public :: exch_on, exch_open, exch_start, exch_pause, exch_apply, exch_record, exch_end
 
       logical :: exch_on = .false.        !! exchange mode is on
       integer :: cmd_unit = input_unit    !! commands in
@@ -40,6 +40,10 @@
       logical, dimension(:), allocatable :: rec_flo_on
       real, dimension(:), allocatable :: dmd_flo         !! m3/day     |place of use demand
       logical, dimension(:), allocatable :: dmd_flo_on
+
+      !! the day's values SWAT+ zeroes when it prints them, kept at the end of the day
+      real, dimension(:), allocatable :: pou_dmd_day     !! m3/day     |place of use demand
+      real, dimension(:), allocatable :: pou_wdr_day     !! m3/day     |place of use withdrawal
 
       integer, parameter :: nvar = 8
       character(len=48), dimension(nvar) :: var_name = [character(len=48) ::     &
@@ -133,6 +137,8 @@
       allocate (rec_flo_on(sp_ob%recall), source = .false.)
       allocate (dmd_flo(db_mx%wallo_pou), source = 0.)
       allocate (dmd_flo_on(db_mx%wallo_pou), source = .false.)
+      allocate (pou_dmd_day(db_mx%wallo_pou), source = 0.)
+      allocate (pou_wdr_day(db_mx%wallo_pou), source = 0.)
 
       call reply ("@hello swatplus-exchange " // itoa(protocol))
       call reply ("@model " // trim(adjustl(prog)))
@@ -202,6 +208,26 @@
 
       return
       end subroutine exch_apply
+
+!!    --------------------------------------------------------------------
+      subroutine exch_record
+
+!!    called in command after the command loop and before the outputs are
+!!    printed: keeps the day's values that printing zeroes
+
+      use water_allocation_module, only : poud_met
+
+      integer :: i = 0
+
+      if (.not. exch_on) return
+
+      do i = 1, size(pou_wdr_day)
+        pou_dmd_day(i) = poud_met(i)%duty_tot%duty
+        pou_wdr_day(i) = poud_met(i)%duty_tot%deliv
+      end do
+
+      return
+      end subroutine exch_record
 
 !!    --------------------------------------------------------------------
       subroutine exch_end
@@ -299,7 +325,6 @@
 
       use hydrograph_module, only : sp_ob, sp_ob1, ob, ch_out_d, ch_stor
       use aquifer_module, only : aqu_d
-      use water_allocation_module, only : poud_met
       use maximum_data_module, only : db_mx
 
       character(len=*), intent(in) :: name
@@ -354,13 +379,13 @@
       case ("place_of_use_water__demand_volume_flow_rate")
         allocate (val(db_mx%wallo_pou), source = 0.)
         do i = 1, db_mx%wallo_pou
-          val(i) = poud_met(i)%duty_tot%duty / 86400.      !m3 -> m3/s
+          val(i) = pou_dmd_day(i) / 86400.                 !m3 -> m3/s
         end do
 
       case ("place_of_use_water__withdrawal_volume_flow_rate")
         allocate (val(db_mx%wallo_pou), source = 0.)
         do i = 1, db_mx%wallo_pou
-          val(i) = poud_met(i)%duty_tot%deliv / 86400.     !m3 -> m3/s
+          val(i) = pou_wdr_day(i) / 86400.                 !m3 -> m3/s
         end do
 
       case default
