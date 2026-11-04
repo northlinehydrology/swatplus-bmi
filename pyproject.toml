@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "swatplus-bmi"
+version = "0.1.0"
+description = "SWAT+ through the Basic Model Interface (BMI 2.0), stepped one day at a time"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Andrew Sommerlot", email = "andrewsommerlot@gmail.com" }]
+dependencies = ["bmipy>=2.0", "numpy>=1.24"]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

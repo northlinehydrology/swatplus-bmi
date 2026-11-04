@@ -1,0 +1,232 @@
+"""The line protocol between Python and a SWAT+ process in exchange mode.
+
+SWAT+ is started with ``--exchange`` in its project folder. It sends a
+catalog, then pauses before each day and answers commands on standard input.
+Every reply line starts with ``@``. Lines that don't are SWAT+ console
+messages (only seen where SWAT+ can't move them to ``exchange.log``) and are
+appended to that log here.
+
+This module knows nothing about BMI; ``swatplus_bmi.bmi`` builds on it.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import os
+import subprocess
+from pathlib import Path
+
+import numpy as np
+
+PROTOCOL = 1
+
+
+class ExchangeError(RuntimeError):
+    """SWAT+ refused a command or stopped unexpectedly."""
+
+
+@dataclasses.dataclass
+class Grid:
+    name: str
+    names: list[str]
+    x: np.ndarray        # longitude, degrees
+    y: np.ndarray        # latitude, degrees
+    area_ha: np.ndarray
+
+    @property
+    def size(self) -> int:
+        return len(self.names)
+
+
+@dataclasses.dataclass
+class Variable:
+    name: str
+    grid: str
+    role: str            # "in" (settable) or "out"
+    units: str
+
+
+@dataclasses.dataclass
+class Catalog:
+    protocol: int
+    model: str
+    start_year: int
+    start_day: int       # day of year of the first simulated day
+    days: int
+    grids: dict[str, Grid]
+    variables: dict[str, Variable]
+
+
+class Exchange:
+    """One SWAT+ process in exchange mode.
+
+    ``days_done`` counts completed days. Between commands SWAT+ is paused
+    before day ``days_done + 1`` (or has ended, once ``ended`` is true).
+    """
+
+    def __init__(self, executable: str | os.PathLike, run_dir: str | os.PathLike,
+                 *, _streams=None):
+        self.run_dir = Path(run_dir)
+        self.executable = Path(executable)
+        self.days_done = 0
+        self.ended = False
+        self.year = 0
+        self.day_of_year = 0
+        self._log = self.run_dir / "exchange.log"
+        if _streams is None:
+            self._err = open(self.run_dir / "exchange.err", "wb")
+            self.proc = subprocess.Popen(
+                [str(self.executable.resolve()), "--exchange"],
+                cwd=self.run_dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=self._err, bufsize=0)
+            self._in, self._out = self.proc.stdin, self.proc.stdout
+        else:                              # a branch: talks over named pipes
+            self._err = None
+            self.proc = None
+            self._in, self._out = _streams
+        self.catalog = self._read_catalog() if _streams is None else None
+
+    # -- low level ------------------------------------------------------
+
+    def _send(self, line: str) -> None:
+        try:
+            self._in.write((line + "\n").encode())
+            self._in.flush()
+        except BrokenPipeError:
+            raise ExchangeError(self._died("SWAT+ closed its input")) from None
+
+    def _line(self) -> str:
+        while True:
+            raw = self._out.readline()
+            if not raw:
+                raise ExchangeError(self._died("SWAT+ stopped"))
+            line = raw.decode(errors="replace").rstrip("\r\n")
+            if line.startswith("@"):
+                if line.startswith("@error"):
+                    raise ExchangeError(line[len("@error"):].strip())
+                return line
+            with open(self._log, "a") as f:     # console message on a shared stdout
+                f.write(line + "\n")
+
+    def _expect(self, tag: str) -> list[str]:
+        line = self._line()
+        word, *rest = line.split()
+        if word != tag:
+            raise ExchangeError(f"expected {tag}, got: {line}")
+        return rest
+
+    def _died(self, what: str) -> str:
+        code = self.proc.wait(timeout=30) if self.proc else None
+        msg = f"{what} (exit code {code})"
+        err = self.run_dir / "exchange.err"
+        if err.exists() and err.stat().st_size:
+            msg += ":\n" + err.read_text(errors="replace")[-2000:]
+        elif self._log.exists():
+            msg += "; last lines of exchange.log:\n" + "".join(
+                self._log.read_text(errors="replace").splitlines(True)[-15:])
+        return msg
+
+    def _read_catalog(self) -> Catalog:
+        grids: dict[str, Grid] = {}
+        variables: dict[str, Variable] = {}
+        info: dict[str, list[str]] = {}
+        while True:
+            word, *rest = self._line().split(maxsplit=1)
+            rest = rest[0] if rest else ""
+            if word == "@ready":
+                break
+            if word == "@grid":
+                gname, n = rest.split()
+                grids[gname] = Grid(gname, [], np.empty(0), np.empty(0), np.empty(0))
+                rows = []
+                for _ in range(int(n)):
+                    _, obj = self._line().split(maxsplit=1)
+                    g, _i, name, x, y, area = obj.split()
+                    rows.append((name, float(x), float(y), float(area)))
+                grids[gname] = Grid(gname, [r[0] for r in rows],
+                                    np.array([r[1] for r in rows]),
+                                    np.array([r[2] for r in rows]),
+                                    np.array([r[3] for r in rows]))
+            elif word == "@var":
+                name, grid, role, units = rest.split(maxsplit=3)
+                variables[name] = Variable(name, grid, role, units)
+            else:
+                info[word] = rest.split()
+        protocol = int(info["@hello"][1])
+        if protocol != PROTOCOL:
+            raise ExchangeError(f"SWAT+ speaks exchange protocol {protocol}, this wrapper {PROTOCOL}")
+        self._paused()
+        return Catalog(protocol=protocol, model=" ".join(info.get("@model", [])),
+                       start_year=int(info["@start"][0]), start_day=int(info["@start"][1]),
+                       days=int(info["@days"][0]), grids=grids, variables=variables)
+
+    def _paused(self) -> None:
+        word, *rest = self._line().split()
+        if word == "@paused":
+            self.days_done, self.year, self.day_of_year = map(int, rest)
+        elif word == "@ended":
+            self.days_done = int(rest[0])
+            self.ended = True
+        else:
+            raise ExchangeError(f"expected @paused or @ended, got: {word} {' '.join(rest)}")
+
+    # -- commands -------------------------------------------------------
+
+    def run(self, days: int = 1) -> None:
+        """Run ``days`` days, then pause again (or end)."""
+        if self.ended:
+            raise ExchangeError("the simulation has ended")
+        self._send(f"run {int(days)}")
+        self._paused()
+
+    def get(self, name: str) -> np.ndarray:
+        self._send(f"get {name}")
+        rest = self._expect("@value")
+        n, vals = int(rest[0]), rest[1:]
+        if len(vals) != n:
+            raise ExchangeError(f"{name}: expected {n} values, got {len(vals)}")
+        return np.array(vals, dtype=np.float32)
+
+    def set(self, name: str, index: int, value: float) -> None:
+        """Set one value (0-based index) for the next day only."""
+        v = np.float32(value)
+        self._send(f"set {name} {int(index) + 1} {np.format_float_scientific(v, unique=True)}")
+        self._expect("@ok")
+
+    def finish(self, timeout: float | None = None) -> int:
+        """Let SWAT+ run to the end without pausing and complete its outputs."""
+        if self.proc is not None and self.proc.poll() is not None:
+            return self.proc.returncode
+        self._send("finish")
+        return self._wait(timeout)
+
+    def stop(self, timeout: float | None = 30) -> int:
+        """Stop SWAT+ where it is; its output files stay incomplete."""
+        if self.proc is not None and self.proc.poll() is not None:
+            return self.proc.returncode
+        self._send("stop")
+        self._expect("@bye")
+        return self._wait(timeout)
+
+    def _wait(self, timeout):
+        # read anything left (console lines on a shared stdout) so SWAT+ never blocks on a full pipe
+        while self._out.readline():
+            pass
+        code = self.proc.wait(timeout=timeout) if self.proc else 0
+        self._close()
+        return code
+
+    def _close(self):
+        for f in (self._in, self._out, self._err):
+            try:
+                if f:
+                    f.close()
+            except OSError:
+                pass
+
+    def __del__(self):
+        try:
+            if self.proc is not None and self.proc.poll() is None:
+                self.proc.kill()
+        except Exception:
+            pass
