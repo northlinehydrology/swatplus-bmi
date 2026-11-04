@@ -20,6 +20,7 @@
 !!    day only; after that day SWAT+ goes back to its own inputs.
 
       use iso_fortran_env, only : input_unit
+      use, intrinsic :: iso_c_binding, only : c_int, c_char, c_null_char
 
       implicit none
 
@@ -34,6 +35,8 @@
       integer :: run_left = 0             !! days to run before the next pause
       logical :: run_free = .false.       !! run to the end without pausing
       integer :: protocol = 1             !! protocol version
+      integer, parameter :: unit_max = 1000000   !! highest unit number branch looks at
+      character(len=80) :: paused_line = ""      !! the last @paused reply
 
       !! values set for the next day
       real, dimension(:), allocatable :: rec_flo         !! m3/day     |point source (recall) flow
@@ -168,7 +171,8 @@
       if (.not. exch_on) return
 
       if (.not. run_free .and. run_left == 0) then
-        call reply ("@paused " // itoa(days_done) // " " // itoa(time%yrc) // " " // itoa(time%day))
+        paused_line = "@paused " // itoa(days_done) // " " // itoa(time%yrc) // " " // itoa(time%day)
+        call reply (paused_line)
         call serve (.false.)
       end if
 
@@ -307,6 +311,17 @@
         case ("ping")
           call reply ("@ok")
 
+        case ("flush")
+          call flush_units
+          call reply ("@ok")
+
+        case ("branch")
+          if (at_end) then
+            call reply ("@error the simulation has ended; nothing left to branch")
+          else
+            call branch (line)
+          end if
+
         case ("stop")
           !! stop now, without completing the run
           call reply ("@bye")
@@ -319,6 +334,153 @@
       end do
 
       end subroutine serve
+
+!!    --------------------------------------------------------------------
+      subroutine flush_units
+
+!!    writes out everything SWAT+ has buffered, so the files on disk are
+!!    complete up to the pause
+
+      integer :: u = 0
+      logical :: op = .false.
+
+      do u = 1, unit_max
+        inquire (unit=u, opened=op)
+        if (op) flush (u)
+      end do
+
+      return
+      end subroutine flush_units
+
+!!    --------------------------------------------------------------------
+      subroutine branch (line)
+
+!!    branch "<new dir>" "<old dir>" "<command fifo>" "<reply fifo>"
+!!
+!!    duplicates this paused process with fork. The caller first sends
+!!    flush and copies the run folder to <new dir>. The parent replies
+!!    @branched <pid> and goes on as before. The child moves to <new dir>,
+!!    reopens its open files there at the same place, talks over the two
+!!    named pipes, and replies there with the same @paused line. Mac and
+!!    Linux only.
+
+      character(len=*), intent(in) :: line
+#if defined(_WIN32)
+      call reply ("@error branch needs fork, which Windows doesn't have")
+#else
+      interface
+        function swx_fork () bind(c, name="swx_fork")
+          import :: c_int
+          integer(c_int) :: swx_fork
+        end function swx_fork
+        function swx_chdir (path) bind(c, name="swx_chdir")
+          import :: c_int, c_char
+          character(kind=c_char), dimension(*), intent(in) :: path
+          integer(c_int) :: swx_chdir
+        end function swx_chdir
+        function swx_detach (path) bind(c, name="swx_detach")
+          import :: c_int, c_char
+          character(kind=c_char), dimension(*), intent(in) :: path
+          integer(c_int) :: swx_detach
+        end function swx_detach
+      end interface
+
+      character(len=16) :: word = ""
+      character(len=1024) :: new_dir = ""
+      character(len=1024) :: old_dir = ""
+      character(len=1024) :: fifo_in = ""
+      character(len=1024) :: fifo_out = ""
+      integer :: ios = 0
+      integer :: pid = 0
+
+      read (line, *, iostat=ios) word, new_dir, old_dir, fifo_in, fifo_out
+      if (ios /= 0) then
+        call reply ('@error branch needs "<new dir>" "<old dir>" "<command fifo>" "<reply fifo>"')
+        return
+      end if
+
+      call flush_units
+      pid = swx_fork ()
+      if (pid < 0) then
+        call reply ("@error fork failed")
+        return
+      end if
+      if (pid > 0) then
+        call reply ("@branched " // itoa(pid))
+        return
+      end if
+
+      !! the child: leave the parent's channels and folder
+      close (rep_unit)
+      if (swx_chdir (trim(new_dir) // c_null_char) /= 0) error stop 4
+      ios = swx_detach ("exchange.err" // c_null_char)
+      open (6, file="exchange.log", action="write", position="append")
+      write (6,*) "branched from ", trim(old_dir), " after day ", days_done
+      call reopen_units (trim(old_dir))
+      open (newunit=cmd_unit, file=trim(fifo_in), action="read", status="old")
+      open (newunit=rep_unit, file=trim(fifo_out), action="write", status="old")
+      call reply (paused_line)
+#endif
+
+      return
+      end subroutine branch
+
+!!    --------------------------------------------------------------------
+      subroutine reopen_units (old_dir)
+
+!!    in a new branch: closes every file the parent had open and opens the
+!!    copy of it in the branch's folder, at the same place (start or end).
+!!    A file left partway through reading can't be placed again and stays
+!!    shared with the parent; exchange.log says so.
+
+      character(len=*), intent(in) :: old_dir
+      character(len=1024) :: nm = ""
+      character(len=16) :: acc = ""
+      character(len=16) :: frm = ""
+      character(len=16) :: act = ""
+      character(len=16) :: pos = ""
+      integer :: u = 0
+      integer :: rl = 0
+      integer :: ios = 0
+      integer :: n = 0
+      integer(8) :: sz = 0
+      logical :: op = .false.
+      logical :: nd = .false.
+
+      n = len_trim(old_dir)
+      do u = 1, unit_max
+        if (u == 5 .or. u == 6) cycle
+        inquire (unit=u, opened=op)
+        if (.not. op) cycle
+        inquire (unit=u, named=nd, name=nm, access=acc, form=frm, recl=rl, action=act, position=pos, &
+                 size=sz)
+        if (.not. nd) cycle
+        !! a file opened but not yet written is at its start, which is also its end
+        if (pos == "ASIS" .and. sz == 0) pos = "REWIND"
+        !! a path in the parent's folder becomes the same path in the branch's
+        if (n > 0 .and. len_trim(nm) > n + 1) then
+          if (nm(1:n) == old_dir(1:n) .and. nm(n+1:n+1) == "/") nm = nm(n+2:)
+        end if
+        if (acc /= "DIRECT" .and. pos /= "APPEND" .and. pos /= "REWIND") then
+          write (6,*) "unit ", u, " (", trim(nm), ") is partway through; shared with the parent"
+          cycle
+        end if
+        close (u)
+        if (acc == "STREAM") then
+          open (u, file=trim(nm), access="stream", form=trim(frm), action=trim(act),     &
+                position=trim(pos), status="old", iostat=ios)
+        else if (acc == "DIRECT") then
+          open (u, file=trim(nm), access="direct", form=trim(frm), recl=rl,              &
+                action=trim(act), status="old", iostat=ios)
+        else
+          open (u, file=trim(nm), access="sequential", form=trim(frm), recl=rl,          &
+                action=trim(act), position=trim(pos), status="old", iostat=ios)
+        end if
+        if (ios /= 0) write (6,*) "unit ", u, " (", trim(nm), ") could not be reopened"
+      end do
+
+      return
+      end subroutine reopen_units
 
 !!    --------------------------------------------------------------------
       subroutine send_values (name)
