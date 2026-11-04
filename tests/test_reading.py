@@ -57,7 +57,7 @@ def series():
 def test_channel_flow_matches_daily_output(series):
     run, got, objs, _ = series
     cha = daily_table(run / "channel_sd_day.txt")
-    name = "channel_exit_water__volume_flow_rate"
+    name = "channel_water__volume_outflow_rate"
     for j, obj in enumerate(objs[name]):
         ref = cha[obj]["flo_out"]                       # m3/s
         assert len(ref) == len(got[name])
@@ -68,7 +68,7 @@ def test_channel_flow_matches_daily_output(series):
 def test_channel_inflow_matches_daily_output(series):
     run, got, objs, _ = series
     cha = daily_table(run / "channel_sd_day.txt")
-    name = "channel_entrance_water__volume_flow_rate"
+    name = "channel_water__volume_inflow_rate"
     for j, obj in enumerate(objs[name]):
         np.testing.assert_allclose(got[name][:, j], cha[obj]["flo_in"], rtol=5e-4, atol=1e-12)
 
@@ -89,8 +89,8 @@ def test_aquifer_matches_daily_output(series):
         a = area["aquifer_water__volume"][j]
         stor_mm = got["aquifer_water__volume"][:, j] / (10.0 * a)
         np.testing.assert_allclose(stor_mm, ref["stor"], atol=5e-4, rtol=1e-6)
-        np.testing.assert_allclose(got["soil_water_sat-zone_top__depth"][:, j], ref["dep_wt"],
+        np.testing.assert_allclose(got["soil_water_table_surface__depth"][:, j], ref["dep_wt"],
                                    atol=5e-4, rtol=1e-6)
-        flo_mm = got["aquifer_exit_water__volume_flow_rate"][:, j] * 86400.0 / (10.0 * a)
+        flo_mm = got["aquifer_water__volume_outflow_rate"][:, j] * 86400.0 / (10.0 * a)
         np.testing.assert_allclose(flo_mm, ref["flo"], atol=5e-4, rtol=1e-6)
         assert np.ptp(ref["stor"]) > 10                    # storage moves over the run

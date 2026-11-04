@@ -17,7 +17,7 @@ from swatplus_bmi import SwatPlusBmi
 from test_reading import daily_table
 
 PS = "point_source_water__volume_flow_rate"
-QOUT = "channel_exit_water__volume_flow_rate"
+QOUT = "channel_water__volume_outflow_rate"
 BASE_M3D = 86.4
 
 

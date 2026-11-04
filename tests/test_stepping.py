@@ -103,12 +103,12 @@ def test_time_and_catalog():
         assert m.get_time_step() == 1.0
         assert m.get_start_time() == 0.0
         assert m.get_end_time() == 5113.0              # 2010-2023, three leap years
-        cha = m.get_var_grid("channel_exit_water__volume_flow_rate")
+        cha = m.get_var_grid("channel_water__volume_outflow_rate")
         assert m.get_grid_type(cha) == "points"
         assert m.get_grid_object_names(cha) == ["cha01"]
-        assert m.get_var_units("channel_exit_water__volume_flow_rate") == "m3 s-1"
+        assert m.get_var_units("channel_water__volume_outflow_rate") == "m3 s-1"
         with pytest.raises(NotImplementedError):
-            m.get_value_ptr("channel_exit_water__volume_flow_rate")
+            m.get_value_ptr("channel_water__volume_outflow_rate")
         with pytest.raises(ValueError):
             m.update_until(1.5)
     finally:

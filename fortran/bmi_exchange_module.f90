@@ -50,15 +50,15 @@
 
       integer, parameter :: nvar = 9
       character(len=48), dimension(nvar) :: var_name = [character(len=48) ::     &
-            "channel_exit_water__volume_flow_rate",                             &
+            "channel_water__volume_outflow_rate",                             &
             "channel_water__volume",                                            &
-            "channel_entrance_water__volume_flow_rate",                         &
+            "channel_water__volume_inflow_rate",                         &
             "aquifer_water__volume",                                            &
-            "soil_water_sat-zone_top__depth",                                   &
-            "aquifer_exit_water__volume_flow_rate",                             &
+            "soil_water_table_surface__depth",                                   &
+            "aquifer_water__volume_outflow_rate",                             &
             "point_source_water__volume_flow_rate",                             &
-            "place_of_use_water__demand_volume_flow_rate",                      &
-            "place_of_use_water__withdrawal_volume_flow_rate"]
+            "place_of_use_water__volume_demand_rate",                      &
+            "place_of_use_water__volume_withdrawal_rate"]
       character(len=8), dimension(nvar) :: var_grid = [character(len=8) ::      &
             "cha", "cha", "cha", "aqu", "aqu", "aqu", "rec", "pou", "pou"]
       character(len=8), dimension(nvar) :: var_units = [character(len=8) ::     &
@@ -497,7 +497,7 @@
 
       select case (name)
 
-      case ("channel_exit_water__volume_flow_rate")
+      case ("channel_water__volume_outflow_rate")
         allocate (val(sp_ob%chandeg), source = 0.)
         do i = 1, sp_ob%chandeg
           iob = sp_ob1%chandeg + i - 1
@@ -511,7 +511,7 @@
           val(i) = ch_stor(ob(iob)%num)%flo               !m3
         end do
 
-      case ("channel_entrance_water__volume_flow_rate")
+      case ("channel_water__volume_inflow_rate")
         !! net inflow; negative when a point source diversion is larger than
         !! the other inflow, and SWAT+ then routes nothing
         allocate (val(sp_ob%chandeg), source = 0.)
@@ -527,14 +527,14 @@
           val(i) = 10. * aqu_d(ob(iob)%num)%stor * ob(iob)%area_ha     !mm -> m3
         end do
 
-      case ("soil_water_sat-zone_top__depth")
+      case ("soil_water_table_surface__depth")
         allocate (val(sp_ob%aqu), source = 0.)
         do i = 1, sp_ob%aqu
           iob = sp_ob1%aqu + i - 1
           val(i) = aqu_d(ob(iob)%num)%dep_wt               !m
         end do
 
-      case ("aquifer_exit_water__volume_flow_rate")
+      case ("aquifer_water__volume_outflow_rate")
         allocate (val(sp_ob%aqu), source = 0.)
         do i = 1, sp_ob%aqu
           iob = sp_ob1%aqu + i - 1
@@ -548,13 +548,13 @@
           val(i) = ob(iob)%hd(1)%flo / 86400.              !m3 -> m3/s
         end do
 
-      case ("place_of_use_water__demand_volume_flow_rate")
+      case ("place_of_use_water__volume_demand_rate")
         allocate (val(db_mx%wallo_pou), source = 0.)
         do i = 1, db_mx%wallo_pou
           val(i) = pou_dmd_day(i) / 86400.                 !m3 -> m3/s
         end do
 
-      case ("place_of_use_water__withdrawal_volume_flow_rate")
+      case ("place_of_use_water__volume_withdrawal_rate")
         allocate (val(db_mx%wallo_pou), source = 0.)
         do i = 1, db_mx%wallo_pou
           val(i) = pou_wdr_day(i) / 86400.                 !m3 -> m3/s
@@ -590,7 +590,7 @@
         rec_flo(i) = v * 86400.                           !m3/s -> m3/day
         rec_flo_on(i) = .true.
 
-      case ("place_of_use_water__demand_volume_flow_rate")
+      case ("place_of_use_water__volume_demand_rate")
         if (i < 1 .or. i > db_mx%wallo_pou) then
           call reply ("@error index out of range")
           return

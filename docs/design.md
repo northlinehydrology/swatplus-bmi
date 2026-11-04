@@ -92,7 +92,7 @@ Startup (SWAT+ to caller):
 @obj aqu 1 aqu001 ...
 @grid rec 0
 @grid pou 0
-@var channel_exit_water__volume_flow_rate cha out m3 s-1
+@var channel_water__volume_outflow_rate cha out m3 s-1
 ...
 @ready
 @paused 0 2010 1                 days done, year and day of year of the next day
@@ -125,15 +125,15 @@ the CSDMS list; do that before a release.
 
 | Variable | Grid | In/out | Units | SWAT+ source | Notes |
 |---|---|---|---|---|---|
-| `channel_exit_water__volume_flow_rate` | cha | out | m3 s-1 | `ch_out_d(i)%flo` | the `flo_out` column of `channel_sd_day.txt` |
+| `channel_water__volume_outflow_rate` | cha | out | m3 s-1 | `ch_out_d(i)%flo` | the `flo_out` column of `channel_sd_day.txt` |
 | `channel_water__volume` | cha | out | m3 | `ch_stor(i)%flo` | `flo_stor` |
-| `channel_entrance_water__volume_flow_rate` | cha | out | m3 s-1 | `ch_in_d(i)%flo` | net inflow, `flo_in`; negative when a point source diversion is larger than the other inflow (see Found in SWAT+ 62.0.1, item 2) |
+| `channel_water__volume_inflow_rate` | cha | out | m3 s-1 | `ch_in_d(i)%flo` | net inflow, `flo_in`; negative when a point source diversion is larger than the other inflow (see Found in SWAT+ 62.0.1, item 2) |
 | `aquifer_water__volume` | aqu | out | m3 | `aqu_d(i)%stor` (mm) x 10 x area (ha) | `stor` in `aquifer_day.txt` |
-| `soil_water_sat-zone_top__depth` | aqu | out | m | `aqu_d(i)%dep_wt` | depth to the water table, `dep_wt` |
-| `aquifer_exit_water__volume_flow_rate` | aqu | out | m3 s-1 | `ob(iob)%hd(1)%flo` | return flow, `flo` in `aquifer_day.txt` |
+| `soil_water_table_surface__depth` | aqu | out | m | `aqu_d(i)%dep_wt` | depth to the water table, `dep_wt` |
+| `aquifer_water__volume_outflow_rate` | aqu | out | m3 s-1 | `ob(iob)%hd(1)%flo` | return flow, `flo` in `aquifer_day.txt` |
 | `point_source_water__volume_flow_rate` | rec | in and out | m3 s-1 | `recall(i)%hd(day,yr)%flo` | daily recall objects only; negative is a withdrawal |
-| `place_of_use_water__demand_volume_flow_rate` | pou | in and out | m3 s-1 | `pou(i)%demand` | reading gives the day's demand; setting replaces SWAT+'s for the next day |
-| `place_of_use_water__withdrawal_volume_flow_rate` | pou | out | m3 s-1 | `poud_met(i)%duty_tot%deliv` | what was actually taken |
+| `place_of_use_water__volume_demand_rate` | pou | in and out | m3 s-1 | `pou(i)%demand` | reading gives the day's demand; setting replaces SWAT+'s for the next day |
+| `place_of_use_water__volume_withdrawal_rate` | pou | out | m3 s-1 | `poud_met(i)%duty_tot%deliv` | what was actually taken |
 
 The reading tests compare every day of every output variable with SWAT+'s
 own daily files, to the precision SWAT+ prints them.
@@ -329,7 +329,7 @@ These are worth reporting upstream, separately from the exchange mode:
    curtailment test, 7,539 of 182,339 m3 recorded (4.1%) was never taken,
    on 198 low-flow days. (Shown by the curtailment test; draft issue in
    docs/upstream-issue-recall-diversion.md.) The wrapper warns when a
-   negative point source is set, and `channel_entrance_water__volume_flow_rate`
+   negative point source is set, and `channel_water__volume_inflow_rate`
    shows the shortfall. Withdrawals that must be limited to the water
    available belong in water allocation.
 3. In `wallo_withdraw.f90`, for an aquifer point of diversion, storage is

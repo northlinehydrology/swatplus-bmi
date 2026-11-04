@@ -57,11 +57,11 @@ m.initialize("path/to/TxtInOut")       # SWAT+ starts, paused before day 1
 print(m.get_time_units())               # days since 2010-01-01 00:00:00
 print(m.get_output_var_names())
 
-q = np.empty(m.get_grid_size(m.get_var_grid("channel_exit_water__volume_flow_rate")),
+q = np.empty(m.get_grid_size(m.get_var_grid("channel_water__volume_outflow_rate")),
              dtype=np.float32)
 while m.get_current_time() < m.get_end_time():
     m.update()                          # one day
-    m.get_value("channel_exit_water__volume_flow_rate", q)   # m3/s, one per channel
+    m.get_value("channel_water__volume_outflow_rate", q)   # m3/s, one per channel
 m.finalize()                            # SWAT+ completes its output files
 ```
 
@@ -79,8 +79,8 @@ Cut a water user's demand to zero the day after a day whose flow was below
 a threshold:
 
 ```python
-DMD = "place_of_use_water__demand_volume_flow_rate"     # m3/s
-QOUT = "channel_exit_water__volume_flow_rate"
+DMD = "place_of_use_water__volume_demand_rate"     # m3/s
+QOUT = "channel_water__volume_outflow_rate"
 
 i = m.get_object_index(QOUT, "cha01")
 q = np.empty(m.get_grid_size(m.get_var_grid(QOUT)), np.float32)
@@ -129,15 +129,15 @@ index. Grids with no objects in a project are left out.
 
 | Variable | Objects | Set? | Units |
 |---|---|---|---|
-| `channel_exit_water__volume_flow_rate` | channels | no | m3 s-1 |
+| `channel_water__volume_outflow_rate` | channels | no | m3 s-1 |
 | `channel_water__volume` | channels | no | m3 |
-| `channel_entrance_water__volume_flow_rate` (net inflow) | channels | no | m3 s-1 |
+| `channel_water__volume_inflow_rate` (net inflow) | channels | no | m3 s-1 |
 | `aquifer_water__volume` | aquifers | no | m3 |
-| `soil_water_sat-zone_top__depth` (depth to water table) | aquifers | no | m |
-| `aquifer_exit_water__volume_flow_rate` | aquifers | no | m3 s-1 |
+| `soil_water_table_surface__depth` (depth to water table) | aquifers | no | m |
+| `aquifer_water__volume_outflow_rate` | aquifers | no | m3 s-1 |
 | `point_source_water__volume_flow_rate` | daily recall objects | yes | m3 s-1 |
-| `place_of_use_water__demand_volume_flow_rate` | water allocation places of use | yes | m3 s-1 |
-| `place_of_use_water__withdrawal_volume_flow_rate` | water allocation places of use | no | m3 s-1 |
+| `place_of_use_water__volume_demand_rate` | water allocation places of use | yes | m3 s-1 |
+| `place_of_use_water__volume_withdrawal_rate` | water allocation places of use | no | m3 s-1 |
 
 All values are 4-byte reals. Values read while paused are those at the end
 of the day just completed. The design note gives the SWAT+ variable behind

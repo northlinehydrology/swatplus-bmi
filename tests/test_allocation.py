@@ -16,9 +16,9 @@ from conftest import EXCHANGE, STOCK, differences, need, project, run_stock
 from swatplus_bmi import SwatPlusBmi
 from test_reading import daily_table
 
-DMD = "place_of_use_water__demand_volume_flow_rate"
-WDR = "place_of_use_water__withdrawal_volume_flow_rate"
-QOUT = "channel_exit_water__volume_flow_rate"
+DMD = "place_of_use_water__volume_demand_rate"
+WDR = "place_of_use_water__volume_withdrawal_rate"
+QOUT = "channel_water__volume_outflow_rate"
 RATE = 0.0005                                           # m3/s
 EPS = np.finfo(np.float32).eps
 
