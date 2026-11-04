@@ -54,8 +54,9 @@ def _():
     import numpy as np
 
     from swatplus_bmi import SwatPlusBmi
+    from swatplus_bmi.project import INTERVALS, set_print
 
-    return Path, SwatPlusBmi, mo, np, os, plt, shutil, sys, time
+    return INTERVALS, Path, SwatPlusBmi, mo, np, os, plt, set_print, shutil, sys, time
 
 
 @app.cell
@@ -101,7 +102,7 @@ def _(mo):
 
 
 @app.cell
-def _(CHANNEL, PROJECT, RUNS, shutil):
+def _(CHANNEL, INTERVALS, PROJECT, RUNS, set_print, shutil):
     def new_run(name, rate=None):
         """A fresh copy of PROJECT in RUNS/name, with daily printing and, if rate (m3/s) is
         given, one consumptive water user on CHANNEL."""
@@ -109,14 +110,8 @@ def _(CHANNEL, PROJECT, RUNS, shutil):
         if run.exists():
             shutil.rmtree(run)
         shutil.copytree(PROJECT, run)
-        prt = (run / "print.prt").read_text().splitlines()
-        f = prt[2].split()
-        f[0] = "0"                                      # no warm-up years skipped in printing
-        prt[2] = "  ".join(f)
-        prt = [f"{l.split()[0]:<24}" + "".join(f"{'y':>14}" for _ in range(4))
-               if l.split() and l.split()[0] in ("channel", "channel_sd", "water_allo", "aquifer") else l
-               for l in prt]
-        (run / "print.prt").write_text("\n".join(prt) + "\n")
+        # daily output for the channel, the water user and the aquifer, from the first day
+        set_print(run, ["channel_sd", "water_allo", "aquifer"], intervals=INTERVALS, skip_years=0)
         if rate is not None:
             cio = [("water_rights      place_of_use.wro  point_of_diver.wro  null"
                     if l.startswith("water_rights") else l)
