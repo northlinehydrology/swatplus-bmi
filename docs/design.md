@@ -27,6 +27,8 @@ Decisions behind the design:
 SWAT+ 62.0.1 (tag)  + patches/62.0.1/*.patch     four edited files, 20 lines
                     + fortran/bmi_exchange_module.f90   the exchange mode
                     + fortran/bmi_fork.c                fork for branching (Mac, Linux)
+                    + bmi_state_module.f90              state serializer, generated per release
+                                                        (tools/gen_serializer.py)
                     = bin/swatplus-62.0.1-exchange     (build.sh, CMake)
 
 src/swatplus_bmi/exchange.py    the line protocol: one SWAT+ process
@@ -46,7 +48,7 @@ exchange mode is off.
 |---|---|---|
 | `exch_open` | first line of `main` | turns the mode on if SWAT+ was started with `--exchange`; moves the console to `exchange.log` |
 | `exch_start` | `time_control`, before the year loop | sends the catalog (grids, objects, variables, dates) |
-| `exch_pause` | each day, after the weather, the land use decision tables and the manure allocation, **before** `wallo_start_day` | sends `@paused`, then answers commands until told to run |
+| `exch_pause` | each day, after the weather, the land use decision tables and the manure allocation, **before** `wallo_start_day`, as `if (exch_pause()) cycle` | sends `@paused`, then answers commands until told to run; while a saved state is loading, skips the days before the saved one |
 | `exch_apply` | each day, **after** `wallo_start_day`, before `call command` | puts values set while paused in place for this day |
 | `exch_record` | `command.f90`, after the command loop, before outputs are printed | keeps the day's water allocation demand and withdrawal, which printing zeroes |
 | `exch_end` | `time_control`, after the year loop | sends `@ended`, then answers commands until told to finish |
@@ -107,6 +109,8 @@ Commands, while paused:
 | `set <var> <i> <v>` | `@ok` | object *i* (1-based) gets *v* for the next day |
 | `flush` | `@ok` | write out every open file's buffer |
 | `branch "<new>" "<old>" "<in>" "<out>"` | `@branched pid` | fork; see Snapshots |
+| `save "<file>"` | `@ok` | write SWAT+'s module state at this pause to the file (see Snapshots) |
+| `load "<file>"` | `@restore`, later `@paused` | right after startup only: run forward to the saved day and load the state; the caller puts back the saved files and sends `restored` |
 | `finish` | (process exits 0) | run to the end without pausing and complete the outputs |
 | `stop` | `@bye` | exit now; outputs stay incomplete |
 | `ping` | `@ok` | |
@@ -215,13 +219,31 @@ Tests: branch at day 0, 365, 1000 and the last day, with parent and child
 stepped in turn; a branch of a branch; and three water allocation scenarios
 from one warm-up, each identical to the same scenario run unbroken.
 
-### Saving to a file (designed, not built)
+### Saving to a file (built; every platform)
 
-A cross-platform `save_state(path)` and `load_state(path)` needs a
-serializer: Fortran that writes and reads all of SWAT+'s state. It must be
-generated from the declarations by a script that's rerun for each SWAT+
-release, never written by hand. `tools/state_inventory.py` is the first part
-of that script. For 62.0.1 it finds:
+`save_state(path)` writes a folder: `state.bin`, with all of SWAT+'s module
+state, and `run/`, a copy of the run folder with every output file complete
+up to the pause. `load_state(path)` carries on from it in a new process.
+`get_state()` and `set_state(bytes)` do the same with the folder as bytes.
+
+**The serializer is generated, never written by hand.**
+`tools/gen_serializer.py` reads the release's module declarations and writes
+`bmi_state_module.f90`; `build.sh` runs it for every build. For 62.0.1 that's
+65 modules, 2,048 variables and 523 derived types, about 60,000 lines.
+
+- Intrinsic scalars and fixed-size arrays get one write.
+- Allocatable arrays get a flag (allocated or not), their bounds, then
+  their values.
+- Allocatable scalars, including deferred-length strings, get a flag, a
+  length and a value.
+- Every derived type gets a recursive write routine and a read routine
+  that handle its components the same way. Four type names are defined in
+  two modules each, so types are keyed by their module.
+- Every module variable is preceded by a tag naming it. The file header
+  records a digest of the generated code, so a state is only loaded by
+  the build that wrote it; any other build is refused (tested).
+
+`tools/state_inventory.py` gives the scale:
 
 | | |
 |---|---|
@@ -231,59 +253,53 @@ of that script. For 62.0.1 it finds:
 | module pointers | 7: `d_tbl`, `wbody`, `h`, `pl_cp`, `pl_db`, `wbody_prm`, `wbody_wb` |
 | implicitly saved locals | 5,379 in 537 procedures |
 
-The generator would:
+**What's left out, and why that's safe:**
 
-1. Walk the inventory and write, for each derived type, a `write_<type>`
-   and `read_<type>` that handle each component: scalars and fixed arrays
-   directly, and allocatables as an allocated flag, bounds, then data,
-   recursing into derived-type components.
-2. Write one `state_save(unit)` and `state_load(unit)` that call these for
-   every module variable, as unformatted stream, with a header that
-   records the SWAT+ version, the generator version and a hash of the
-   inventory, so a state file is only loaded by the build that wrote it.
-3. Store the 7 pointers as what they point to: an array name and index (for
-   example, `d_tbl` points into `dtbl_lum`, `dtbl_flo` or `dtbl_scen`).
-   Since there are only 7, these are listed by hand in the generator's
-   configuration and checked against the inventory, so a new pointer in a
-   new release stops the generator instead of being missed.
-4. Save the output files' sizes. Loading copies the run folder, truncates
-   each output file to its saved size and reopens it at its end. Fortran
-   keeps no other state for an open sequential file.
+- **The 7 module pointers.** SWAT+ points each at a table entry just
+  before it uses it. The save/load tests pass with them left out.
+- **The saved locals.** In Fortran a local with an initializer
+  (`real :: rto = 0.`) keeps its value between calls, so 5,379 locals in
+  537 procedures are technically state. `tools/reset_saved_locals.py`
+  rewrites 5,372 of them to be set on every call instead (the rest have an
+  explicit SAVE, or are pointers or parameters). `build.sh --nosave` builds
+  that variant. On Osu_1hru with its own printing, with everything printed
+  daily, with a daily point source and with a water allocation user, its
+  output is byte-for-byte identical to stock (`tests/test_saved_locals.py`).
+  So on those code paths no saved local carries state. This holds only for
+  the procedures these projects run. Ames_sub1 (12 HRUs, crop management)
+  is the next check (`pytest -m full`), and a coverage build
+  (`gfortran --coverage`) would show which procedures have been exercised.
+  The save/load tests check the same thing directly.
+- **Random numbers.** SWAT+ doesn't use Fortran's generator. Its own
+  (`aunif.f90`) keeps its seeds in module variables (`rndseed`,
+  `rndseed_cond` in `climate_module`), so they are saved.
 
-The hard part is the saved locals. In Fortran a local with an initializer
-(`real :: rto = 0.`) keeps its value between calls, and SWAT+ initializes
-most locals that way, so 5,379 locals in 537 procedures are technically
-state. Most are assigned before they are used on every call and carry
-nothing, but that can't be proved from declarations. Two ways to settle it:
+**The loop counters.** The year and day counters of `time_control`'s loops
+are locals, not module state, so a new process can't just read the state
+and carry on. Instead, `load` is given right after startup. The process
+then runs forward to the saved day without computing it: the pause hook is
+`if (exch_pause()) cycle`, and it returns true for each day before the
+saved one. That skips the rest of the day: no command loop, no outputs. At
+the saved day's pause, the process reads the saved state over its own,
+closes its output files, and replies `@restore`. The caller then puts back
+the saved run folder's files (SWAT+ rewrote them at startup) and answers
+`restored`. SWAT+ reopens the files at their ends and pauses with the saved
+`@paused` line. The year-end processing that runs during the skipped years
+changes only state that the load replaces, and anything it writes to
+output files is discarded when the saved files are put back.
 
-- **Test for it.** Build a variant that resets every saved local on entry
-  to each procedure: a mechanical rewrite of `real :: x = 0.` into
-  `real :: x` plus `x = 0.`. Compare its output with stock on the test
-  projects. Any procedure whose locals change the output carries state, and
-  its locals go into the serializer. The rest are left out, on the
-  evidence of the test.
-- **Save them all.** Generate module copies of every saved local, which
-  means changing every procedure. That's too much patch for an upstream
-  pull request, but it's possible as a build step.
+**Tests** (`tests/test_state.py`):
 
-The first is the plan; it also tells the SWAT+ developers which procedures
-rely on saved locals, which is worth knowing for its own sake.
+- Save at day 0, 365, 1000 and the last day, load in a new process, and
+  continue. Every output file matches stock, and the run that was saved
+  also carries on unchanged.
+- Every output variable read after loading equals the saved value exactly.
+- Two water allocation scenarios from one saved warm-up each match the same
+  scenario run unbroken.
+- The `get_state`/`set_state` round trip works.
+- A state from another build is refused.
 
-**Result so far (Nov 4, 2026).** `tools/reset_saved_locals.py` rewrites
-5,372 saved locals in 531 files (the others have an explicit SAVE, or are
-pointers or parameters, and are left alone). `build.sh --nosave` builds that
-variant. On Osu_1hru with the project's own printing, with everything
-printed daily, with a daily point source and with a water allocation user,
-its output is byte-for-byte identical to stock (`tests/test_saved_locals.py`).
-So on those code paths no saved local carries state, and the serializer can
-cover module variables only. This holds only for the procedures these
-projects run. Ames_sub1 (12 HRUs, crop management) is the next check
-(`pytest -m full`), and a coverage build (`gfortran --coverage`) would show
-which of the 537 procedures have been exercised.
-
-SWAT+ doesn't use Fortran's random number generator. It has its own
-(`aunif.f90`), with seeds in module variables (`rndseed` and `rndseed_cond`
-in `climate_module`), so the serializer covers them.
+On Osu_1hru, `state.bin` is 1.2 MB.
 
 **Naming.** BMI 2.0 has no state functions. The nearest conventions are:
 
@@ -297,9 +313,9 @@ in `climate_module`), so the serializer covers them.
   realization config (`direction` save or load, `path`, `type`
   `FilePerUnit`, `when` `StartOfRun` or `EndOfRun`).
 
-The wrapper will offer `get_state()` and `set_state(bytes)`, matching the
-CSDMS proposal, plus `save_state(path)` and `load_state(path)` as file
-versions. The NGWPC variables can be layered on top for ngen.
+The wrapper offers `get_state()` and `set_state(bytes)`, after the CSDMS
+proposal, plus `save_state(path)` and `load_state(path)` as file versions.
+The NGWPC variables could be added on top for ngen.
 
 ### Process freeze (container-only fallback)
 
@@ -371,8 +387,11 @@ These are worth reporting upstream, separately from the exchange mode:
 
 - Daily steps only.
 - Only fluxes can be set: point source flow and water allocation demand.
-- Branching needs fork: Mac and Linux. Saving to a file waits for the
-  generated serializer.
+- Branching needs fork: Mac and Linux. Saving to a file and loading work
+  everywhere, but the Windows build hasn't been tried.
+- Loading a saved state starts a new process and runs forward through the
+  saved days without computing them, so it takes a little time on long
+  warm-ups; branching is instant.
 - One process per SWAT+ run. NextGen can use SWAT+ only as a domain-wide
   model (one formulation covering the whole SWAT+ project), not split by
   catchment, because SWAT+ routes its own network.

@@ -118,6 +118,22 @@ base.finalize()
 Each branch matches, bit for bit, the same scenario run unbroken from the
 start.
 
+### Save a state, load it later (every platform)
+
+```python
+m.update_until(3 * 365)
+m.save_state("states/warm")             # a folder: state.bin and a copy of the run folder
+...
+n = SwatPlusBmi()
+n.initialize("runs/scenario-c.toml")
+n.load_state("states/warm")             # carries on from day 1095, exactly as the saved run
+state = n.get_state()                   # the same as bytes; set_state(state) restores it
+```
+
+The state serializer is generated from SWAT+'s own module declarations for
+each release (`tools/gen_serializer.py`), and a state saved by one build is
+refused by another.
+
 ### Objects and grids
 
 Each SWAT+ object type is a BMI grid of type `points`: one point per object,
@@ -157,6 +173,8 @@ run [n]               run n days (default 1)    -> @paused ... or @ended <days>
 get <variable>        -> @value <n> <v1> ... <vn>
 set <variable> <i> <value>   object i (1-based), next day only   -> @ok
 flush | ping          -> @ok
+save "<file>"         write the state at this pause -> @ok
+load "<file>"         right after startup: run forward to the saved day and load it
 branch ...            fork the paused process (Mac, Linux)   -> @branched <pid>
 finish                run to the end and complete the outputs
 stop                  stop now   -> @bye
@@ -170,8 +188,8 @@ details are in [docs/design.md](docs/design.md).
 - Daily steps only.
 - Only fluxes can be set (point source flow, water allocation demand), never
   storage, land use, soils or parameters; those are scenario inputs.
-- Branching uses fork, so Mac and Linux only, until the serializer for
-  `save_state`/`load_state` exists (designed in docs/design.md, not built).
+- Branching uses fork, so Mac and Linux only. Saving and loading state
+  work on every platform, but the Windows build hasn't been tried.
 - `get_value_ptr` is declined: the values live in the SWAT+ process.
 - NextGen can use SWAT+ only as a domain-wide model (one formulation for
   the whole SWAT+ project), because SWAT+ routes its own channel network.
