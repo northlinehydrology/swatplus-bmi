@@ -20,3 +20,5 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["full: long comparisons on Ames_sub1 (opt in with -m full)"]
+addopts = "-m 'not full'"

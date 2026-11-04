@@ -137,3 +137,29 @@ def test_comparison_catches_a_one_byte_change(tmp_path):
     data[i] = ord("7") if data[i] != ord("7") else ord("8")
     p.write_bytes(bytes(data))
     assert differences(stock, copy) == ["differs: basin_wb_yr.txt"]
+
+
+@pytest.mark.full
+@pytest.mark.parametrize("years", [None, (1975, 1979)], ids=["full-length", "daily-5yr"])
+def test_ames_stepped_is_stock(years):
+    """Ames_sub1 (12 HRUs, 1975-2020): stepped one day at a time, every file matches stock.
+
+    The full-length run keeps the project's own printing; the five-year run
+    prints everything daily. Opt in with ``pytest -m full``.
+    """
+    need(STOCK, EXCHANGE)
+    daily = years is not None
+    tag = "daily-5yr" if daily else "full"
+    stock = project("Ames_sub1", f"Ames_sub1-{tag}-stock", daily=daily, years=years)
+    run_stock(stock)
+    off = project("Ames_sub1", f"Ames_sub1-{tag}-off", daily=daily, years=years)
+    run_stock(off, EXCHANGE)
+    assert differences(stock, off) == []
+
+    stepped = project("Ames_sub1", f"Ames_sub1-{tag}-stepped", daily=daily, years=years)
+    m = SwatPlusBmi()
+    m.initialize(str(stepped))
+    while m.get_current_time() < m.get_end_time():
+        m.update()
+    m.finalize()
+    assert differences(stock, stepped) == []
