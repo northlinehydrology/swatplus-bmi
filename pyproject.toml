@@ -12,8 +12,8 @@ license = { text = "MIT" }
 authors = [{ name = "Andrew Sommerlot", email = "andrewsommerlot@gmail.com" }]
 dependencies = ["bmipy>=2.0", "numpy>=1.24"]
 
-[project.optional-dependencies]
-test = ["pytest>=7"]
+[dependency-groups]
+dev = ["pytest>=7", "cmake>=3.22"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
