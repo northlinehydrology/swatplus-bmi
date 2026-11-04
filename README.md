@@ -215,6 +215,13 @@ n.load_state("states/warm")                 # carries on from day 1095, as the s
 state = n.get_state()                       # the same as bytes; set_state(state) restores it
 ```
 
+### Turning on SWAT+'s own output
+
+```python
+from swatplus_bmi.project import set_print
+set_print("path/to/TxtInOut", ["channel_sd", "aquifer"], intervals=["daily"], skip_years=0)
+```
+
 ### Objects and grids
 
 Each SWAT+ object type is a BMI grid of type `points`: one point per object, longitude as x and
@@ -323,6 +330,15 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   `docs/upstream-issue-aquifer-withdrawal.md`.)
 - **`recall_day.txt` labels flows m³/s, but they're m³/day.** The wrapper converts correctly.
 - **`get_value_ptr` isn't available.** The values live in the SWAT+ process; use `get_value`.
+- **`print.prt` rows are read by position unless labels are on.** The second value on the line under
+  `csvout` is SWAT+'s `use_obj_labels` switch (some projects label that column `dbout`). With it at
+  `n`, as in SWAT+'s examples, SWAT+ reads the object rows in its own order and ignores their names,
+  so switching on the row named `aquifer` by hand can switch on something else. Use
+  `swatplus_bmi.project.set_print(project, ["aquifer"], intervals=["daily"])`, which turns labels on
+  and edits rows by name.
+- **A run stopped early keeps its daily output up to that day.** `finalize()` before the last day
+  stops SWAT+; the daily files are complete to the day it reached, but yearly and average-annual
+  summaries and `success.fin` aren't written.
 - **Outputs go to the run folder.** Use `run_dir` in a TOML config to keep the project folder
   clean. A branch or a loaded run writes to its own folder.
 - **The scenario's first day.** A rule that reacts to yesterday's flow should read it before its
