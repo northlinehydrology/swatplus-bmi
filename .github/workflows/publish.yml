@@ -1,0 +1,53 @@
+name: publish
+# Push a tag v* (for example v0.1.0) to release: SWAT+ is built and the tests run, the package is
+# built and published to PyPI by trusted publishing (no stored token) from the environment pypi,
+# and the tag gets a GitHub release with its notes from that version's section of CHANGELOG.md.
+# With the repository switched on in Zenodo, the GitHub release is archived there with a DOI.
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: The tag matches the package version
+        run: test "${GITHUB_REF_NAME#v}" = "$(uv run python -c 'import swatplus_bmi; print(swatplus_bmi.__version__)')"
+      - run: uv run ./build.sh --stock --nosave --jobs 4
+      - run: uv run pytest -q
+      - run: |
+          uv build
+          uvx twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/swatplus-bmi/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+  github-release:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          awk -v h="## $v " 'index($0,h)==1{on=1;next} /^## /{on=0} on' CHANGELOG.md > notes.md
+          test -s notes.md
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "swatplus-bmi $v" --notes-file notes.md
