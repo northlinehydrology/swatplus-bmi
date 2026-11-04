@@ -97,6 +97,8 @@ rm -rf "$WORK/exchange-src"
 mkdir -p "$WORK/exchange-src"
 cp -R "$SRC/." "$WORK/exchange-src/"
 cp "$HERE"/fortran/*.f90 "$HERE"/fortran/*.c "$WORK/exchange-src/src/"
+# the state serializer, generated from this release's module declarations
+"${PYTHON:-python3}" "$HERE/tools/gen_serializer.py" "$SRC/src" "$WORK/exchange-src/src/bmi_state_module.f90"
 for p in "$PATCHES"/*.patch; do
   patch --quiet -p1 -d "$WORK/exchange-src" < "$p"
 done

@@ -37,6 +37,25 @@
       integer :: protocol = 1             !! protocol version
       integer, parameter :: unit_max = 1000000   !! highest unit number branch looks at
       character(len=80) :: paused_line = ""      !! the last @paused reply
+      character(len=16), parameter :: state_magic = "SWXSTATE-1"
+
+      !! loading a saved state: run forward to the saved day, then load
+      logical :: loading = .false.
+      integer :: load_day = 0
+      character(len=1024) :: load_path = ""
+
+      !! files closed while they are moved or put back, to be opened again
+      type unit_file
+        integer :: u = 0
+        character(len=1024) :: name = ""
+        character(len=16) :: acc = ""
+        character(len=16) :: frm = ""
+        character(len=16) :: act = ""
+        character(len=16) :: pos = ""
+        integer :: rl = 0
+      end type unit_file
+      type (unit_file), dimension(:), allocatable :: closed
+      integer :: n_closed = 0
 
       !! values set for the next day
       real, dimension(:), allocatable :: rec_flo         !! m3/day     |point source (recall) flow
@@ -163,26 +182,40 @@
       end subroutine exch_start
 
 !!    --------------------------------------------------------------------
-      subroutine exch_pause
+      logical function exch_pause ()
 
-!!    called in time_control each day before wallo_start_day: reports the
-!!    days done and waits for commands
+!!    called in time_control each day before wallo_start_day, as
+!!    "if (exch_pause()) cycle": reports the days done and waits for
+!!    commands. Returns true to skip the rest of the day, which only happens
+!!    while running forward to the day of a saved state being loaded.
 
       use time_module
 
+      exch_pause = .false.
       if (.not. exch_on) return
 
-      if (.not. run_free .and. run_left == 0) then
-        paused_line = "@paused " // itoa(days_done) // " " // itoa(time%yrc) // " " // itoa(time%day)
+      do
+        if (loading) then
+          if (days_done < load_day) then
+            days_done = days_done + 1
+            exch_pause = .true.
+            return
+          end if
+          call load_now
+        else if (.not. run_free .and. run_left == 0) then
+          paused_line = "@paused " // itoa(days_done) // " " // itoa(time%yrc) // " " // itoa(time%day)
+        end if
+        if (run_free .or. run_left > 0) exit
         call reply (paused_line)
         call serve (.false.)
-      end if
+        if (.not. loading) exit
+      end do
 
       if (.not. run_free) run_left = run_left - 1
       days_done = days_done + 1
 
       return
-      end subroutine exch_pause
+      end function exch_pause
 
 !!    --------------------------------------------------------------------
       subroutine exch_apply
@@ -243,6 +276,10 @@
 
       if (.not. exch_on) return
 
+      if (loading) then
+        call reply ("@error the simulation ended before the saved day " // itoa(load_day))
+        error stop 6
+      end if
       call reply ("@ended " // itoa(days_done))
       if (.not. run_free) call serve (.true.)
 
@@ -258,6 +295,7 @@
       character(len=4096) :: line = ""
       character(len=64) :: word = ""
       character(len=64) :: name = ""
+      character(len=1024) :: path = ""
       integer :: ios = 0
       integer :: n = 0
       integer :: i = 0
@@ -316,6 +354,25 @@
         case ("flush")
           call flush_units
           call reply ("@ok")
+
+        case ("save")
+          read (line, *, iostat=ios) word, path
+          if (ios /= 0) then
+            call reply ('@error save needs "<file>"')
+          else
+            call save_state (trim(path))
+          end if
+
+        case ("load")
+          read (line, *, iostat=ios) word, path
+          if (ios /= 0) then
+            call reply ('@error load needs "<file>"')
+          else if (at_end .or. days_done > 0) then
+            call reply ("@error load only right after startup, before the first day has run")
+          else
+            call start_load (trim(path))
+            if (loading) return
+          end if
 
         case ("branch")
           if (at_end) then
@@ -418,7 +475,8 @@
       ios = swx_detach ("exchange.err" // c_null_char)
       open (6, file="exchange.log", action="write", position="append")
       write (6,*) "branched from ", trim(old_dir), " after day ", days_done
-      call reopen_units (trim(old_dir))
+      call close_units (trim(old_dir))
+      call reopen_closed
       open (newunit=cmd_unit, file=trim(fifo_in), action="read", status="old")
       open (newunit=rep_unit, file=trim(fifo_out), action="write", status="old")
       call reply (paused_line)
@@ -428,12 +486,13 @@
       end subroutine branch
 
 !!    --------------------------------------------------------------------
-      subroutine reopen_units (old_dir)
+      subroutine close_units (old_dir)
 
-!!    in a new branch: closes every file the parent had open and opens the
-!!    copy of it in the branch's folder, at the same place (start or end).
-!!    A file left partway through reading can't be placed again and stays
-!!    shared with the parent; exchange.log says so.
+!!    closes every file SWAT+ has open and remembers how to open it again at
+!!    the same place (start or end): for a branch, the copy in the branch's
+!!    folder; for a load, the saved copy put back in the run folder. A file
+!!    left partway through reading can't be placed again and is left open;
+!!    exchange.log says so. Paths in old_dir become relative.
 
       character(len=*), intent(in) :: old_dir
       character(len=1024) :: nm = ""
@@ -443,12 +502,14 @@
       character(len=16) :: pos = ""
       integer :: u = 0
       integer :: rl = 0
-      integer :: ios = 0
       integer :: n = 0
       integer(8) :: sz = 0
       logical :: op = .false.
       logical :: nd = .false.
 
+      if (allocated(closed)) deallocate (closed)
+      allocate (closed(0))
+      n_closed = 0
       n = len_trim(old_dir)
       do u = 1, unit_max
         if (u == 5 .or. u == 6) cycle
@@ -458,31 +519,165 @@
                  size=sz)
         if (.not. nd) cycle
         !! a file opened but not yet written is at its start, which is also its end
-        if (pos == "ASIS" .and. sz == 0) pos = "REWIND"
-        !! a path in the parent's folder becomes the same path in the branch's
+        if (pos == "ASIS" .and. sz == 0) pos = "APPEND"
         if (n > 0 .and. len_trim(nm) > n + 1) then
           if (nm(1:n) == old_dir(1:n) .and. nm(n+1:n+1) == "/") nm = nm(n+2:)
         end if
         if (acc /= "DIRECT" .and. pos /= "APPEND" .and. pos /= "REWIND") then
-          write (6,*) "unit ", u, " (", trim(nm), ") is partway through; shared with the parent"
+          write (6,*) "unit ", u, " (", trim(nm), ") is partway through; left open"
           cycle
         end if
         close (u)
-        if (acc == "STREAM") then
-          open (u, file=trim(nm), access="stream", form=trim(frm), action=trim(act),     &
-                position=trim(pos), status="old", iostat=ios)
-        else if (acc == "DIRECT") then
-          open (u, file=trim(nm), access="direct", form=trim(frm), recl=rl,              &
-                action=trim(act), status="old", iostat=ios)
-        else
-          open (u, file=trim(nm), access="sequential", form=trim(frm), recl=rl,          &
-                action=trim(act), position=trim(pos), status="old", iostat=ios)
-        end if
-        if (ios /= 0) write (6,*) "unit ", u, " (", trim(nm), ") could not be reopened"
+        closed = [closed, unit_file(u, nm, acc, frm, act, pos, rl)]
+        n_closed = n_closed + 1
       end do
 
       return
-      end subroutine reopen_units
+      end subroutine close_units
+
+!!    --------------------------------------------------------------------
+      subroutine reopen_closed
+
+      integer :: i = 0
+      integer :: ios = 0
+
+      do i = 1, n_closed
+        associate (c => closed(i))
+        if (c%acc == "STREAM") then
+          open (c%u, file=trim(c%name), access="stream", form=trim(c%frm), action=trim(c%act),  &
+                position=trim(c%pos), status="old", iostat=ios)
+        else if (c%acc == "DIRECT") then
+          open (c%u, file=trim(c%name), access="direct", form=trim(c%frm), recl=c%rl,           &
+                action=trim(c%act), status="old", iostat=ios)
+        else
+          open (c%u, file=trim(c%name), access="sequential", form=trim(c%frm), recl=c%rl,       &
+                action=trim(c%act), position=trim(c%pos), status="old", iostat=ios)
+        end if
+        if (ios /= 0) write (6,*) "unit ", c%u, " (", trim(c%name), ") could not be opened again"
+        end associate
+      end do
+
+      return
+      end subroutine reopen_closed
+
+!!    --------------------------------------------------------------------
+      subroutine save_state (path)
+
+!!    save "<file>": writes all of SWAT+'s module state, as it is at this
+!!    pause, to <file> (bmi_state_module, generated per release). The caller
+!!    keeps a copy of the run folder with it; output files are flushed first
+!!    so that copy is complete.
+
+      use bmi_state_module, only : swx_state_save, swx_state_digest
+
+      character(len=*), intent(in) :: path
+      integer :: u = 0
+      integer :: ios = 0
+
+      call flush_units
+      open (newunit=u, file=path, access="stream", form="unformatted", action="write",          &
+            status="replace", iostat=ios)
+      if (ios /= 0) then
+        call reply ("@error can't write " // path)
+        return
+      end if
+      write (u) state_magic, swx_state_digest, days_done, paused_line
+      write (u) size(pou_dmd_day), pou_dmd_day, pou_wdr_day
+      call swx_state_save (u)
+      write (u) state_magic
+      close (u)
+      call reply ("@ok")
+
+      return
+      end subroutine save_state
+
+!!    --------------------------------------------------------------------
+      subroutine start_load (path)
+
+!!    load "<file>", right after startup: checks the file, then lets SWAT+
+!!    run forward to the saved day without computing it (exch_pause), where
+!!    load_now puts the saved state in place
+
+      use bmi_state_module, only : swx_state_digest
+
+      character(len=*), intent(in) :: path
+      character(len=16) :: magic = ""
+      character(len=16) :: digest = ""
+      integer :: u = 0
+      integer :: ios = 0
+
+      open (newunit=u, file=path, access="stream", form="unformatted", action="read",           &
+            status="old", iostat=ios)
+      if (ios /= 0) then
+        call reply ("@error can't read " // path)
+        return
+      end if
+      read (u, iostat=ios) magic, digest, load_day
+      close (u)
+      if (ios /= 0 .or. magic /= state_magic) then
+        call reply ("@error not a saved SWAT+ state: " // path)
+      else if (digest /= swx_state_digest) then
+        call reply ("@error the state was saved by a different build (" // trim(digest) //         &
+                    "; this build is " // swx_state_digest // ")")
+      else if (load_day > days_total) then
+        call reply ("@error the saved day is past the end of this simulation")
+      else
+        loading = .true.
+        load_path = path
+        run_left = 0
+        run_free = .false.
+      end if
+
+      return
+      end subroutine start_load
+
+!!    --------------------------------------------------------------------
+      subroutine load_now
+
+!!    at the saved day: reads the saved state over SWAT+'s, closes the
+!!    output files, asks the caller to put the saved ones back (@restore,
+!!    answered with "restored"), and opens them again at their ends
+
+      use bmi_state_module, only : swx_state_load
+
+      character(len=16) :: magic = ""
+      character(len=16) :: digest = ""
+      character(len=64) :: word = ""
+      integer :: u = 0
+      integer :: n = 0
+      integer :: ios = 0
+
+      open (newunit=u, file=trim(load_path), access="stream", form="unformatted", action="read",  &
+            status="old")
+      read (u) magic, digest, days_done, paused_line
+      read (u) n
+      if (n /= size(pou_dmd_day)) then
+        call reply ("@error the saved state has a different number of places of use")
+        error stop 7
+      end if
+      read (u) pou_dmd_day, pou_wdr_day
+      call swx_state_load (u)
+      read (u) magic
+      close (u)
+      if (magic /= state_magic) then
+        call reply ("@error the saved state ends early: " // trim(load_path))
+        error stop 7
+      end if
+      rec_flo_on = .false.
+      dmd_flo_on = .false.
+      loading = .false.
+      run_left = 0
+      run_free = .false.
+
+      call flush_units
+      call close_units ("")
+      call reply ("@restore")
+      read (cmd_unit, *, iostat=ios) word
+      if (ios /= 0 .or. trim(word) /= "restored") error stop 3
+      call reopen_closed
+
+      return
+      end subroutine load_now
 
 !!    --------------------------------------------------------------------
       subroutine send_values (name)

@@ -57,7 +57,7 @@ index 8fe25aa..196511e 100644
  
        write (*,1000)
 diff --git a/src/time_control.f90 b/src/time_control.f90
-index d357b05..1e9c605 100644
+index d357b05..c516819 100644
 --- a/src/time_control.f90
 +++ b/src/time_control.f90
 @@ -53,6 +53,7 @@
@@ -81,7 +81,7 @@ index d357b05..1e9c605 100644
            ch_morph(:) = ch_morphz
            ch_morph_ord(:) = ch_morphz
                
-+          call exch_pause           !! exchange mode: pause and exchange values
++          if (exch_pause()) cycle   !! exchange mode: pause and exchange values
 +
            !! allocation at start of day - withdrawal from outside source, water tower and canals
            if (db_mx%wallo_pou > 0) call wallo_start_day
