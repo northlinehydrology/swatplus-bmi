@@ -10,6 +10,12 @@
 #   ./build.sh --jobs 2        # parallel compile jobs (default 2)
 #   SWATPLUS_SRC=/path ./build.sh   # use an existing checkout of the tag
 #
+# Supported SWAT+ versions are the ones with a folder in patches/ (see
+# COMPATIBILITY.md). To try another version or branch with a supported
+# version's patch, for example SWAT+ main in the nightly build:
+#
+#   ./build.sh --tag main --patch 62.0.1 --stock
+#
 # Needs git, cmake (3.22 or later), make and gfortran (or ifx).
 
 set -euo pipefail
@@ -17,24 +23,27 @@ set -euo pipefail
 TAG="62.0.1"
 JOBS=2
 STOCK=0
+PATCH=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --stock) STOCK=1 ;;
     --jobs) JOBS="$2"; shift ;;
     --tag) TAG="$2"; shift ;;
-    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
+    --patch) PATCH="$2"; shift ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 1 ;;
   esac
   shift
 done
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-PATCHES="$HERE/patches/$TAG"
+PATCHES="$HERE/patches/${PATCH:-$TAG}"
 WORK="$HERE/build/$TAG"
 BIN="$HERE/bin"
 CMAKE="${CMAKE:-cmake}"
 
-[ -d "$PATCHES" ] || { echo "no patch for SWAT+ $TAG in patches/" >&2; exit 1; }
+[ -d "$PATCHES" ] || { echo "SWAT+ ${PATCH:-$TAG} is not supported: no patch in patches/ (see COMPATIBILITY.md)" >&2; exit 1; }
+[ -z "$PATCH" ] || echo "building SWAT+ $TAG with the patch for $PATCH: not a supported combination"
 mkdir -p "$WORK" "$BIN"
 
 # 1. the tagged release, once
