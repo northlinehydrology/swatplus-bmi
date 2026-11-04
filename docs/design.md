@@ -337,8 +337,13 @@ These are worth reporting upstream, separately from the exchange mode:
    `aqu_d(j)%stor = (1. - rto) * aqu_d(j)%stor`, then
    `outflo_om%flo = rto * aqu_d(j)%stor * ...`. The aquifer loses
    rto × S, but the place of use receives rto × (1 − rto) × S. Nitrate
-   and phosphorus have the same problem. (Found by reading the code; no
-   test yet.)
+   and phosphorus have the same problem. With a 0.002 m3/s well on
+   Osu_1hru's aquifer, the aquifer loses 172.8 m3/day and the user receives
+   171.3. The gap grows as the aquifer drains; at rto = 1 the aquifer is
+   emptied and the user receives nothing. (Shown by
+   `test_aquifer_withdrawal_delivers_less_than_it_removes_swatplus_62_0_1`,
+   which will fail when SWAT+ fixes it; draft issue in
+   docs/upstream-issue-aquifer-withdrawal.md.)
 4. `water_allocation_read.f90` opens the place of use and point of
    diversion files even when they don't exist
    (`if (.not. i_exist .or. ... /= "null")`), creating empty files in the
