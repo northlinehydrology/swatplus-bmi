@@ -3,6 +3,14 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
+## 0.1.1 (2026-11-04)
+
+- `swatplus_bmi.project.set_print` turns SWAT+'s output on by object name. Unless print.prt's
+  `use_obj_labels` switch is on, SWAT+ reads the object rows by position and ignores their names,
+  so an edit by hand can switch on the wrong object; `set_print` turns labels on.
+- Documented that a run stopped before its last day keeps its daily output up to that day (and
+  writes no yearly or average-annual summaries), with a test.
+
 ## 0.1.0 (2026-11-04)
 
 First release, for SWAT+ 62.0.1.
