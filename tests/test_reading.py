@@ -94,3 +94,6 @@ def test_aquifer_matches_daily_output(series):
         flo_mm = got["aquifer_water__volume_outflow_rate"][:, j] * 86400.0 / (10.0 * a)
         np.testing.assert_allclose(flo_mm, ref["flo"], atol=5e-4, rtol=1e-6)
         assert np.ptp(ref["stor"]) > 10                    # storage moves over the run
+        rch_mm = got["soil_water_table__recharge_rate"][:, j] * 86400000.0    # m/s -> mm/day
+        np.testing.assert_allclose(rch_mm, ref["rchrg"], atol=5e-4, rtol=1e-6)
+        assert np.count_nonzero(ref["rchrg"]) > 100

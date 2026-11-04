@@ -48,23 +48,24 @@
       real, dimension(:), allocatable :: pou_dmd_day     !! m3/day     |place of use demand
       real, dimension(:), allocatable :: pou_wdr_day     !! m3/day     |place of use withdrawal
 
-      integer, parameter :: nvar = 9
+      integer, parameter :: nvar = 10
       character(len=48), dimension(nvar) :: var_name = [character(len=48) ::     &
-            "channel_water__volume_outflow_rate",                             &
-            "channel_water__volume",                                            &
-            "channel_water__volume_inflow_rate",                         &
-            "aquifer_water__volume",                                            &
-            "soil_water_table_surface__depth",                                   &
-            "aquifer_water__volume_outflow_rate",                             &
-            "point_source_water__volume_flow_rate",                             &
-            "place_of_use_water__volume_demand_rate",                      &
+            "channel_water__volume_outflow_rate",                           &
+            "channel_water__volume",                                        &
+            "channel_water__volume_inflow_rate",                            &
+            "aquifer_water__volume",                                        &
+            "soil_water_table_surface__depth",                              &
+            "aquifer_water__volume_outflow_rate",                           &
+            "soil_water_table__recharge_rate",                              &
+            "point_source_water__volume_flow_rate",                         &
+            "place_of_use_water__volume_demand_rate",                       &
             "place_of_use_water__volume_withdrawal_rate"]
       character(len=8), dimension(nvar) :: var_grid = [character(len=8) ::      &
-            "cha", "cha", "cha", "aqu", "aqu", "aqu", "rec", "pou", "pou"]
+            "cha", "cha", "cha", "aqu", "aqu", "aqu", "aqu", "rec", "pou", "pou"]
       character(len=8), dimension(nvar) :: var_units = [character(len=8) ::     &
-            "m3 s-1", "m3", "m3 s-1", "m3", "m", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1"]
+            "m3 s-1", "m3", "m3 s-1", "m3", "m", "m3 s-1", "m s-1", "m3 s-1", "m3 s-1", "m3 s-1"]
       character(len=3), dimension(nvar) :: var_role = [character(len=3) ::      &
-            "out", "out", "out", "out", "out", "out", "in", "in", "out"]
+            "out", "out", "out", "out", "out", "out", "out", "in", "in", "out"]
 
       contains
 
@@ -539,6 +540,13 @@
         do i = 1, sp_ob%aqu
           iob = sp_ob1%aqu + i - 1
           val(i) = ob(iob)%hd(1)%flo / 86400.              !m3 -> m3/s
+        end do
+
+      case ("soil_water_table__recharge_rate")
+        allocate (val(sp_ob%aqu), source = 0.)
+        do i = 1, sp_ob%aqu
+          iob = sp_ob1%aqu + i - 1
+          val(i) = aqu_d(ob(iob)%num)%rchrg / 86400000.     !mm/day -> m/s
         end do
 
       case ("point_source_water__volume_flow_rate")
