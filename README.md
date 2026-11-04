@@ -23,13 +23,13 @@ with SWAT+. Not yet released. See [COMPATIBILITY.md](COMPATIBILITY.md) and
 
 ## Install and build
 
-Needs git, CMake 3.22 or later, make, gfortran (or Intel ifx), and Python
-3.11 or later.
+Needs git, make, gfortran (or Intel ifx) and [uv](https://docs.astral.sh/uv/).
+`uv sync` installs Python, the package, pytest and CMake from the lock file.
 
 ```bash
 git clone <this repository> swatplus-bmi && cd swatplus-bmi
-python -m venv .venv && .venv/bin/pip install cmake -e ".[test]"
-CMAKE=.venv/bin/cmake ./build.sh --stock
+uv sync
+uv run ./build.sh --stock
 ```
 
 `build.sh` fetches SWAT+ 62.0.1, copies in the exchange module, applies the
@@ -41,8 +41,11 @@ against. The wrapper looks for the executable in `bin/`, in
 Run the tests (about two minutes on one core):
 
 ```bash
-.venv/bin/python -m pytest
+uv run pytest
 ```
+
+Without uv: `pip install -e . --group dev` (pip 25.1 or later) in a virtual
+environment of your own, then the same commands without `uv run`.
 
 ## Using it
 

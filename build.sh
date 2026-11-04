@@ -18,7 +18,8 @@
 #
 #   ./build.sh --tag main --patch 62.0.1 --stock
 #
-# Needs git, cmake (3.22 or later), make and gfortran (or ifx).
+# Needs git, cmake (3.22 or later), make, gfortran (or ifx) and Python 3.11 or
+# later. With uv, `uv sync` then `uv run ./build.sh` provides cmake and Python.
 
 set -euo pipefail
 
