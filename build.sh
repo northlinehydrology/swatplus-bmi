@@ -7,6 +7,8 @@
 #
 #   ./build.sh                 # bin/swatplus-62.0.1-exchange
 #   ./build.sh --stock         # also bin/swatplus-62.0.1-stock
+#   ./build.sh --nosave        # also bin/swatplus-62.0.1-nosave: stock with every
+#                              # saved local reset on each call (tools/reset_saved_locals.py)
 #   ./build.sh --jobs 2        # parallel compile jobs (default 2)
 #   SWATPLUS_SRC=/path ./build.sh   # use an existing checkout of the tag
 #
@@ -23,14 +25,16 @@ set -euo pipefail
 TAG="62.0.1"
 JOBS=2
 STOCK=0
+NOSAVE=0
 PATCH=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --stock) STOCK=1 ;;
+    --nosave) NOSAVE=1 ;;
     --jobs) JOBS="$2"; shift ;;
     --tag) TAG="$2"; shift ;;
     --patch) PATCH="$2"; shift ;;
-    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 1 ;;
   esac
   shift
@@ -77,6 +81,15 @@ if [ "$STOCK" = 1 ]; then
   mkdir -p "$WORK/stock-src"
   cp -R "$SRC/." "$WORK/stock-src/"
   build "$WORK/stock-src" "$WORK/stock-build" "swatplus-$TAG-stock"
+fi
+
+# 2b. the unpatched release with no saved locals, to test whether any carry state
+if [ "$NOSAVE" = 1 ]; then
+  rm -rf "$WORK/nosave-src"
+  mkdir -p "$WORK/nosave-src"
+  cp -R "$SRC/." "$WORK/nosave-src/"
+  "${PYTHON:-python3}" "$HERE/tools/reset_saved_locals.py" "$SRC/src" "$WORK/nosave-src/src"
+  build "$WORK/nosave-src" "$WORK/nosave-build" "swatplus-$TAG-nosave"
 fi
 
 # 3. the release with the exchange mode
