@@ -10,6 +10,7 @@ although the column header says m^3/s.
 import datetime as dt
 
 import numpy as np
+import pytest
 
 from conftest import EXCHANGE, STOCK, differences, need, project, run_stock
 from swatplus_bmi import SwatPlusBmi
@@ -72,6 +73,7 @@ def test_point_source_project_runs_like_stock():
     assert differences(stock, stepped) == []
 
 
+@pytest.mark.filterwarnings("ignore:a negative point source")
 def test_set_point_source_changes_only_that_day_by_exactly_that_water():
     need(EXCHANGE)
     base = osu_with_point_source("Osu_1hru-ps-base")
@@ -130,7 +132,8 @@ def test_curtailment_rule_triggers_on_the_right_days_and_balances():
         return cut
 
     run = osu_with_point_source("Osu_1hru-ps-curtail")
-    cuts = np.array(step_with(run, rule))
+    with pytest.warns(UserWarning, match="doesn't limit it to the water"):
+        cuts = np.array(step_with(run, rule))
     cha = daily_table(run / "channel_sd_day.txt")["cha01"]
     flo = daily_table(run / "recall_day.txt")["inflow"]["flo"] / 86400   # m3/day -> m3/s
 

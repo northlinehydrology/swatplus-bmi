@@ -20,6 +20,7 @@ import datetime as dt
 import os
 import shutil
 import tomllib
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -52,6 +53,7 @@ class SwatPlusBmi(Bmi):
         self._x: Exchange | None = None
         self._grid_ids: dict[str, int] = {}
         self._vars = {}
+        self._warned_diversion = False
 
     # -- control --------------------------------------------------------
 
@@ -238,6 +240,16 @@ class SwatPlusBmi(Bmi):
     def set_value_at_indices(self, name: str, inds: np.ndarray, src: np.ndarray) -> None:
         if self._var(name).role != "in":
             raise ValueError(f"{name} can't be set: only fluxes SWAT+ takes as inputs can")
+        if (name == "point_source_water__volume_flow_rate" and np.any(np.asarray(src) < 0)
+                and not self._warned_diversion):
+            self._warned_diversion = True
+            warnings.warn(
+                "a negative point source is a diversion, and SWAT+ 62.0.1 doesn't limit it to the "
+                "water in the channel: when it is larger than the channel's other inflow, SWAT+ "
+                "records it in full but takes none of the excess, and the channel balance doesn't "
+                "close (see channel_entrance_water__volume_flow_rate). For withdrawals limited to "
+                "the water available, set place_of_use_water__demand_volume_flow_rate instead.",
+                UserWarning, stacklevel=2)
         for i, v in zip(np.asarray(inds).ravel(), np.asarray(src, dtype=np.float32).ravel()):
             self._x.set(name, int(i), float(v))
 
