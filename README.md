@@ -15,7 +15,7 @@ identical to an unpatched run, every output file, start to finish.** A paused ru
 saved and loaded, or branched in memory, so a warm-up is run once and every scenario starts
 from the same state.
 
-**Status:** working for SWAT+ 62.0.1; first release 0.1.0 ([PyPI](https://pypi.org/project/swatplus-bmi/), [Zenodo](https://doi.org/10.5281/zenodo.23963201)). Tested on the two example projects that
+**Status:** working for SWAT+ 62.0.1; release 0.2.0 ([PyPI](https://pypi.org/project/swatplus-bmi/), [Zenodo](https://doi.org/10.5281/zenodo.23963201)). Tested on the two example projects that
 ship with SWAT+ (below). See [COMPATIBILITY.md](COMPATIBILITY.md) and the design note,
 [docs/design.md](docs/design.md).
 
@@ -303,7 +303,8 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
 ## Weaknesses and limits
 
 - **Daily steps only.** SWAT+'s sub-daily options aren't exposed.
-- **Only fluxes can be set:** point source flow and water allocation demand, for the next day.
+- **Only fluxes can be set:** point source flow, water allocation demand and a channel's
+  groundwater exchange, for the next day.
   Not storage, land use, soils or parameters; those are scenario inputs.
 - **A handful of variables so far.** Adding one is a few lines (see `fortran/`), but each needs a
   test against SWAT+'s output.
