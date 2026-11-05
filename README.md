@@ -58,8 +58,8 @@ flowchart LR
   P -- "replies on standard output:<br/>@paused, @value, @ok" --> B
 ```
 
-- **SWAT+'s side.** The patch adds six calls to three SWAT+ files (`time_control.f90`,
-  `main.f90.in`, `command.f90`). Each returns at once unless SWAT+ was started with
+- **SWAT+'s side.** The patch adds seven calls to four SWAT+ files (`time_control.f90`,
+  `main.f90.in`, `command.f90`, `sd_channel_control3.f90`). Each returns at once unless SWAT+ was started with
   `--exchange`. With the mode on, SWAT+ stops before each day's water allocation and routing,
   answers commands, and goes on when told to.
 - **The pause point.** Values read at a pause are those at the end of the previous day. Values
@@ -222,6 +222,18 @@ from swatplus_bmi.project import set_print
 set_print("path/to/TxtInOut", ["channel_sd", "aquifer"], intervals=["daily"], skip_years=0)
 ```
 
+### Coupling a groundwater model
+
+Each day, read `channel_water__depth` for the river stage. Then set
+`channel_water__groundwater_volume_exchange_rate` for the next day:
+- a gain (positive) joins the channel's inflow, through the same transfer SWAT+ uses for water
+  allocation returns;
+- a loss (negative) is taken from the day's outflow after routing, no more than is there, and
+  counted in the channel's seepage, so SWAT+'s printed channel balance still closes.
+
+Read the same variable after the day for what was actually exchanged. Pass that back to the
+groundwater model, so the two balances agree.
+
 ### Objects and grids
 
 Each SWAT+ object type is a BMI grid of type `points`: one point per object, longitude as x and
@@ -236,6 +248,8 @@ objects in a project are left out.
 | `channel_water__volume_outflow_rate` | channels | no | m3 s-1 | `flo_out` in `channel_sd_day.txt` |
 | `channel_water__volume_inflow_rate` (net inflow) | channels | no | m3 s-1 | `flo_in` |
 | `channel_water__volume` | channels | no | m3 | `flo_stor` |
+| `channel_water__depth` | channels | no | m | depth on SWAT+'s rating curve at the day's mean outflow |
+| `channel_water__groundwater_volume_exchange_rate` | channels | yes | m3 s-1 | groundwater exchange, positive into the channel; a loss is counted in `seep` |
 | `aquifer_water__volume` | aquifers | no | m3 | `stor` in `aquifer_day.txt` (mm × area) |
 | `soil_water_table_surface__depth` (depth to water) | aquifers | no | m | `dep_wt` |
 | `aquifer_water__volume_outflow_rate` | aquifers | no | m3 s-1 | `flo` (return flow) |
@@ -273,7 +287,7 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
 
 - **Exact.** Stepping, reading, branching and saving don't change a byte of SWAT+'s output. The
   suite checks every output file against unpatched SWAT+, including 46 years of Ames_sub1.
-- **Small and off by default.** Six calls in three SWAT+ files, one Fortran module, and a C file
+- **Small and off by default.** Seven calls in four SWAT+ files, one Fortran module, and a C file
   of four functions for `fork`. With the mode off, SWAT+ behaves exactly as it does without the
   patch. It's meant to be proposed to the SWAT+ team (`docs/upstream-issue.md`).
 - **No linking, any platform for stepping.** Text over standard input and output. The Python

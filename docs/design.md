@@ -40,7 +40,7 @@ and talks to it over standard input and output; nothing is linked.
 
 ## Where SWAT+ pauses
 
-The daily loop is in `time_control.f90`. The patch adds four calls there,
+The daily loop is in `time_control.f90`. The patch adds four calls there and one in `sd_channel_control3.f90` (the channel loss hook),
 one in `main.f90.in` and one in `command.f90`. Each returns at once when
 exchange mode is off.
 
@@ -51,6 +51,7 @@ exchange mode is off.
 | `exch_pause` | each day, after the weather, the land use decision tables and the manure allocation, **before** `wallo_start_day`, as `if (exch_pause()) cycle` | sends `@paused`, then answers commands until told to run; while a saved state is loading, skips the days before the saved one |
 | `exch_apply` | each day, **after** `wallo_start_day`, before `call command` | puts values set while paused in place for this day |
 | `exch_record` | `command.f90`, after the command loop, before outputs are printed | keeps the day's water allocation demand and withdrawal, which printing zeroes |
+| `exch_channel` | `sd_channel_control3.f90`, after routing and water allocation, before the outflow is set | takes a set groundwater loss from the day's outflow and records the day's exchange |
 | `exch_end` | `time_control`, after the year loop | sends `@ended`, then answers commands until told to finish |
 
 The wait and the apply are split around `wallo_start_day` for two reasons.
@@ -141,6 +142,8 @@ names follow the channel ones. CSDMS lists no aquifer or withdrawal names.
 | `soil_water_table_surface__depth` | aqu | out | m | `aqu_d(i)%dep_wt` | depth to the water table, `dep_wt` |
 | `aquifer_water__volume_outflow_rate` | aqu | out | m3 s-1 | `ob(iob)%hd(1)%flo` | return flow, `flo` in `aquifer_day.txt` |
 | `soil_water_table__recharge_rate` | aqu | out | m s-1 | `aqu_d(i)%rchrg` (mm/day) | `rchrg` in `aquifer_day.txt`; a CSDMS name; what MODFLOW 6's recharge package takes |
+| `channel_water__depth` | cha | out | m | SWAT+'s rating curve (`rcurv_interp_flo`) at the day's mean outflow, `ch_out_d(i)%flo` | the working rating curve `rcurv` is put back after, so reading changes nothing |
+| `channel_water__groundwater_volume_exchange_rate` | cha | in and out | m3 s-1 | gains into `ob(iob)%trans`; losses from `ht2` after routing, counted in `ch_wat_d(i)%seep` | positive into the channel; reading gives what was exchanged on the day just done |
 | `point_source_water__volume_flow_rate` | rec | in and out | m3 s-1 | `recall(i)%hd(day,yr)%flo` | daily recall objects only; negative is a withdrawal |
 | `place_of_use_water__volume_demand_rate` | pou | in and out | m3 s-1 | `pou(i)%demand` | reading gives the day's demand; setting replaces SWAT+'s for the next day |
 | `place_of_use_water__volume_withdrawal_rate` | pou | out | m3 s-1 | `poud_met(i)%duty_tot%deliv` | what was actually taken |
@@ -157,6 +160,26 @@ y. BMI has no element names, so the wrapper adds
 SWAT+'s object names (`cha01`). Places of use have no location; their
 coordinates are NaN. Grids with no objects in a project are left out, along
 with their variables.
+
+### The groundwater exchange with channels
+
+This is for coupling a groundwater model, such as MODFLOW 6's river or stream package, that
+computes each day's stream–aquifer exchange.
+- **Gains** (positive) are added to the channel's transfer hydrograph (`ob(iob)%trans`) when set
+  values are put in place. SWAT+ adds that to the channel's inflow before routing, as it does for
+  water allocation returns, so a gain shows in `flo_in`.
+- **Losses** (negative) are taken in a hook in `sd_channel_control3.f90`, after routing and water
+  allocation and before the outflow is set: `exch_channel` takes up to the day's outflow (`ht2`),
+  with its constituents in proportion, and adds it to the channel's seepage (`ch_wat_d%seep`). So
+  SWAT+'s printed balance (inflow + precipitation − evaporation − seepage − outflow − change in
+  storage) still closes.
+- **Reading** after the day gives what was exchanged: the gain, less what was taken.
+- **Not adjusted:** salts and other constituents (`cs_db`) on losses; for projects that simulate
+  them, losses would need the same treatment there.
+
+The tests check that a gain raises the inflow by exactly that water, that a loss takes no more
+than the outflow and the balance closes, that a set value lasts one day, and that the day's
+exchange survives saving and loading.
 
 ### Setting fluxes
 
