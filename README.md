@@ -370,7 +370,11 @@ Errors come back as `@error <message>` and SWAT+ keeps waiting. Details:
 `uv run pytest` builds nothing; run `build.sh --stock --nosave` first. The tests use the two
 example projects that ship with SWAT+: `Osu_1hru` (one HRU, a channel and an aquifer,
 2010-2023) in several variants (all output printed daily, a daily point source, a water user on
-the channel, a well on the aquifer), and `Ames_sub1` (12 HRUs, 1975-2020) under `-m full`.
+the channel, a well on the aquifer), and `Ames_sub1` (12 HRUs, 1975-2020) under `-m full`. The
+full-length Ames runs leave out Ames's daily per-layer soil carbon diagnostics (`hru_cb` and
+`hru_cb_vars` set to `l`), about 8.5 GB a run; their monthly and yearly output, and the
+five-year run that prints everything daily, are still compared. Each test deletes its run
+folders once it passes (set `SWATPLUS_BMI_KEEP_RUNS=1` to keep them).
 
 | What | How it's checked |
 |---|---|
