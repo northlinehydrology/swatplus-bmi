@@ -56,6 +56,27 @@ index 8fe25aa..196511e 100644
        prog = " SWAT+ @TODAY@        MODULAR Rev @YEAR@.@SWAT_VERSION@"
  
        write (*,1000)
+diff --git a/src/sd_channel_control3.f90 b/src/sd_channel_control3.f90
+index 9c5c38d..709976c 100644
+--- a/src/sd_channel_control3.f90
++++ b/src/sd_channel_control3.f90
+@@ -20,6 +20,7 @@
+       use water_allocation_module
+       use maximum_data_module
+       use pesticide_data_module, only : pestdb  !! BUG FIX: needed for per-pesticide kd
++      use bmi_exchange_module, only : exch_channel
+       
+       implicit none     
+       
+@@ -334,6 +335,8 @@
+         call wallo_control (sd_ch(ich)%wallo_pod)
+       end if
+ 
++      call exch_channel (ich)   !! exchange mode: a set groundwater loss leaves the channel here
++
+       !! set outflow hyd to ht2 after diverting water
+       ob(icmd)%hd(1) = ht2
+       
 diff --git a/src/time_control.f90 b/src/time_control.f90
 index d357b05..c516819 100644
 --- a/src/time_control.f90

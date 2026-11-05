@@ -25,7 +25,8 @@
       implicit none
 
       private
-      public :: exch_on, exch_open, exch_start, exch_pause, exch_apply, exch_record, exch_end
+      public :: exch_on, exch_open, exch_start, exch_pause, exch_apply, exch_record, exch_end,     &
+                exch_channel
 
       logical :: exch_on = .false.        !! exchange mode is on
       integer :: cmd_unit = input_unit    !! commands in
@@ -63,11 +64,19 @@
       real, dimension(:), allocatable :: dmd_flo         !! m3/day     |place of use demand
       logical, dimension(:), allocatable :: dmd_flo_on
 
+      !! groundwater exchange with channels, m3/day, positive into the channel
+      real, dimension(:), allocatable :: chx_flo         !! set for the next day
+      logical, dimension(:), allocatable :: chx_on
+      real, dimension(:), allocatable :: chx_gain        !! the day's gain, added to the inflow
+      real, dimension(:), allocatable :: chx_loss        !! the day's loss, taken after routing
+      real, dimension(:), allocatable :: chx_day         !! what was exchanged, the day just done
+      integer, dimension(:), allocatable :: cha_bmi      !! SWAT-deg channel number -> grid index
+
       !! the day's values SWAT+ zeroes when it prints them, kept at the end of the day
       real, dimension(:), allocatable :: pou_dmd_day     !! m3/day     |place of use demand
       real, dimension(:), allocatable :: pou_wdr_day     !! m3/day     |place of use withdrawal
 
-      integer, parameter :: nvar = 10
+      integer, parameter :: nvar = 12
       character(len=48), dimension(nvar) :: var_name = [character(len=48) ::     &
             "channel_water__volume_outflow_rate",                           &
             "channel_water__volume",                                        &
@@ -78,13 +87,18 @@
             "soil_water_table__recharge_rate",                              &
             "point_source_water__volume_flow_rate",                         &
             "place_of_use_water__volume_demand_rate",                       &
-            "place_of_use_water__volume_withdrawal_rate"]
+            "place_of_use_water__volume_withdrawal_rate",                  &
+            "channel_water__depth",                                        &
+            "channel_water__groundwater_volume_exchange_rate"]
       character(len=8), dimension(nvar) :: var_grid = [character(len=8) ::      &
-            "cha", "cha", "cha", "aqu", "aqu", "aqu", "aqu", "rec", "pou", "pou"]
+            "cha", "cha", "cha", "aqu", "aqu", "aqu", "aqu", "rec", "pou", "pou",    &
+            "cha", "cha"]
       character(len=8), dimension(nvar) :: var_units = [character(len=8) ::     &
-            "m3 s-1", "m3", "m3 s-1", "m3", "m", "m3 s-1", "m s-1", "m3 s-1", "m3 s-1", "m3 s-1"]
+            "m3 s-1", "m3", "m3 s-1", "m3", "m", "m3 s-1", "m s-1", "m3 s-1", "m3 s-1", "m3 s-1", &
+            "m", "m3 s-1"]
       character(len=3), dimension(nvar) :: var_role = [character(len=3) ::      &
-            "out", "out", "out", "out", "out", "out", "out", "in", "in", "out"]
+            "out", "out", "out", "out", "out", "out", "out", "in", "in", "out",  &
+            "out", "in"]
 
       contains
 
@@ -163,6 +177,15 @@
       allocate (dmd_flo_on(db_mx%wallo_pou), source = .false.)
       allocate (pou_dmd_day(db_mx%wallo_pou), source = 0.)
       allocate (pou_wdr_day(db_mx%wallo_pou), source = 0.)
+      allocate (chx_flo(sp_ob%chandeg), source = 0.)
+      allocate (chx_on(sp_ob%chandeg), source = .false.)
+      allocate (chx_gain(sp_ob%chandeg), source = 0.)
+      allocate (chx_loss(sp_ob%chandeg), source = 0.)
+      allocate (chx_day(sp_ob%chandeg), source = 0.)
+      allocate (cha_bmi(0:max(1, maxval([0, (ob(sp_ob1%chandeg + iv - 1)%num, iv = 1, sp_ob%chandeg)]))), source = 0)
+      do iv = 1, sp_ob%chandeg
+        cha_bmi(ob(sp_ob1%chandeg + iv - 1)%num) = iv
+      end do
 
       call reply ("@hello swatplus-exchange " // itoa(protocol))
       call reply ("@model " // trim(adjustl(prog)))
@@ -229,6 +252,7 @@
 
       integer :: i = 0
       integer :: irec = 0
+      integer :: iob = 0
 
       if (.not. exch_on) return
 
@@ -239,6 +263,21 @@
         rec_flo_on(i) = .false.
       end do
 
+      do i = 1, size(chx_flo)
+        chx_gain(i) = 0.
+        chx_loss(i) = 0.
+        if (.not. chx_on(i)) cycle
+        if (chx_flo(i) > 1.e-6) then
+          !! a gain joins the channel's inflow through SWAT+'s transfer hydrograph
+          iob = sp_ob1%chandeg + i - 1
+          ob(iob)%trans%flo = ob(iob)%trans%flo + chx_flo(i)
+          chx_gain(i) = chx_flo(i)
+        else if (chx_flo(i) < 0.) then
+          chx_loss(i) = - chx_flo(i)
+        end if
+        chx_on(i) = .false.
+      end do
+
       do i = 1, size(dmd_flo)
         if (.not. dmd_flo_on(i)) cycle
         call set_demand (i, dmd_flo(i))
@@ -247,6 +286,67 @@
 
       return
       end subroutine exch_apply
+
+!!    --------------------------------------------------------------------
+      subroutine exch_channel (ich)
+
+!!    called in sd_channel_control3 after routing and water allocation, before
+!!    the outflow is set: takes a set groundwater loss from the day's outflow,
+!!    no more than is there, and counts it as seepage so SWAT+'s printed
+!!    channel balance still closes; records what was exchanged
+
+      use hydrograph_module, only : ht2, operator(*)
+      use water_body_module, only : ch_wat_d
+
+      integer, intent(in) :: ich                          !SWAT-deg channel number
+      integer :: i = 0
+      real :: rto = 0.
+      real :: taken = 0.
+
+      if (.not. exch_on) return
+      if (ich < lbound(cha_bmi,1) .or. ich > ubound(cha_bmi,1)) return
+      i = cha_bmi(ich)
+      if (i == 0) return
+
+      taken = 0.
+      if (chx_loss(i) > 0. .and. ht2%flo > 0.) then
+        rto = Min(1., chx_loss(i) / ht2%flo)
+        taken = rto * ht2%flo
+        ht2 = (1. - rto) * ht2
+        ch_wat_d(ich)%seep = ch_wat_d(ich)%seep + taken
+      end if
+      chx_day(i) = chx_gain(i) - taken
+      chx_gain(i) = 0.
+      chx_loss(i) = 0.
+
+      return
+      end subroutine exch_channel
+
+!!    --------------------------------------------------------------------
+      real function rating_depth (ich, flo_rate)
+
+!!    water depth on SWAT+'s rating curve for a channel at a flow rate (m3/s),
+!!    using SWAT+'s own interpolation; SWAT+'s working rating curve (rcurv) is
+!!    put back as it was, so reading changes nothing
+
+      use sd_channel_module, only : rcurv, channel_rating_curve_parameters
+
+      integer, intent(in) :: ich
+      real, intent(in) :: flo_rate
+      type (channel_rating_curve_parameters) :: keep
+      external :: rcurv_interp_flo
+
+      if (flo_rate <= 0.) then
+        rating_depth = 0.
+        return
+      end if
+      keep = rcurv
+      call rcurv_interp_flo (ich, flo_rate)
+      rating_depth = rcurv%dep
+      rcurv = keep
+
+      return
+      end function rating_depth
 
 !!    --------------------------------------------------------------------
       subroutine exch_record
@@ -583,6 +683,7 @@
       end if
       write (u) state_magic, swx_state_digest, days_done, paused_line
       write (u) size(pou_dmd_day), pou_dmd_day, pou_wdr_day
+      write (u) size(chx_day), chx_day
       call swx_state_save (u)
       write (u) state_magic
       close (u)
@@ -656,6 +757,12 @@
         error stop 7
       end if
       read (u) pou_dmd_day, pou_wdr_day
+      read (u) n
+      if (n /= size(chx_day)) then
+        call reply ("@error the saved state has a different number of channels")
+        error stop 7
+      end if
+      read (u) chx_day
       call swx_state_load (u)
       read (u) magic
       close (u)
@@ -665,6 +772,7 @@
       end if
       rec_flo_on = .false.
       dmd_flo_on = .false.
+      chx_on = .false.
       loading = .false.
       run_left = 0
       run_free = .false.
@@ -714,6 +822,21 @@
         do i = 1, sp_ob%chandeg
           iob = sp_ob1%chandeg + i - 1
           val(i) = ch_in_d(ob(iob)%num)%flo               !m3/s
+        end do
+
+      case ("channel_water__depth")
+        !! depth on SWAT+'s own rating curve at the day's mean outflow
+        allocate (val(sp_ob%chandeg), source = 0.)
+        do i = 1, sp_ob%chandeg
+          iob = sp_ob1%chandeg + i - 1
+          val(i) = rating_depth (ob(iob)%num, ch_out_d(ob(iob)%num)%flo)
+        end do
+
+      case ("channel_water__groundwater_volume_exchange_rate")
+        !! what was exchanged on the day just done, positive into the channel
+        allocate (val(sp_ob%chandeg), source = 0.)
+        do i = 1, sp_ob%chandeg
+          val(i) = chx_day(i) / 86400.                    !m3 -> m3/s
         end do
 
       case ("aquifer_water__volume")
@@ -792,6 +915,14 @@
         end if
         rec_flo(i) = v * 86400.                           !m3/s -> m3/day
         rec_flo_on(i) = .true.
+
+      case ("channel_water__groundwater_volume_exchange_rate")
+        if (i < 1 .or. i > sp_ob%chandeg) then
+          call reply ("@error index out of range")
+          return
+        end if
+        chx_flo(i) = v * 86400.                           !m3/s -> m3/day
+        chx_on(i) = .true.
 
       case ("place_of_use_water__volume_demand_rate")
         if (i < 1 .or. i > db_mx%wallo_pou) then
