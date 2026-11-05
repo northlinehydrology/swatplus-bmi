@@ -45,6 +45,53 @@ def need(*exes: Path) -> None:
             pytest.skip(f"{exe.name} not built: run ./build.sh --stock")
 
 
+# Run folders made during a test, removed once it passes (kept when it fails, or with
+# SWATPLUS_BMI_KEEP_RUNS=1). A single Ames_sub1 run can write gigabytes.
+_made: list[Path] = []
+
+
+def made(path: Path) -> Path:
+    """Register a folder a test makes under tests/runs, so it's cleaned up after the test."""
+    _made.append(Path(path))
+    return Path(path)
+
+
+def fresh(dest: str) -> Path:
+    """An empty path in tests/runs for a branch or a saved state, cleaned up after the test."""
+    d = RUNS / dest
+    if d.exists():
+        shutil.rmtree(d)
+    return made(d)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    rep = outcome.get_result()
+    setattr(item, "rep_" + rep.when, rep)
+
+
+@pytest.fixture(autouse=True)
+def _clean_runs(request):
+    """Remove the run folders a test made, once it has passed. Folders made by module
+    fixtures are registered before this starts, so they stay for the module's tests."""
+    start = len(_made)
+    yield
+    rep = getattr(request.node, "rep_call", None)
+    if os.environ.get("SWATPLUS_BMI_KEEP_RUNS") or rep is None or not rep.passed:
+        return
+    for d in _made[start:]:
+        shutil.rmtree(d, ignore_errors=True)
+    del _made[start:]
+
+
+def ames_light(run: Path) -> None:
+    """Ames_sub1 asks for daily per-layer soil carbon diagnostics, about 8.5 GB a run.
+    Turn the daily ones off; monthly and yearly stay, the soil carbon layer files with them."""
+    from swatplus_bmi.project import set_print
+    set_print(run, ["hru_cb", "hru_cb_vars"], intervals=["daily"], on=False)
+
+
 def project(name: str, dest: str, *, daily: bool = False, years: tuple[int, int] | None = None,
             edit=None) -> Path:
     """A fresh copy of a SWAT+ example project in tests/runs/<dest>.
@@ -63,7 +110,7 @@ def project(name: str, dest: str, *, daily: bool = False, years: tuple[int, int]
         set_years(out / "time.sim", *years)
     if edit:
         edit(out)
-    return out
+    return made(out)
 
 
 def print_everything(prt: Path) -> None:

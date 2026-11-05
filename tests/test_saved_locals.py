@@ -9,7 +9,7 @@ run, and a serializer for save_state can leave them out (docs/design.md,
 
 import pytest
 
-from conftest import BIN, STOCK, TAG, differences, need, project, run_stock
+from conftest import BIN, STOCK, TAG, ames_light, differences, need, project, run_stock
 from test_allocation import add_allocation
 from test_setting import add_point_source
 
@@ -32,8 +32,8 @@ def test_no_saved_local_carries_state(case):
 @pytest.mark.full
 def test_no_saved_local_carries_state_ames():
     need(STOCK, NOSAVE)
-    stock = project("Ames_sub1", "Ames_sub1-sl-stock")
+    stock = project("Ames_sub1", "Ames_sub1-sl-stock", edit=ames_light)
     run_stock(stock)
-    nosave = project("Ames_sub1", "Ames_sub1-sl-nosave")
+    nosave = project("Ames_sub1", "Ames_sub1-sl-nosave", edit=ames_light)
     run_stock(nosave, NOSAVE)
     assert differences(stock, nosave) == []

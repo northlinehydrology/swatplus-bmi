@@ -7,24 +7,17 @@ taking different decisions can be checked against unbroken runs taking the
 same decisions.
 """
 
-import shutil
 import sys
 
 import numpy as np
 import pytest
 
-from conftest import EXCHANGE, RUNS, STOCK, differences, need, project, run_stock
+from conftest import EXCHANGE, RUNS, STOCK, differences, fresh, need, project, run_stock
 from swatplus_bmi import SwatPlusBmi
 from test_allocation import DMD, osu_with_allocation
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="branching needs fork")
 
-
-def fresh(dest):
-    d = RUNS / dest
-    if d.exists():
-        shutil.rmtree(d)
-    return d
 
 
 @pytest.mark.parametrize("day", [0, 365, 1000, 5112])

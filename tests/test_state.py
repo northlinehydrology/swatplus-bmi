@@ -6,21 +6,14 @@ Works on every platform (no fork). The serializer is generated from
 SWAT+'s module declarations by tools/gen_serializer.py at build time.
 """
 
-import shutil
 
 import numpy as np
 import pytest
 
-from conftest import EXCHANGE, RUNS, STOCK, differences, need, project, run_stock
+from conftest import EXCHANGE, RUNS, STOCK, ames_light, differences, fresh, need, project, run_stock
 from swatplus_bmi import ExchangeError, SwatPlusBmi
 from test_allocation import DMD, osu_with_allocation
 
-
-def fresh(dest):
-    d = RUNS / dest
-    if d.exists():
-        shutil.rmtree(d)
-    return d
 
 
 def stock_daily():
@@ -136,15 +129,15 @@ def test_save_load_continue_is_stock_ames():
     """Ames_sub1 prints the soil carbon layer files, whose header flag is a saved
     local that carries state (patches/<tag>/carried-locals.toml)."""
     need(STOCK, EXCHANGE)
-    stock = project("Ames_sub1", "Ames_sub1-st-stock")
+    stock = project("Ames_sub1", "Ames_sub1-st-stock", edit=ames_light)
     run_stock(stock)
     m = SwatPlusBmi()
-    m.initialize(str(project("Ames_sub1", "Ames_sub1-st-saved")))
+    m.initialize(str(project("Ames_sub1", "Ames_sub1-st-saved", edit=ames_light)))
     m.update_until(3000)
     snap = m.save_state(fresh("Ames_sub1-st-snapshot"))
     m.finalize()
     n = SwatPlusBmi()
-    n.initialize(str(project("Ames_sub1", "Ames_sub1-st-loaded")))
+    n.initialize(str(project("Ames_sub1", "Ames_sub1-st-loaded", edit=ames_light)))
     n.load_state(snap)
     n.update_until(n.get_end_time())
     n.finalize()

@@ -11,7 +11,7 @@ import shutil
 import numpy as np
 import pytest
 
-from conftest import EXCHANGE, STOCK, differences, need, output_count, project, run_stock
+from conftest import EXCHANGE, STOCK, ames_light, differences, need, output_count, project, run_stock
 from swatplus_bmi import SwatPlusBmi
 
 CASES = [("Osu_1hru", False), ("Osu_1hru", True)]
@@ -144,19 +144,21 @@ def test_comparison_catches_a_one_byte_change(tmp_path):
 def test_ames_stepped_is_stock(years):
     """Ames_sub1 (12 HRUs, 1975-2020): stepped one day at a time, every file matches stock.
 
-    The full-length run keeps the project's own printing; the five-year run
-    prints everything daily. Opt in with ``pytest -m full``.
+    The full-length run keeps the project's own printing, less its daily per-layer
+    soil carbon diagnostics (about 8.5 GB a run); the five-year run prints everything
+    daily. Opt in with ``pytest -m full``.
     """
     need(STOCK, EXCHANGE)
     daily = years is not None
     tag = "daily-5yr" if daily else "full"
-    stock = project("Ames_sub1", f"Ames_sub1-{tag}-stock", daily=daily, years=years)
+    edit = None if daily else ames_light
+    stock = project("Ames_sub1", f"Ames_sub1-{tag}-stock", daily=daily, years=years, edit=edit)
     run_stock(stock)
-    off = project("Ames_sub1", f"Ames_sub1-{tag}-off", daily=daily, years=years)
+    off = project("Ames_sub1", f"Ames_sub1-{tag}-off", daily=daily, years=years, edit=edit)
     run_stock(off, EXCHANGE)
     assert differences(stock, off) == []
 
-    stepped = project("Ames_sub1", f"Ames_sub1-{tag}-stepped", daily=daily, years=years)
+    stepped = project("Ames_sub1", f"Ames_sub1-{tag}-stepped", daily=daily, years=years, edit=edit)
     m = SwatPlusBmi()
     m.initialize(str(stepped))
     while m.get_current_time() < m.get_end_time():
