@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "swatplus-bmi"
-version = "0.1.1"
+version = "0.2.0"
 description = "SWAT+ through the Basic Model Interface (BMI 2.0), stepped one day at a time"
 readme = "README.md"
 requires-python = ">=3.11"

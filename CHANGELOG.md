@@ -3,6 +3,18 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
+## 0.2.0 (2026-11-05)
+
+For coupling a groundwater model (Basin Ledger's SWAT+–MODFLOW 6 link).
+
+- `channel_water__depth` (m): each channel's water depth on SWAT+'s own rating curve at the
+  day's mean outflow, for a river stage.
+- `channel_water__groundwater_volume_exchange_rate` (m3/s, settable, positive into the
+  channel): gains join the channel's inflow, losses come out of the day's outflow (no more than
+  is there) and count as seepage, so SWAT+'s channel balance still closes. Reading it gives what
+  was exchanged.
+- One more call in the patch, in `sd_channel_control3.f90`, for the loss.
+
 ## 0.1.1 (2026-11-04)
 
 - `swatplus_bmi.project.set_print` turns SWAT+'s output on by object name. Unless print.prt's
