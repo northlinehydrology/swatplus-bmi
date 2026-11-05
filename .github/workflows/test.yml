@@ -5,6 +5,9 @@
 # canary: SWAT+ main with the newest supported patch, nightly and on demand,
 #   as an early warning that the next SWAT+ release may need a new patch.
 #   Main is not supported; a failure here doesn't fail the run.
+# latest: the supported SWAT+ release against the newest release of every Python
+#   dependency, on the oldest and newest supported Python, nightly and on demand,
+#   so an upstream release that breaks the package shows up before users hit it.
 
 name: test
 
@@ -55,5 +58,26 @@ jobs:
       - run: |
           git -C build/main/swatplus log -1 --format="SWAT+ main at %h (%cd)" --date=short
       - run: uv run pytest -q
+      - if: failure()
+        run: tail -50 build/*/*.log || true
+
+  latest:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+        python: ["3.11", "3.14"]
+    runs-on: ${{ matrix.os }}
+    name: Newest dependencies, Python ${{ matrix.python }} on ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: The newest release of every dependency, not uv.lock's
+        run: |
+          uv sync --upgrade --python "${{ matrix.python }}"
+          uv pip list
+      - run: uv run --no-sync ./build.sh --stock --nosave --jobs 4 --tag 62.0.1
+      - run: uv run --no-sync pytest -q
       - if: failure()
         run: tail -50 build/*/*.log || true
