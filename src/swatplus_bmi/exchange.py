@@ -22,7 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
-PROTOCOL = 1
+PROTOCOL = 2
 
 
 class ExchangeError(RuntimeError):
@@ -188,12 +188,11 @@ class Exchange:
         n, vals = int(rest[0]), rest[1:]
         if len(vals) != n:
             raise ExchangeError(f"{name}: expected {n} values, got {len(vals)}")
-        return np.array(vals, dtype=np.float32)
+        return np.array(vals, dtype=np.float64)
 
     def set(self, name: str, index: int, value: float) -> None:
         """Set one value (0-based index) for the next day only."""
-        v = np.float32(value)
-        self._send(f"set {name} {int(index) + 1} {np.format_float_scientific(v, unique=True)}")
+        self._send(f"set {name} {int(index) + 1} {float(value)!r}")
         self._expect("@ok")
 
     def branch(self, run_dir: str | os.PathLike) -> "Exchange":

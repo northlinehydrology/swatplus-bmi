@@ -9,8 +9,10 @@ have no location; their coordinates are NaN). ``get_grid_object_names`` gives th
 object names for a grid.
 
 Only fluxes can be set. A value set between updates applies to the next day
-only; after that day SWAT+ goes back to its own inputs. ``get_value_ptr`` is
-declined: the values live in the SWAT+ process, not in this one.
+only; after that day SWAT+ goes back to its own inputs. Values are 8-byte reals
+(``float64``), so a value read and set back is SWAT+'s own to the bit, though
+SWAT+ keeps them in 4-byte reals. ``get_value_ptr`` is declined: the values
+live in the SWAT+ process, not in this one.
 """
 
 from __future__ import annotations
@@ -241,17 +243,17 @@ class SwatPlusBmi(Bmi):
 
     def get_var_type(self, name: str) -> str:
         self._var(name)
-        return "float32"
+        return "float64"
 
     def get_var_units(self, name: str) -> str:
         return self._var(name).units
 
     def get_var_itemsize(self, name: str) -> int:
         self._var(name)
-        return 4
+        return 8
 
     def get_var_nbytes(self, name: str) -> int:
-        return 4 * self.get_grid_size(self.get_var_grid(name))
+        return 8 * self.get_grid_size(self.get_var_grid(name))
 
     def get_var_location(self, name: str) -> str:
         self._var(name)
@@ -306,7 +308,7 @@ class SwatPlusBmi(Bmi):
                 "close (see channel_water__volume_inflow_rate). For withdrawals limited to "
                 "the water available, set place_of_use_water__volume_demand_rate instead.",
                 UserWarning, stacklevel=2)
-        for i, v in zip(np.asarray(inds).ravel(), np.asarray(src, dtype=np.float32).ravel()):
+        for i, v in zip(np.asarray(inds).ravel(), np.asarray(src, dtype=np.float64).ravel()):
             self._x.set(name, int(i), float(v))
 
     # -- grids ----------------------------------------------------------

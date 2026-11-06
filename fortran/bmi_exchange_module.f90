@@ -17,7 +17,9 @@
 !!    The protocol is described in docs/design.md of swatplus-bmi.
 !!
 !!    Only fluxes can be set. A value set while paused applies to the next
-!!    day only; after that day SWAT+ goes back to its own inputs.
+!!    day only; after that day SWAT+ goes back to its own inputs. Values go
+!!    out and come in as 8-byte reals, so a value read and set back is
+!!    SWAT+'s own value to the bit.
 
       use iso_fortran_env, only : input_unit
       use, intrinsic :: iso_c_binding, only : c_int, c_char, c_null_char
@@ -35,7 +37,7 @@
       integer :: days_total = 0           !! days in the simulation
       integer :: run_left = 0             !! days to run before the next pause
       logical :: run_free = .false.       !! run to the end without pausing
-      integer :: protocol = 1             !! protocol version
+      integer :: protocol = 2             !! protocol version
       integer, parameter :: unit_max = 1000000   !! highest unit number branch looks at
       character(len=80) :: paused_line = ""      !! the last @paused reply
       character(len=16), parameter :: state_magic = "SWXSTATE-1"
@@ -401,7 +403,7 @@
       integer :: ios = 0
       integer :: n = 0
       integer :: i = 0
-      real :: v = 0.
+      real(8) :: v = 0.d0
 
       do
         read (cmd_unit, '(a)', iostat=ios) line
@@ -797,21 +799,21 @@
       use maximum_data_module, only : db_mx
 
       character(len=*), intent(in) :: name
-      real, dimension(:), allocatable :: val
+      real(8), dimension(:), allocatable :: val
       integer :: i = 0
       integer :: iob = 0
 
       select case (name)
 
       case ("channel_water__volume_outflow_rate")
-        allocate (val(sp_ob%chandeg), source = 0.)
+        allocate (val(sp_ob%chandeg), source = 0.d0)
         do i = 1, sp_ob%chandeg
           iob = sp_ob1%chandeg + i - 1
           val(i) = ch_out_d(ob(iob)%num)%flo              !m3/s
         end do
 
       case ("channel_water__volume")
-        allocate (val(sp_ob%chandeg), source = 0.)
+        allocate (val(sp_ob%chandeg), source = 0.d0)
         do i = 1, sp_ob%chandeg
           iob = sp_ob1%chandeg + i - 1
           val(i) = ch_stor(ob(iob)%num)%flo               !m3
@@ -820,7 +822,7 @@
       case ("channel_water__volume_inflow_rate")
         !! net inflow; negative when a point source diversion is larger than
         !! the other inflow, and SWAT+ then routes nothing
-        allocate (val(sp_ob%chandeg), source = 0.)
+        allocate (val(sp_ob%chandeg), source = 0.d0)
         do i = 1, sp_ob%chandeg
           iob = sp_ob1%chandeg + i - 1
           val(i) = ch_in_d(ob(iob)%num)%flo               !m3/s
@@ -828,7 +830,7 @@
 
       case ("channel_water__depth")
         !! depth on SWAT+'s own rating curve at the day's mean outflow
-        allocate (val(sp_ob%chandeg), source = 0.)
+        allocate (val(sp_ob%chandeg), source = 0.d0)
         do i = 1, sp_ob%chandeg
           iob = sp_ob1%chandeg + i - 1
           val(i) = rating_depth (ob(iob)%num, ch_out_d(ob(iob)%num)%flo)
@@ -836,56 +838,56 @@
 
       case ("channel_water__groundwater_volume_exchange_rate")
         !! what was exchanged on the day just done, positive into the channel
-        allocate (val(sp_ob%chandeg), source = 0.)
+        allocate (val(sp_ob%chandeg), source = 0.d0)
         do i = 1, sp_ob%chandeg
-          val(i) = chx_day(i) / 86400.                    !m3 -> m3/s
+          val(i) = chx_day(i) / 86400.d0                  !m3 -> m3/s
         end do
 
       case ("aquifer_water__volume")
-        allocate (val(sp_ob%aqu), source = 0.)
+        allocate (val(sp_ob%aqu), source = 0.d0)
         do i = 1, sp_ob%aqu
           iob = sp_ob1%aqu + i - 1
-          val(i) = 10. * aqu_d(ob(iob)%num)%stor * ob(iob)%area_ha     !mm -> m3
+          val(i) = 10.d0 * aqu_d(ob(iob)%num)%stor * ob(iob)%area_ha   !mm -> m3
         end do
 
       case ("soil_water_table_surface__depth")
-        allocate (val(sp_ob%aqu), source = 0.)
+        allocate (val(sp_ob%aqu), source = 0.d0)
         do i = 1, sp_ob%aqu
           iob = sp_ob1%aqu + i - 1
           val(i) = aqu_d(ob(iob)%num)%dep_wt               !m
         end do
 
       case ("aquifer_water__volume_outflow_rate")
-        allocate (val(sp_ob%aqu), source = 0.)
+        allocate (val(sp_ob%aqu), source = 0.d0)
         do i = 1, sp_ob%aqu
           iob = sp_ob1%aqu + i - 1
-          val(i) = ob(iob)%hd(1)%flo / 86400.              !m3 -> m3/s
+          val(i) = ob(iob)%hd(1)%flo / 86400.d0            !m3 -> m3/s
         end do
 
       case ("soil_water_table__recharge_rate")
-        allocate (val(sp_ob%aqu), source = 0.)
+        allocate (val(sp_ob%aqu), source = 0.d0)
         do i = 1, sp_ob%aqu
           iob = sp_ob1%aqu + i - 1
-          val(i) = aqu_d(ob(iob)%num)%rchrg / 86400000.     !mm/day -> m/s
+          val(i) = aqu_d(ob(iob)%num)%rchrg / 86400000.d0   !mm/day -> m/s
         end do
 
       case ("point_source_water__volume_flow_rate")
-        allocate (val(sp_ob%recall), source = 0.)
+        allocate (val(sp_ob%recall), source = 0.d0)
         do i = 1, sp_ob%recall
           iob = sp_ob1%recall + i - 1
-          val(i) = ob(iob)%hd(1)%flo / 86400.              !m3 -> m3/s
+          val(i) = ob(iob)%hd(1)%flo / 86400.d0            !m3 -> m3/s
         end do
 
       case ("place_of_use_water__volume_demand_rate")
-        allocate (val(db_mx%wallo_pou), source = 0.)
+        allocate (val(db_mx%wallo_pou), source = 0.d0)
         do i = 1, db_mx%wallo_pou
-          val(i) = pou_dmd_day(i) / 86400.                 !m3 -> m3/s
+          val(i) = pou_dmd_day(i) / 86400.d0               !m3 -> m3/s
         end do
 
       case ("place_of_use_water__volume_withdrawal_rate")
-        allocate (val(db_mx%wallo_pou), source = 0.)
+        allocate (val(db_mx%wallo_pou), source = 0.d0)
         do i = 1, db_mx%wallo_pou
-          val(i) = pou_wdr_day(i) / 86400.                 !m3 -> m3/s
+          val(i) = pou_wdr_day(i) / 86400.d0               !m3 -> m3/s
         end do
 
       case default
@@ -906,7 +908,7 @@
 
       character(len=*), intent(in) :: name
       integer, intent(in) :: i
-      real, intent(in) :: v
+      real(8), intent(in) :: v                            !m3/s
 
       select case (name)
 
@@ -915,7 +917,7 @@
           call reply ("@error index out of range")
           return
         end if
-        rec_flo(i) = v * 86400.                           !m3/s -> m3/day
+        rec_flo(i) = real(v * 86400.d0)                   !m3/s -> m3/day
         rec_flo_on(i) = .true.
 
       case ("channel_water__groundwater_volume_exchange_rate")
@@ -923,7 +925,7 @@
           call reply ("@error index out of range")
           return
         end if
-        chx_flo(i) = v * 86400.                           !m3/s -> m3/day
+        chx_flo(i) = real(v * 86400.d0)                   !m3/s -> m3/day
         chx_on(i) = .true.
 
       case ("place_of_use_water__volume_demand_rate")
@@ -931,11 +933,11 @@
           call reply ("@error index out of range")
           return
         end if
-        if (v < 0.) then
+        if (v < 0.d0) then
           call reply ("@error a demand can't be negative")
           return
         end if
-        dmd_flo(i) = v * 86400.                           !m3/s -> m3/day
+        dmd_flo(i) = real(v * 86400.d0)                   !m3/s -> m3/day
         dmd_flo_on(i) = .true.
 
       case default
@@ -1022,15 +1024,15 @@
 !!    --------------------------------------------------------------------
       subroutine send_array (val)
 
-!!    one line: @value n v1 ... vn, nine significant digits so a 4-byte
-!!    real goes out and comes back unchanged
+!!    one line: @value n v1 ... vn, seventeen significant digits so an
+!!    8-byte real goes out and comes back unchanged
 
-      real, dimension(:), intent(in) :: val
+      real(8), dimension(:), intent(in) :: val
       integer :: i = 0
 
       write (rep_unit, '(a,i0)', advance="no") "@value ", size(val)
       do i = 1, size(val)
-        write (rep_unit, '(1x,es15.8e2)', advance="no") val(i)
+        write (rep_unit, '(1x,es24.16e3)', advance="no") val(i)
       end do
       write (rep_unit, '(a)') ""
       flush (rep_unit)
