@@ -4,7 +4,7 @@
    driven: stepped while every variable is read every day, run in uneven
    chunks, branched, or saved and loaded.
 2. A value set changes results only through that input: setting SWAT+'s own
-   value back gives stock output, to the byte.
+   value back (a flux or a state) gives stock output, to the byte.
 3. A set SWAT+ would not use as given, and a branch or a save the wrapper
    could not carry, is refused with an error, never accepted and dropped.
 
@@ -32,6 +32,7 @@ from test_setting import add_point_source
 
 PS = "point_source_water__volume_flow_rate"
 GW = "channel_water__groundwater_volume_exchange_rate"
+TS = "soil_layer__temperature"
 
 
 def out_path(folder):
@@ -178,14 +179,16 @@ def set_every_day(run, name, days, exe=None):
         m = SwatPlusBmi()
         m.initialize(str(run))
         while m.get_current_time() < m.get_end_time():
-            m.set_value(name, days[int(m.get_current_time())])
+            v = days[int(m.get_current_time())]
+            m.set_value(name, np.broadcast_to(v, m.get_grid_size(m.get_var_grid(name))))
             m.update()
         m.finalize()
     finally:
         os.environ.pop("SWATPLUS_EXCHANGE", None)
 
 
-@pytest.mark.parametrize("name,var", [("osu-point-source", PS), ("osu-allocation", DMD)])
+@pytest.mark.parametrize("name,var", [("osu-point-source", PS), ("osu-allocation", DMD),
+                                      ("osu-daily", TS)])
 def test_setting_swats_own_value_back_is_stock(name, var):
     """Every day, set the value SWAT+ itself used that day (read in a first run).
     The values cross the protocol as 8-byte reals, so SWAT+ gets its own 4-byte
@@ -215,9 +218,9 @@ def test_every_set_stays_in_bounds():
     bounds checked: a write outside SWAT+'s arrays would stop it with an error."""
     need(CHECK, STOCK)
     for name, var, value in [("osu-point-source", PS, -0.0004), ("osu-allocation", DMD, 0.0002),
-                             ("osu-daily", GW, 0.0003)]:
-        run = copy_of(name, f"bounds-{name}")
-        set_every_day(run, var, [np.array([value])] * 6000, exe=CHECK)
+                             ("osu-daily", GW, 0.0003), ("osu-daily", TS, 0.5)]:
+        run = copy_of(name, f"bounds-{name}-{var[:4]}")
+        set_every_day(run, var, [value] * 6000, exe=CHECK)
         assert (run / "success.fin").exists() or (run / "out" / "success.fin").exists()
 
 
