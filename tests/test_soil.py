@@ -172,8 +172,9 @@ def test_nothing_set_is_still_stock_with_the_hook():
     assert differences(stock, run) == []
 
 
-def test_the_readme_rule_holds_frozen_layers_under_snow_at_zero():
-    """The README's example, run: each held layer ends its day at 0 °C exactly."""
+def test_the_readme_rule_keeps_frozen_layers_under_snow_just_above_zero():
+    """The README's example, run: each held layer ends its day at the value held, 0.1 °C as
+    SWAT+'s 4-byte real (SWAT+ counts 0 °C itself as frozen)."""
     need(EXCHANGE)
     m = started("soil-rule")
     g = m.get_var_grid(TS)
@@ -185,12 +186,12 @@ def test_the_readme_rule_holds_frozen_layers_under_snow_at_zero():
     while m.get_current_time() < m.get_end_time():
         m.get_value(TS, t)
         m.get_value(SNOW, snow)
-        hold = np.flatnonzero((snow[layer_hru] > 0.005) & (t < 0.0))
+        hold = np.flatnonzero((snow[layer_hru] > 0.010) & (t <= 0.0))
         if len(hold):
-            m.set_value_at_indices(TS, hold, np.zeros(len(hold)))
+            m.set_value_at_indices(TS, hold, np.full(len(hold), 0.1))
         m.update()
         if len(hold):
             held_days += 1
-            assert (values(m, TS)[hold] == 0.0).all()
+            assert (values(m, TS)[hold] == np.float32(0.1)).all()
     m.finalize()
     assert held_days > 5

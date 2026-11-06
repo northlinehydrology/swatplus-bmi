@@ -243,7 +243,9 @@ of each HRU's day in `hru_control.f90`. Snowmelt, the frozen-soil curve
 number (`sq_dailycn`) and percolation (`swr_percmicro`, which stops at or
 below 0 °C) come after. The hook, `exch_hru_soil`, is the line after
 `stmp_solt`. Uses: a soil temperature from another model, or a rule in the
-caller, such as holding a layer at 0 °C under lasting snow. SWAT+ 62.0.1
+caller, such as keeping a layer just above 0 °C under lasting snow (just
+above: SWAT+ tests `tmp <= 0.`, so a layer held at exactly 0 °C still
+counts as frozen). SWAT+ 62.0.1
 lets half the snow's insulation through (`stmp_solt.f90`), so soils under
 snow can sit at −5 to −8 °C and stop percolating all winter.
 

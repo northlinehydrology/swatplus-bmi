@@ -399,8 +399,8 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
 
 Soil layer temperature is the first state that can be set. SWAT+ computes it at the start of each
 HRU's day. The value set replaces SWAT+'s right after that, before snowmelt, runoff and
-percolation use it, and SWAT+ carries it into the next day as its own. For example, to hold
-soil layers at 0 °C or above under lasting snow, which SWAT+ 62.0.1 lets freeze hard:
+percolation use it, and SWAT+ carries it into the next day as its own. For example, to keep
+soil layers from freezing under lasting snow, which SWAT+ 62.0.1 lets freeze hard:
 
 ```python
 TS, SNOW = "soil_layer__temperature", "snowpack__liquid-equivalent_depth"
@@ -412,14 +412,20 @@ t, snow = np.empty(m.get_grid_size(g)), np.empty(len(hru_index))
 while m.get_current_time() < m.get_end_time():
     m.get_value(TS, t)                       # yesterday's, at the end of the day
     m.get_value(SNOW, snow)
-    hold = np.flatnonzero((snow[layer_hru] > 0.05) & (t < 0.0))   # frozen under > 5 cm of snow
+    hold = np.flatnonzero((snow[layer_hru] > 0.010) & (t <= 0.0))  # frozen under > 10 mm of SWE
     if len(hold):
-        m.set_value_at_indices(TS, hold, np.zeros(len(hold)))     # only those layers
+        m.set_value_at_indices(TS, hold, np.full(len(hold), 0.1))  # only those layers, just above 0
     m.update()
 ```
 
-Set only the layers the rule holds: setting the others to yesterday's values would replace the
-temperatures SWAT+ computes for today. The rule decides from yesterday's temperatures and snow. Setting a state
+Hold above 0 °C, not at it: SWAT+ treats a layer at 0 °C as frozen (`tmp <= 0.` in
+`swr_percmicro.f90` and `sq_dailycn.f90`), so a layer held at exactly 0 still doesn't percolate.
+The snowpack is in metres of water, so 0.010 is 10 mm of snow-water equivalent, roughly 5–10 cm
+of snow. Set only the layers the rule holds: setting the others to yesterday's values would
+replace the temperatures SWAT+ computes for today. The rule decides from yesterday's temperatures
+and snow. At the Clam River (11,383 layers, 2001–2005) this rule raised the basin's
+January–March soil temperature from about −7 °C to about −1 °C, and percolation from 109 to
+122 mm a year. Setting a state
 overrides SWAT+'s own model of it, and SWAT+'s soil temperature is an empirical lag, not an
 energy balance, so no heat is accounted for: a study that sets it states the rule and why.
 

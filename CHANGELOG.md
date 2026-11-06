@@ -18,6 +18,10 @@ first is in `hru_control.f90`, after `stmp_solt`. With nothing set, output is st
 - Bulk sets, protocol 3: `setv` sets every object on a grid in one command and `seti` the objects
   given, all or nothing. `set_value` and `set_value_at_indices` use them, so a set of 12,000 soil
   layers is one exchange, not 12,000.
+- The README's example keeps frozen layers under more than 10 mm of snow-water equivalent at
+  0.1 °C (SWAT+ counts 0 °C as frozen). Tried at the Clam River, Michigan (11,383 layers): basin
+  January–March soil temperature went from about −7 °C to about −1 °C, and percolation from 109
+  to 122 mm a year.
 - docs/design.md, Setting states: what a set state means (it overrides SWAT+'s own model; SWAT+'s
   soil temperature isn't an energy balance), and what adding another state takes.
 - Saved states have a new format (`SWXSTATE-3`), with set soil temperatures pending for the next
