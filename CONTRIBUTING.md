@@ -24,8 +24,13 @@ from that.
 1. **Identical output.** The comparison tests against unpatched SWAT+ must pass. If a change
    can't keep SWAT+'s output identical, it doesn't go in.
 2. **A test for every variable.** A new variable is checked against SWAT+'s own output files,
-   every day, in `tests/test_reading.py` or `tests/test_setting.py`.
-3. **Only fluxes can be set.** Storage, land use, soils and parameters stay scenario inputs.
+   every day (`tests/test_reading.py`, `test_setting.py`, `test_groundwater.py`, `test_soil.py`).
+   A settable one also passes the checks in `tests/test_faithful.py`: setting SWAT+'s own value
+   back every day gives stock output, and its sets run in bounds on the `--check` build.
+3. **Fluxes, and states only through a hook.** A flux goes in where SWAT+ takes it. A state is
+   set by a hook right after SWAT+ computes it and before anything uses it (docs/design.md,
+   Setting states). Storage, land use, soils and parameters stay scenario inputs. Nothing in
+   the patch changes what SWAT+ computes; a set value is the caller's, and documented as such.
 4. **The patch stays small.** Changes to SWAT+'s own files go in `patches/<tag>/`, and as few as
    possible. Everything else goes in new files in `fortran/`.
 5. **Generated code is generated.** Don't edit `bmi_state_module.f90` or `bmi_locals_module.f90`;

@@ -5,8 +5,8 @@ Nov 4, 2026. SWAT+ 62.0.1.
 ## Goal
 
 Run SWAT+ one day at a time under outside control: a caller runs a day,
-reads state, sets fluxes for the next day, and so on, with output identical
-to stock SWAT+. This allows same-day feedback (curtail a withdrawal when
+reads state, sets fluxes (and a few states) for the next day, and so on,
+with output identical to stock SWAT+ when nothing is set. This allows same-day feedback (curtail a withdrawal when
 yesterday's flow was low, pass-by flows, drawdown limits) and coupling
 through BMI 2.0 (CSDMS) to other models, NextGen and eWaterCycle.
 
@@ -17,14 +17,16 @@ Decisions behind the design:
   model's results feeding SWAT+) is better served by writing SWAT+ input
   files directly.
 - **Daily steps.** SWAT+'s sub-daily options aren't exposed.
-- **Fluxes only.** Point source flow and water allocation demand can be set.
-  Storage, land use, soils and parameters can't; they are scenario inputs.
+- **Fluxes, and states through hooks.** Point source flow, water
+  allocation demand and a channel's groundwater exchange can be set, and
+  soil layer temperature as the first state (Setting states). Storage, land
+  use, soils and parameters can't; they are scenario inputs.
 - **Snapshots.** A warm-up is run once and every scenario starts from it.
 
 ## Pieces
 
 ```
-SWAT+ 62.0.1 (tag)  + patches/62.0.1/*.patch     four edited files, 20 lines
+SWAT+ 62.0.1 (tag)  + patches/62.0.1/*.patch     five edited files and CMakeLists.txt, 18 lines
                     + fortran/bmi_exchange_module.f90   the exchange mode
                     + fortran/bmi_fork.c                fork for branching (Mac, Linux)
                     + bmi_state_module.f90              state serializer, generated per release

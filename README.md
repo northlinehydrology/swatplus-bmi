@@ -10,7 +10,8 @@ through the Basic Model Interface ([BMI 2.0](https://bmi.readthedocs.io), CSDMS)
 A small patch adds an exchange mode to SWAT+, off by default. In exchange mode SWAT+ pauses
 before each day. While it's paused, a caller reads state (channel flow, aquifer storage, depth
 to water, recharge, snowpack) and sets values for the next day: fluxes (a point source's flow,
-a water user's demand) and, as a first state, soil layer temperature. A Python BMI wrapper drives it. **With nothing set, SWAT+'s output is byte-for-byte
+a water user's demand) and, as a first state, soil layer temperature. A Python BMI wrapper
+drives it. **With nothing set, SWAT+'s output is byte-for-byte
 identical to an unpatched run, every output file, start to finish, however the run is stepped,
 read, branched or saved; a value set changes the run only through that input; and anything
 SWAT+ wouldn't use as given is refused rather than dropped.** The tests check each of those
@@ -62,12 +63,12 @@ flowchart LR
 ```
 
 - **SWAT+'s side.** The patch adds eight calls to five SWAT+ files (`time_control.f90`,
-  `main.f90.in`, `command.f90`, `sd_channel_control3.f90`, `hru_control.f90`). Each returns at once unless SWAT+ was started with
-  `--exchange`. With the mode on, SWAT+ stops before each day's water allocation and routing,
+  `main.f90.in`, `command.f90`, `sd_channel_control3.f90`, `hru_control.f90`). Each returns at
+  once unless SWAT+ was started with `--exchange`. With the mode on, SWAT+ stops before each day's water allocation and routing,
   answers commands, and goes on when told to.
 - **The pause point.** Values read at a pause are those at the end of the previous day. Values
-  set apply to the coming day only, put in place after SWAT+ sets its own demands for the day,
-  so they aren't overwritten.
+  set apply to the coming day only. A flux is put in place after SWAT+ sets its own demands for
+  the day, so it isn't overwritten; a state, right after SWAT+ computes it that day.
 - **The connection.** The two sides talk in text lines over SWAT+'s standard input and output:
   nothing linked, no sockets, nothing platform-specific for stepping. Any language that can
   write and read lines could drive SWAT+ the same way.
@@ -145,14 +146,17 @@ For development and the tests, with [uv](https://docs.astral.sh/uv/):
 ```bash
 git clone https://github.com/northlinehydrology/swatplus-bmi && cd swatplus-bmi
 uv sync
-uv run ./build.sh --stock --nosave     # into bin/; the tests need all three builds
+uv run ./build.sh --stock --nosave --check   # into bin/; the tests need all four builds
 uv run pytest                          # the main suite (about two minutes on one core)
 uv run pytest -m full                  # also Ames_sub1, 46 years (about 15 minutes)
 uv run --group examples marimo edit examples/tour.py   # the notebook
 ```
 
 `--stock` builds the unpatched release, which the tests compare against. `--nosave` builds a
-variant used to check which saved locals carry state (see [Saving state](#saving-state)). The
+variant used to check which saved locals carry state (see [Saving state](#saving-state)).
+`--check` builds the exchange mode with array bounds checked, for the tests that set values.
+After changing anything in `fortran/`, `patches/` or `build.sh`, build again: the wrapper refuses
+an executable built from other sources. The
 wrapper finds the executable in `bin/` in a source checkout, in `$SWATPLUS_EXCHANGE`, in the
 folder `swatplus-bmi build` writes to, or wherever the config file says.
 
@@ -423,7 +427,11 @@ Hold above 0 °C, not at it: SWAT+ treats a layer at 0 °C as frozen (`tmp <= 0.
 The snowpack is in metres of water, so 0.010 is 10 mm of snow-water equivalent, roughly 5–10 cm
 of snow. Set only the layers the rule holds: setting the others to yesterday's values would
 replace the temperatures SWAT+ computes for today. The rule decides from yesterday's temperatures
-and snow. At the Clam River (11,383 layers, 2001–2005) this rule raised the basin's
+and snow.
+
+This is a workaround a study chooses and applies through the BMI, not a change to SWAT+: with
+nothing set, SWAT+ computes soil temperature exactly as it always does, and SWAT+'s halving of
+the snow's insulation (`stmp_solt.f90`) stays as it is, documented for an upstream report. At the Clam River (11,383 layers, 2001–2005) this rule raised the basin's
 January–March soil temperature from about −7 °C to about −1 °C, and percolation from 109 to
 122 mm a year. Setting a state
 overrides SWAT+'s own model of it, and SWAT+'s soil temperature is an empirical lag, not an
@@ -475,7 +483,8 @@ folders once it passes (set `SWATPLUS_BMI_KEEP_RUNS=1` to keep them).
 | Stepping changes nothing | the same, stepped one day at a time and in chunks, 14 and 46 years |
 | Values read are SWAT+'s | every variable, every day, against SWAT+'s daily output files |
 | Set values take effect exactly | a set withdrawal leaves the channel short by exactly that water; balances close |
-| Setting SWAT+'s own value back | point source flow and demand set every day to SWAT+'s own: stock output, byte for byte |
+| Setting SWAT+'s own value back | point source flow, demand and soil layer temperature set every day to SWAT+'s own: stock output, byte for byte |
+| A set state | a soil temperature set for a day holds that day, then carries on as SWAT+'s own; bulk and single sets give the same run |
 | Sets stay in bounds | every kind of set, run on a build with array bounds checked |
 | Refusals | every set or snapshot the wrapper can't carry out faithfully raises an error |
 | The build | every SWAT+ file the patch doesn't touch compiles to the same object as in the stock build |
