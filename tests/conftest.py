@@ -2,7 +2,9 @@
 
 The test projects are the examples that ship with SWAT+ (``refdata/`` in the
 SWAT+ repository at the tag being built). ``build.sh --stock`` builds the
-stock executable the comparisons need.
+stock executable the comparisons need. A missing executable or project skips
+a test on a workstation and fails it in CI (where $CI is set), so a CI run
+can't pass by testing nothing.
 """
 
 from __future__ import annotations
@@ -20,10 +22,15 @@ TAG = os.environ.get("SWATPLUS_TAG", "62.0.1")
 BIN = ROOT / "bin"
 STOCK = BIN / f"swatplus-{TAG}-stock"
 EXCHANGE = BIN / f"swatplus-{TAG}-exchange"
+CHECK = BIN / f"swatplus-{TAG}-check"          # exchange with array bounds checked
+IN_CI = bool(os.environ.get("CI"))
 RUNS = ROOT / "tests" / "runs"
 
 # files that exist only in exchange runs, or hold the console
 NOT_OUTPUT = {"exchange.log", "exchange.err", "console.txt"}
+
+# what exchange.log says when a branch or a load couldn't carry an open file
+NOT_CARRIED = (b"partway through", b"could not be opened again")
 
 # clock readings SWAT+ writes to simulation.out: wall time, run date, build time
 CLOCK = [re.compile(rb"\d{1,2}:\s?\d{1,2}:\s?\d{1,2}"),
@@ -36,13 +43,21 @@ def refdata() -> Path:
                  ROOT / ".cache" / f"swatplus-{TAG}"):
         if cand and (Path(cand) / "refdata").is_dir():
             return Path(cand) / "refdata"
-    pytest.skip("no SWAT+ checkout with refdata/: run ./build.sh first")
+    missing("no SWAT+ checkout with refdata/: run ./build.sh first")
+
+
+def missing(why: str) -> None:
+    """Skip on a workstation, fail in CI."""
+    if IN_CI:
+        pytest.fail(why)
+    pytest.skip(why)
 
 
 def need(*exes: Path) -> None:
     for exe in exes:
         if not exe.exists():
-            pytest.skip(f"{exe.name} not built: run ./build.sh --stock")
+            flag = {CHECK: " --check"}.get(exe, " --stock")
+            missing(f"{exe.name} not built: run ./build.sh{flag}")
 
 
 # Run folders made during a test, removed once it passes (kept when it fails, or with
@@ -153,11 +168,16 @@ def differences(a: Path, b: Path) -> list[str]:
     """Every way the outputs in two run folders differ; empty means identical.
 
     All files are compared byte for byte, inputs included; the only thing
-    left out is the clock readings in simulation.out.
+    left out is the clock readings in simulation.out. An exchange.log that
+    says a branch or a load left a file behind counts as a difference too.
     """
     fa = {p.relative_to(a) for p in a.rglob("*") if p.is_file() and p.name not in NOT_OUTPUT}
     fb = {p.relative_to(b) for p in b.rglob("*") if p.is_file() and p.name not in NOT_OUTPUT}
-    diffs = [f"only in {a.name}: {p}" for p in sorted(fa - fb)]
+    diffs = [f"{d.name}/exchange.log: {line.decode(errors='replace').strip()}"
+             for d in (a, b) if (d / "exchange.log").exists()
+             for line in (d / "exchange.log").read_bytes().splitlines()
+             if any(w in line for w in NOT_CARRIED)]
+    diffs += [f"only in {a.name}: {p}" for p in sorted(fa - fb)]
     diffs += [f"only in {b.name}: {p}" for p in sorted(fb - fa)]
     for p in sorted(fa & fb):
         if masked(a / p) != masked(b / p):
