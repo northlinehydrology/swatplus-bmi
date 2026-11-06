@@ -191,8 +191,12 @@ class Exchange:
         return np.array(vals, dtype=np.float64)
 
     def set(self, name: str, index: int, value: float) -> None:
-        """Set one value (0-based index) for the next day only."""
-        self._send(f"set {name} {int(index) + 1} {float(value)!r}")
+        """Set one value (0-based index) for the next day only. SWAT+ refuses, with an
+        ExchangeError, a value it would not use as given."""
+        v = float(value)
+        if not np.isfinite(v):
+            raise ExchangeError(f"{name}: a value must be a finite number, not {v}")
+        self._send(f"set {name} {int(index) + 1} {v!r}")
         self._expect("@ok")
 
     def branch(self, run_dir: str | os.PathLike) -> "Exchange":

@@ -9,7 +9,9 @@ have no location; their coordinates are NaN). ``get_grid_object_names`` gives th
 object names for a grid.
 
 Only fluxes can be set. A value set between updates applies to the next day
-only; after that day SWAT+ goes back to its own inputs. Values are 8-byte reals
+only; after that day SWAT+ goes back to its own inputs. A set SWAT+ would not
+use as given (a point source that isn't daily, a value that isn't a number) is
+refused with an error rather than dropped. Values are 8-byte reals
 (``float64``), so a value read and set back is SWAT+'s own to the bit, though
 SWAT+ keeps them in 4-byte reals. ``get_value_ptr`` is declined: the values
 live in the SWAT+ process, not in this one.
@@ -298,7 +300,16 @@ class SwatPlusBmi(Bmi):
     def set_value_at_indices(self, name: str, inds: np.ndarray, src: np.ndarray) -> None:
         if self._var(name).role != "in":
             raise ValueError(f"{name} can't be set: only fluxes SWAT+ takes as inputs can")
-        if (name == "point_source_water__volume_flow_rate" and np.any(np.asarray(src) < 0)
+        inds = np.asarray(inds).ravel()
+        src = np.asarray(src, dtype=np.float64).ravel()
+        if len(inds) != len(src):
+            raise ValueError(f"{name}: {len(inds)} indices and {len(src)} values")
+        n = self.get_grid_size(self.get_var_grid(name))
+        if len(inds) and (inds.min() < 0 or inds.max() >= n):
+            raise IndexError(f"{name}: indices must be 0 to {n - 1}")
+        if not np.isfinite(src).all():
+            raise ValueError(f"{name}: values must be finite numbers")
+        if (name == "point_source_water__volume_flow_rate" and np.any(src < 0)
                 and not self._warned_diversion):
             self._warned_diversion = True
             warnings.warn(
@@ -308,7 +319,7 @@ class SwatPlusBmi(Bmi):
                 "close (see channel_water__volume_inflow_rate). For withdrawals limited to "
                 "the water available, set place_of_use_water__volume_demand_rate instead.",
                 UserWarning, stacklevel=2)
-        for i, v in zip(np.asarray(inds).ravel(), np.asarray(src, dtype=np.float64).ravel()):
+        for i, v in zip(inds, src):
             self._x.set(name, int(i), float(v))
 
     # -- grids ----------------------------------------------------------

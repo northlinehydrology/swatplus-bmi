@@ -17,12 +17,14 @@
 !!    The protocol is described in docs/design.md of swatplus-bmi.
 !!
 !!    Only fluxes can be set. A value set while paused applies to the next
-!!    day only; after that day SWAT+ goes back to its own inputs. Values go
-!!    out and come in as 8-byte reals, so a value read and set back is
-!!    SWAT+'s own value to the bit.
+!!    day only; after that day SWAT+ goes back to its own inputs. A set that
+!!    SWAT+ would not use as given is refused with @error, never accepted
+!!    and dropped. Values go out and come in as 8-byte reals, so a value
+!!    read and set back is SWAT+'s own value to the bit.
 
       use iso_fortran_env, only : input_unit
       use, intrinsic :: iso_c_binding, only : c_int, c_char, c_null_char
+      use, intrinsic :: ieee_arithmetic, only : ieee_is_finite
 
       implicit none
 
@@ -903,12 +905,28 @@
 !!    --------------------------------------------------------------------
       subroutine set_value (name, i, v)
 
-      use hydrograph_module, only : sp_ob
+!!    keeps a value for the next day, or refuses it when SWAT+ would not use
+!!    it as given: a point source that isn't daily or has no record in the
+!!    next day's year, a groundwater exchange with sub-daily routing, a value
+!!    that isn't a finite number
+
+      use time_module
+      use hydrograph_module, only : sp_ob, sp_ob1, ob, recall
       use maximum_data_module, only : db_mx
 
       character(len=*), intent(in) :: name
       integer, intent(in) :: i
       real(8), intent(in) :: v                            !m3/s
+      integer :: irec = 0
+
+      if (.not. ieee_is_finite(v)) then
+        call reply ("@error a value must be a finite number")
+        return
+      end if
+      if (abs(v) * 86400.d0 > huge(1.)) then
+        call reply ("@error the value is too large for SWAT+'s 4-byte reals")
+        return
+      end if
 
       select case (name)
 
@@ -917,12 +935,31 @@
           call reply ("@error index out of range")
           return
         end if
+        irec = ob(sp_ob1%recall + i - 1)%num
+        if (recall(irec)%typ /= 1) then
+          !! sub-daily, monthly, yearly and constant records are kept in other shapes
+          call reply ("@error point source " // trim(recall(irec)%name) // " is recall type " //  &
+                      itoa(recall(irec)%typ) // "; only daily point sources (type 1) can be set")
+          return
+        end if
+        if (time%yrc < recall(irec)%start_yr .or. time%yrc > recall(irec)%end_yr) then
+          !! SWAT+ gives a daily point source no flow outside its record
+          call reply ("@error point source " // trim(recall(irec)%name) // " has no record in " //   &
+                      itoa(time%yrc) // " (its file covers " // itoa(recall(irec)%start_yr) //    &
+                      "-" // itoa(recall(irec)%end_yr) // "), so SWAT+ would not use the value")
+          return
+        end if
         rec_flo(i) = real(v * 86400.d0)                   !m3/s -> m3/day
         rec_flo_on(i) = .true.
 
       case ("channel_water__groundwater_volume_exchange_rate")
         if (i < 1 .or. i > sp_ob%chandeg) then
           call reply ("@error index out of range")
+          return
+        end if
+        if (time%step > 1) then
+          call reply ("@error the groundwater exchange works with daily routing only; this "  //  &
+                      "project routes " // itoa(time%step) // " steps a day (time.sim)")
           return
         end if
         chx_flo(i) = real(v * 86400.d0)                   !m3/s -> m3/day
