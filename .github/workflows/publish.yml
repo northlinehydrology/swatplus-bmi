@@ -14,7 +14,7 @@ jobs:
       - uses: ./.github/actions/setup
       - name: The tag matches the package version
         run: test "${GITHUB_REF_NAME#v}" = "$(uv run python -c 'import swatplus_bmi; print(swatplus_bmi.__version__)')"
-      - run: uv run ./build.sh --stock --nosave --jobs 4
+      - run: uv run ./build.sh --stock --nosave --check --jobs 4
       - run: uv run pytest -q
       - run: |
           uv build
