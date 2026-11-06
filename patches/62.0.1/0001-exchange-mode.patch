@@ -35,6 +35,26 @@ index fc8e026..4b9dddc 100644
        !! print all output files
        if (time%yrs > pco%nyskip) then
        
+diff --git a/src/hru_control.f90 b/src/hru_control.f90
+index 8d202f9..0036b8a 100644
+--- a/src/hru_control.f90
++++ b/src/hru_control.f90
+@@ -28,6 +28,7 @@
+       use mgt_operations_module
+       use reservoir_module
+       use output_landscape_module
++      use bmi_exchange_module, only : exch_hru_soil
+       use output_ls_pesticide_module
+       use time_module
+       use conditional_module
+@@ -257,6 +258,7 @@
+         
+         !! calculate soil temperature for soil layers
+         call stmp_solt
++        call exch_hru_soil (j)   !! exchange mode: a set soil temperature replaces the day's here
+         
+         !!compute canopy interception
+         call sq_canopyint
 diff --git a/src/main.f90.in b/src/main.f90.in
 index 8fe25aa..196511e 100644
 --- a/src/main.f90.in

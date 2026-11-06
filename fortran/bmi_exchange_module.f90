@@ -16,8 +16,13 @@
 !!    SWAT+'s own console messages go to exchange.log in the run folder.
 !!    The protocol is described in docs/design.md of swatplus-bmi.
 !!
-!!    Only fluxes can be set. A value set while paused applies to the next
-!!    day only; after that day SWAT+ goes back to its own inputs. A set that
+!!    Fluxes and a few states can be set. A value set while paused applies
+!!    to the next day only; after that day SWAT+ goes back to its own inputs.
+!!    A flux is put in place at the start of the day (exch_apply) or where
+!!    SWAT+ uses it (exch_channel). A state is put in place by a hook right
+!!    after SWAT+ computes it and before anything uses it, replacing SWAT+'s
+!!    value for that day (exch_hru_soil: soil layer temperature, after
+!!    stmp_solt). A set that
 !!    SWAT+ would not use as given is refused with @error, never accepted
 !!    and dropped. Values go out and come in as 8-byte reals, so a value
 !!    read and set back is SWAT+'s own value to the bit.
@@ -30,7 +35,7 @@
 
       private
       public :: exch_on, exch_open, exch_start, exch_pause, exch_apply, exch_record, exch_end,     &
-                exch_channel
+                exch_channel, exch_hru_soil
 
       logical :: exch_on = .false.        !! exchange mode is on
       integer :: cmd_unit = input_unit    !! commands in
@@ -39,10 +44,10 @@
       integer :: days_total = 0           !! days in the simulation
       integer :: run_left = 0             !! days to run before the next pause
       logical :: run_free = .false.       !! run to the end without pausing
-      integer :: protocol = 2             !! protocol version
+      integer :: protocol = 3             !! protocol version
       integer, parameter :: unit_max = 1000000   !! highest unit number branch looks at
       character(len=80) :: paused_line = ""      !! the last @paused reply
-      character(len=16), parameter :: state_magic = "SWXSTATE-2"
+      character(len=16), parameter :: state_magic = "SWXSTATE-3"
 
       !! loading a saved state: run forward to the saved day, then load
       logical :: loading = .false.
@@ -76,11 +81,19 @@
       real, dimension(:), allocatable :: chx_day         !! what was exchanged, the day just done
       integer, dimension(:), allocatable :: cha_bmi      !! SWAT-deg channel number -> grid index
 
+      !! HRU soil layers: grid index -> HRU number and layer; HRU number -> its first layer
+      integer :: n_hly = 0
+      integer, dimension(:), allocatable :: hly_hru
+      integer, dimension(:), allocatable :: hly_lay
+      integer, dimension(:), allocatable :: hru_hly1
+      real, dimension(:), allocatable :: hly_tmp         !! deg C      |soil layer temperature set for the next day
+      logical, dimension(:), allocatable :: hly_on
+
       !! the day's values SWAT+ zeroes when it prints them, kept at the end of the day
       real, dimension(:), allocatable :: pou_dmd_day     !! m3/day     |place of use demand
       real, dimension(:), allocatable :: pou_wdr_day     !! m3/day     |place of use withdrawal
 
-      integer, parameter :: nvar = 12
+      integer, parameter :: nvar = 14
       character(len=48), dimension(nvar) :: var_name = [character(len=48) ::     &
             "channel_water__volume_outflow_rate",                           &
             "channel_water__volume",                                        &
@@ -93,16 +106,18 @@
             "place_of_use_water__volume_demand_rate",                       &
             "place_of_use_water__volume_withdrawal_rate",                  &
             "channel_water__depth",                                        &
-            "channel_water__groundwater_volume_exchange_rate"]
+            "channel_water__groundwater_volume_exchange_rate",             &
+            "soil_layer__temperature",                                     &
+            "snowpack__liquid-equivalent_depth"]
       character(len=8), dimension(nvar) :: var_grid = [character(len=8) ::      &
             "cha", "cha", "cha", "aqu", "aqu", "aqu", "aqu", "rec", "pou", "pou",    &
-            "cha", "cha"]
+            "cha", "cha", "hly", "hru"]
       character(len=8), dimension(nvar) :: var_units = [character(len=8) ::     &
             "m3 s-1", "m3", "m3 s-1", "m3", "m", "m3 s-1", "m s-1", "m3 s-1", "m3 s-1", "m3 s-1", &
-            "m", "m3 s-1"]
+            "m", "m3 s-1", "degC", "m"]
       character(len=3), dimension(nvar) :: var_role = [character(len=3) ::      &
             "out", "out", "out", "out", "out", "out", "out", "in", "in", "out",  &
-            "out", "in"]
+            "out", "in", "in", "out"]
 
       contains
 
@@ -147,6 +162,7 @@
       use basin_module, only : prog
       use maximum_data_module, only : db_mx
       use bmi_build_module, only : swx_build
+      use soil_module, only : soil
 
       integer :: iyr = 0
       integer :: yr = 0
@@ -154,6 +170,8 @@
       integer :: d0 = 0
       integer :: d1 = 0
       integer :: iv = 0
+      integer :: ihru = 0
+      integer :: ly = 0
 
       if (.not. exch_on) return
 
@@ -192,6 +210,27 @@
         cha_bmi(ob(sp_ob1%chandeg + iv - 1)%num) = iv
       end do
 
+      !! HRU soil layers, HRU by HRU in grid order
+      n_hly = 0
+      do iv = 1, sp_ob%hru
+        n_hly = n_hly + soil(ob(sp_ob1%hru + iv - 1)%num)%nly
+      end do
+      allocate (hly_hru(n_hly), source = 0)
+      allocate (hly_lay(n_hly), source = 0)
+      allocate (hru_hly1(0:max(1, maxval([0, (ob(sp_ob1%hru + iv - 1)%num, iv = 1, sp_ob%hru)]))), source = 0)
+      allocate (hly_tmp(n_hly), source = 0.)
+      allocate (hly_on(n_hly), source = .false.)
+      n_hly = 0
+      do iv = 1, sp_ob%hru
+        ihru = ob(sp_ob1%hru + iv - 1)%num
+        hru_hly1(ihru) = n_hly + 1
+        do ly = 1, soil(ihru)%nly
+          n_hly = n_hly + 1
+          hly_hru(n_hly) = ihru
+          hly_lay(n_hly) = ly
+        end do
+      end do
+
       call reply ("@hello swatplus-exchange " // itoa(protocol))
       call reply ("@model " // trim(adjustl(prog)))
       call reply ("@build " // swx_build)
@@ -201,6 +240,8 @@
       call send_grid ("aqu", sp_ob1%aqu, sp_ob%aqu)
       call send_grid ("rec", sp_ob1%recall, sp_ob%recall)
       call send_pou_grid
+      call send_grid ("hru", sp_ob1%hru, sp_ob%hru)
+      call send_hly_grid
       do iv = 1, nvar
         call reply ("@var " // trim(var_name(iv)) // " " // trim(var_grid(iv)) // " " //   &
                     trim(var_role(iv)) // " " // trim(var_units(iv)))
@@ -329,6 +370,33 @@
       end subroutine exch_channel
 
 !!    --------------------------------------------------------------------
+      subroutine exch_hru_soil (j)
+
+!!    called in hru_control right after stmp_solt, before snowmelt, runoff
+!!    and percolation use the soil temperature: replaces the day's computed
+!!    temperature of the HRU's layers that were set for the day. SWAT+ then
+!!    carries the set value into the next day as it would its own.
+
+      use soil_module, only : soil
+
+      integer, intent(in) :: j                            !HRU number
+      integer :: k = 0
+      integer :: i = 0
+
+      if (.not. exch_on) return
+      if (j < lbound(hru_hly1,1) .or. j > ubound(hru_hly1,1)) return
+      if (hru_hly1(j) == 0) return
+      do k = 1, soil(j)%nly
+        i = hru_hly1(j) + k - 1
+        if (.not. hly_on(i)) cycle
+        soil(j)%phys(k)%tmp = hly_tmp(i)
+        hly_on(i) = .false.
+      end do
+
+      return
+      end subroutine exch_hru_soil
+
+!!    --------------------------------------------------------------------
       real function rating_depth (ich, flo_rate)
 
 !!    water depth on SWAT+'s rating curve for a channel at a flow rate (m3/s),
@@ -370,6 +438,9 @@
         pou_dmd_day(i) = poud_met(i)%duty_tot%duty
         pou_wdr_day(i) = poud_met(i)%duty_tot%deliv
       end do
+      !! a state set for the day applies that day only, even for an HRU the
+      !! day's commands didn't run
+      hly_on = .false.
 
       return
       end subroutine exch_record
@@ -452,6 +523,20 @@
             call reply ("@error the simulation has ended; nothing left to set")
           else
             call set_value (trim(name), i, v)
+          end if
+
+        case ("setv", "seti")
+          read (line, *, iostat=ios) word, name, n
+          if (ios /= 0 .or. n < 0) then
+            call reply ("@error " // trim(word) // " needs a variable name and a value count")
+          else if (at_end) then
+            !! read the values anyway, so the next command isn't one of them
+            do i = 1, n
+              read (cmd_unit, '(a)', iostat=ios) line
+            end do
+            call reply ("@error the simulation has ended; nothing left to set")
+          else
+            call set_values (trim(name), n, trim(word) == "seti")
           end if
 
         case ("ping")
@@ -753,6 +838,7 @@
       write (u) size(pou_dmd_day), pou_dmd_day, pou_wdr_day
       write (u) size(chx_day), chx_day
       write (u) size(rec_flo), rec_flo, rec_flo_on, dmd_flo, dmd_flo_on, chx_flo, chx_on
+      write (u) n_hly, hly_tmp, hly_on
       call swx_state_save (u)
       write (u) state_magic
       close (u)
@@ -839,6 +925,12 @@
         error stop 7
       end if
       read (u) rec_flo, rec_flo_on, dmd_flo, dmd_flo_on, chx_flo, chx_on
+      read (u) n
+      if (n /= n_hly) then
+        call reply ("@error the saved state has a different number of soil layers")
+        error stop 7
+      end if
+      read (u) hly_tmp, hly_on
       call swx_state_load (u)
       read (u) magic
       close (u)
@@ -866,6 +958,8 @@
       use hydrograph_module, only : sp_ob, sp_ob1, ob, ch_in_d, ch_out_d, ch_stor
       use aquifer_module, only : aqu_d
       use maximum_data_module, only : db_mx
+      use soil_module, only : soil
+      use hru_module, only : hru
 
       character(len=*), intent(in) :: name
       real(8), dimension(:), allocatable :: val
@@ -910,6 +1004,20 @@
         allocate (val(sp_ob%chandeg), source = 0.d0)
         do i = 1, sp_ob%chandeg
           val(i) = chx_day(i) / 86400.d0                  !m3 -> m3/s
+        end do
+
+      case ("soil_layer__temperature")
+        !! each HRU soil layer at the end of the day just done
+        allocate (val(n_hly), source = 0.d0)
+        do i = 1, n_hly
+          val(i) = soil(hly_hru(i))%phys(hly_lay(i))%tmp   !deg C
+        end do
+
+      case ("snowpack__liquid-equivalent_depth")
+        allocate (val(sp_ob%hru), source = 0.d0)
+        do i = 1, sp_ob%hru
+          iob = sp_ob1%hru + i - 1
+          val(i) = hru(ob(iob)%num)%sno_mm / 1000.d0       !mm -> m
         end do
 
       case ("aquifer_water__volume")
@@ -970,9 +1078,10 @@
       end subroutine send_values
 
 !!    --------------------------------------------------------------------
-      subroutine set_value (name, i, v)
+      subroutine take_value (name, i, v, keep, msg)
 
-!!    keeps a value for the next day, or refuses it when SWAT+ would not use
+!!    checks a value for the next day, and keeps it if keep is true; msg says
+!!    why it is refused, blank if it isn't. Refused when SWAT+ would not use
 !!    it as given: a point source that isn't daily or has no record in the
 !!    next day's year, a groundwater exchange with sub-daily routing, a value
 !!    that isn't a finite number
@@ -983,15 +1092,19 @@
 
       character(len=*), intent(in) :: name
       integer, intent(in) :: i
-      real(8), intent(in) :: v                            !m3/s
+      real(8), intent(in) :: v                            !m3/s, or deg C
+      logical, intent(in) :: keep
+      character(len=*), intent(out) :: msg
       integer :: irec = 0
 
+      msg = ""
+
       if (.not. ieee_is_finite(v)) then
-        call reply ("@error a value must be a finite number")
+        msg = "a value must be a finite number"
         return
       end if
       if (abs(v) * 86400.d0 > huge(1.)) then
-        call reply ("@error the value is too large for SWAT+'s 4-byte reals")
+        msg = "the value is too large for SWAT+'s 4-byte reals"
         return
       end if
 
@@ -999,60 +1112,182 @@
 
       case ("point_source_water__volume_flow_rate")
         if (i < 1 .or. i > sp_ob%recall) then
-          call reply ("@error index out of range")
+          msg = "index out of range"
           return
         end if
         irec = ob(sp_ob1%recall + i - 1)%num
         if (recall(irec)%typ /= 1) then
           !! sub-daily, monthly, yearly and constant records are kept in other shapes
-          call reply ("@error point source " // trim(recall(irec)%name) // " is recall type " //  &
-                      itoa(recall(irec)%typ) // "; only daily point sources (type 1) can be set")
+          msg = "point source " // trim(recall(irec)%name) // " is recall type " //  &
+                itoa(recall(irec)%typ) // "; only daily point sources (type 1) can be set"
           return
         end if
         if (time%yrc < recall(irec)%start_yr .or. time%yrc > recall(irec)%end_yr) then
           !! SWAT+ gives a daily point source no flow outside its record
-          call reply ("@error point source " // trim(recall(irec)%name) // " has no record in " //   &
-                      itoa(time%yrc) // " (its file covers " // itoa(recall(irec)%start_yr) //    &
-                      "-" // itoa(recall(irec)%end_yr) // "), so SWAT+ would not use the value")
+          msg = "point source " // trim(recall(irec)%name) // " has no record in " //   &
+                itoa(time%yrc) // " (its file covers " // itoa(recall(irec)%start_yr) //    &
+                "-" // itoa(recall(irec)%end_yr) // "), so SWAT+ would not use the value"
           return
         end if
-        rec_flo(i) = real(v * 86400.d0)                   !m3/s -> m3/day
-        rec_flo_on(i) = .true.
+        if (keep) then
+          rec_flo(i) = real(v * 86400.d0)                   !m3/s -> m3/day
+          rec_flo_on(i) = .true.
+        end if
 
       case ("channel_water__groundwater_volume_exchange_rate")
         if (i < 1 .or. i > sp_ob%chandeg) then
-          call reply ("@error index out of range")
+          msg = "index out of range"
           return
         end if
         if (time%step > 1) then
-          call reply ("@error the groundwater exchange works with daily routing only; this "  //  &
-                      "project routes " // itoa(time%step) // " steps a day (time.sim)")
+          msg = "the groundwater exchange works with daily routing only; this "  //  &
+                "project routes " // itoa(time%step) // " steps a day (time.sim)"
           return
         end if
-        chx_flo(i) = real(v * 86400.d0)                   !m3/s -> m3/day
-        chx_on(i) = .true.
+        if (keep) then
+          chx_flo(i) = real(v * 86400.d0)                   !m3/s -> m3/day
+          chx_on(i) = .true.
+        end if
 
       case ("place_of_use_water__volume_demand_rate")
         if (i < 1 .or. i > db_mx%wallo_pou) then
-          call reply ("@error index out of range")
+          msg = "index out of range"
           return
         end if
         if (v < 0.d0) then
-          call reply ("@error a demand can't be negative")
+          msg = "a demand can't be negative"
           return
         end if
-        dmd_flo(i) = real(v * 86400.d0)                   !m3/s -> m3/day
-        dmd_flo_on(i) = .true.
+        if (keep) then
+          dmd_flo(i) = real(v * 86400.d0)                   !m3/s -> m3/day
+          dmd_flo_on(i) = .true.
+        end if
+
+      case ("soil_layer__temperature")
+        if (i < 1 .or. i > n_hly) then
+          msg = "index out of range"
+          return
+        end if
+        if (v < -273.15d0) then
+          msg = "a temperature can't be below absolute zero"
+          return
+        end if
+        if (keep) then
+          hly_tmp(i) = real(v)                            !deg C
+          hly_on(i) = .true.
+        end if
 
       case default
-        call reply ("@error not a settable variable: " // name)
+        msg = "not a settable variable: " // name
         return
       end select
 
-      call reply ("@ok")
+      return
+      end subroutine take_value
+
+!!    --------------------------------------------------------------------
+      subroutine set_value (name, i, v)
+
+!!    set <var> <i> <v>: one value for the next day
+
+      character(len=*), intent(in) :: name
+      integer, intent(in) :: i
+      real(8), intent(in) :: v
+      character(len=400) :: msg = ""
+
+      call take_value (name, i, v, .true., msg)
+      if (msg /= "") then
+        call reply ("@error " // trim(msg))
+      else
+        call reply ("@ok")
+      end if
 
       return
       end subroutine set_value
+
+!!    --------------------------------------------------------------------
+      subroutine set_values (name, n, indexed)
+
+!!    setv <var> <n>, then n lines <v>: every object on the variable's grid,
+!!    in grid order; seti <var> <n>, then n lines <i> <v>: the objects given.
+!!    All or nothing: if any value is refused, none is kept, and the reply
+!!    names the first one refused.
+
+      character(len=*), intent(in) :: name
+      integer, intent(in) :: n
+      logical, intent(in) :: indexed
+      character(len=400) :: msg = ""
+      character(len=128) :: line = ""
+      integer, dimension(:), allocatable :: idx
+      real(8), dimension(:), allocatable :: val
+      integer :: k = 0
+      integer :: ios = 0
+      integer :: bad = 0
+
+      allocate (idx(max(n, 0)), source = 0)
+      allocate (val(max(n, 0)), source = 0.d0)
+      bad = 0
+      do k = 1, n
+        read (cmd_unit, '(a)', iostat=ios) line
+        if (ios /= 0) error stop 3
+        if (indexed) then
+          read (line, *, iostat=ios) idx(k), val(k)
+        else
+          idx(k) = k
+          read (line, *, iostat=ios) val(k)
+        end if
+        if (ios /= 0 .and. bad == 0) then
+          bad = k
+          msg = "can't read the value"
+        end if
+      end do
+      if (bad == 0 .and. .not. indexed .and. n /= var_size(name)) then
+        call reply ("@error setv needs all " // itoa(var_size(name)) // " values of " // name)
+        return
+      end if
+      do k = 1, n
+        if (bad /= 0) exit
+        call take_value (name, idx(k), val(k), .false., msg)
+        if (msg /= "") bad = k
+      end do
+      if (bad /= 0) then
+        call reply ("@error value " // itoa(bad) // ": " // trim(msg))
+        return
+      end if
+      do k = 1, n
+        call take_value (name, idx(k), val(k), .true., msg)
+      end do
+      call reply ("@ok")
+
+      return
+      end subroutine set_values
+
+!!    --------------------------------------------------------------------
+      integer function var_size (name)
+
+!!    the number of objects on a variable's grid, 0 for an unknown variable
+
+      use hydrograph_module, only : sp_ob
+      use maximum_data_module, only : db_mx
+
+      character(len=*), intent(in) :: name
+      integer :: iv = 0
+
+      var_size = 0
+      do iv = 1, nvar
+        if (trim(var_name(iv)) /= name) cycle
+        select case (trim(var_grid(iv)))
+        case ("cha"); var_size = sp_ob%chandeg
+        case ("aqu"); var_size = sp_ob%aqu
+        case ("rec"); var_size = sp_ob%recall
+        case ("pou"); var_size = db_mx%wallo_pou
+        case ("hru"); var_size = sp_ob%hru
+        case ("hly"); var_size = n_hly
+        end select
+      end do
+
+      return
+      end function var_size
 
 !!    --------------------------------------------------------------------
       subroutine set_demand (ipou, dmd)
@@ -1100,6 +1335,39 @@
 
       return
       end subroutine send_grid
+
+!!    --------------------------------------------------------------------
+      subroutine send_hly_grid
+
+!!    HRU soil layers: one point per layer, HRU by HRU, at the HRU's
+!!    location and area, named <HRU>:<layer>, with a seventh field, the
+!!    layer's mid-depth below the surface (m)
+
+      use hydrograph_module, only : sp_ob1, ob
+      use soil_module, only : soil
+
+      character(len=240) :: line = ""
+      integer :: i = 0
+      integer :: iob = 0
+      integer :: j = 0
+      integer :: k = 0
+      real :: top = 0.
+
+      call reply ("@grid hly " // itoa(n_hly))
+      iob = sp_ob1%hru - 1
+      do i = 1, n_hly
+        j = hly_hru(i)
+        k = hly_lay(i)
+        if (k == 1) iob = iob + 1                         !the next HRU, in grid order
+        top = 0.
+        if (k > 1) top = soil(j)%phys(k-1)%d
+        write (line, '(a,1x,i0,1x,a,a,i0,4(1x,es15.8e2))') "hly", i, trim(ob(iob)%name), ":", k,  &
+              ob(iob)%long, ob(iob)%lat, ob(iob)%area_ha, (top + soil(j)%phys(k)%d) / 2000.
+        call reply ("@obj " // trim(line))
+      end do
+
+      return
+      end subroutine send_hly_grid
 
 !!    --------------------------------------------------------------------
       subroutine send_pou_grid

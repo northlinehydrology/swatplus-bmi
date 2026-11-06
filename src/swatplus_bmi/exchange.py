@@ -22,7 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
-PROTOCOL = 2
+PROTOCOL = 3
 
 
 class ExchangeError(RuntimeError):
@@ -36,6 +36,7 @@ class Grid:
     x: np.ndarray        # longitude, degrees
     y: np.ndarray        # latitude, degrees
     area_ha: np.ndarray
+    z: np.ndarray | None = None      # soil layers: mid-depth below the surface, m
 
     @property
     def size(self) -> int:
@@ -139,16 +140,14 @@ class Exchange:
                 break
             if word == "@grid":
                 gname, n = rest.split()
-                grids[gname] = Grid(gname, [], np.empty(0), np.empty(0), np.empty(0))
                 rows = []
                 for _ in range(int(n)):
                     _, obj = self._line().split(maxsplit=1)
-                    g, _i, name, x, y, area = obj.split()
-                    rows.append((name, float(x), float(y), float(area)))
-                grids[gname] = Grid(gname, [r[0] for r in rows],
-                                    np.array([r[1] for r in rows]),
-                                    np.array([r[2] for r in rows]),
-                                    np.array([r[3] for r in rows]))
+                    g, _i, name, *xyz = obj.split()
+                    rows.append((name, *map(float, xyz)))
+                col = lambda k: np.array([r[k] for r in rows], dtype=float)
+                grids[gname] = Grid(gname, [r[0] for r in rows], col(1), col(2), col(3),
+                                    col(4) if rows and len(rows[0]) > 4 else None)
             elif word == "@var":
                 name, grid, role, units = rest.split(maxsplit=3)
                 variables[name] = Variable(name, grid, role, units)
@@ -197,6 +196,28 @@ class Exchange:
         if not np.isfinite(v):
             raise ExchangeError(f"{name}: a value must be a finite number, not {v}")
         self._send(f"set {name} {int(index) + 1} {v!r}")
+        self._expect("@ok")
+
+    def set_all(self, name: str, values) -> None:
+        """Set every object on the variable's grid for the next day, in one command.
+        All or nothing: if SWAT+ refuses any value, it keeps none."""
+        v = np.asarray(values, dtype=np.float64).ravel()
+        if not np.isfinite(v).all():
+            raise ExchangeError(f"{name}: values must be finite numbers")
+        self._send(f"setv {name} {len(v)}\n" + "\n".join(repr(float(x)) for x in v))
+        self._expect("@ok")
+
+    def set_at(self, name: str, indices, values) -> None:
+        """Set the objects at ``indices`` (0-based) for the next day, in one command;
+        all or nothing, as for ``set_all``."""
+        i = np.asarray(indices).ravel()
+        v = np.asarray(values, dtype=np.float64).ravel()
+        if len(i) != len(v):
+            raise ValueError(f"{name}: {len(i)} indices and {len(v)} values")
+        if not np.isfinite(v).all():
+            raise ExchangeError(f"{name}: values must be finite numbers")
+        self._send(f"seti {name} {len(v)}\n"
+                   + "\n".join(f"{int(a) + 1} {float(b)!r}" for a, b in zip(i, v)))
         self._expect("@ok")
 
     def branch(self, run_dir: str | os.PathLike) -> "Exchange":

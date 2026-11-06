@@ -2,14 +2,16 @@
 
 SWAT+ runs as its own process in exchange mode (see ``exchange.py``); this
 class is the BMI face of that process. Each object type SWAT+ exposes
-(channels, aquifers, point sources, water allocation places of use) is a
-BMI grid of type ``points``, one point per SWAT+ object, in the order of
-SWAT+'s input files, with longitude as x and latitude as y (places of use
-have no location; their coordinates are NaN). ``get_grid_object_names`` gives the SWAT+
+(channels, aquifers, point sources, water allocation places of use, HRUs,
+and HRU soil layers) is a BMI grid of type ``points``, one point per SWAT+
+object, in the order of SWAT+'s input files, with longitude as x and latitude
+as y (places of use have no location; their coordinates are NaN; soil layers
+are at their HRU's location, with z their mid-depth below the surface). ``get_grid_object_names`` gives the SWAT+
 object names for a grid.
 
-Only fluxes can be set. A value set between updates applies to the next day
-only; after that day SWAT+ goes back to its own inputs. A set SWAT+ would not
+Fluxes and a few states can be set (a state is replaced right after SWAT+
+computes it, before anything uses it). A value set between updates applies to
+the next day only; after that day SWAT+ goes back to its own inputs. A set SWAT+ would not
 use as given (a point source that isn't daily, a value that isn't a number) is
 refused with an error rather than dropped. Values are 8-byte reals
 (``float64``), so a value read and set back is SWAT+'s own to the bit, though
@@ -37,7 +39,7 @@ from .exchange import Exchange, ExchangeError
 
 __all__ = ["SwatPlusBmi"]
 
-GRID_ORDER = ["cha", "aqu", "rec", "pou"]
+GRID_ORDER = ["cha", "aqu", "rec", "pou", "hru", "hly"]
 
 
 def sources_hash() -> str:
@@ -325,8 +327,12 @@ class SwatPlusBmi(Bmi):
                 "close (see channel_water__volume_inflow_rate). For withdrawals limited to "
                 "the water available, set place_of_use_water__volume_demand_rate instead.",
                 UserWarning, stacklevel=2)
-        for i, v in zip(inds, src):
-            self._x.set(name, int(i), float(v))
+        if len(inds) == n and (inds == np.arange(n)).all():
+            self._x.set_all(name, src)
+        elif len(inds) > 1:
+            self._x.set_at(name, inds, src)
+        elif len(inds) == 1:
+            self._x.set(name, int(inds[0]), float(src[0]))
 
     # -- grids ----------------------------------------------------------
 
@@ -335,8 +341,7 @@ class SwatPlusBmi(Bmi):
         return "points"
 
     def get_grid_rank(self, grid: int) -> int:
-        self._grids[grid]
-        return 2
+        return 2 if self._grids[grid].z is None else 3
 
     def get_grid_size(self, grid: int) -> int:
         return self._grids[grid].size
@@ -363,6 +368,14 @@ class SwatPlusBmi(Bmi):
     def _not_points(self, *args, **kwargs):
         raise NotImplementedError("SWAT+ grids are points; this applies to other grid types")
 
-    get_grid_shape = get_grid_spacing = get_grid_origin = get_grid_z = _not_points
+    def get_grid_z(self, grid: int, z: np.ndarray) -> np.ndarray:
+        """Soil layers (grid ``hly``): each layer's mid-depth below the surface, m."""
+        g = self._grids[grid]
+        if g.z is None:
+            raise NotImplementedError(f"grid {grid} ({g.name}) has no z: its points are on the surface")
+        z[:] = g.z
+        return z
+
+    get_grid_shape = get_grid_spacing = get_grid_origin = _not_points
     get_grid_edge_nodes = get_grid_face_edges = get_grid_face_nodes = _not_points
     get_grid_nodes_per_face = _not_points
