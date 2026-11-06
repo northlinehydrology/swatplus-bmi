@@ -50,15 +50,21 @@ def sources_hash() -> str:
 
 def find_executable(given: str | None = None) -> Path:
     """The exchange-mode SWAT+ executable: given, $SWATPLUS_EXCHANGE, bin/ in a source
-    checkout, or the folder ``swatplus-bmi build`` writes to."""
+    checkout, or the folder ``swatplus-bmi build`` writes to; there, the supported release's
+    build if it exists, else the only one."""
     for cand in (given, os.environ.get("SWATPLUS_EXCHANGE")):
         if cand:
             return Path(cand).expanduser()
-    from .build import home
+    from .build import DEFAULT_TAG, home
     for folder in (Path(__file__).resolve().parents[2] / "bin", home() / "bin"):
+        if (folder / f"swatplus-{DEFAULT_TAG}-exchange").exists():
+            return folder / f"swatplus-{DEFAULT_TAG}-exchange"
         found = sorted(folder.glob("swatplus-*-exchange"))
+        if len(found) == 1:
+            return found[0]
         if found:
-            return found[-1]
+            raise FileNotFoundError(f"several SWAT+ exchange executables in {folder} and none for "
+                                    f"{DEFAULT_TAG}: name one, or set SWATPLUS_EXCHANGE")
     raise FileNotFoundError("no SWAT+ exchange executable: run `swatplus-bmi build` "
                             "(or ./build.sh in a source checkout), or set SWATPLUS_EXCHANGE")
 
