@@ -3,7 +3,7 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
-## 0.3.0 (unreleased)
+## 0.3.0 (2026-11-06)
 
 The wrapper's claim, made exact and tested as a whole: with nothing set, every output file is
 stock SWAT+'s however the run is driven; a value set changes results only through that input;
