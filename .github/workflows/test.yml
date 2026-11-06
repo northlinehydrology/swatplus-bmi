@@ -32,7 +32,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      - run: uv run ./build.sh --stock --nosave --jobs 4 --tag "$SWATPLUS_TAG"
+      - run: uv run ./build.sh --stock --nosave --check --jobs 4 --tag "$SWATPLUS_TAG"
+      - name: Every SWAT+ file the patch doesn't touch compiles to the same object
+        run: |
+          uv run python tools/build_parity.py "build/$SWATPLUS_TAG" \
+            --expect "$(uv run python tools/build_parity.py --expected "$SWATPLUS_TAG")"
       - run: uv run pytest -q
       - name: Full-length comparisons (nightly)
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -54,7 +58,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      - run: uv run ./build.sh --stock --jobs 4 --tag main --patch 62.0.1
+      - run: uv run ./build.sh --stock --check --jobs 4 --tag main --patch 62.0.1
+      - run: uv run python tools/build_parity.py build/main --expect "$(uv run python tools/build_parity.py --expected 62.0.1)"
       - run: |
           git -C build/main/swatplus log -1 --format="SWAT+ main at %h (%cd)" --date=short
       - run: uv run pytest -q
@@ -77,7 +82,7 @@ jobs:
         run: |
           uv sync --upgrade --python "${{ matrix.python }}"
           uv pip list
-      - run: uv run --no-sync ./build.sh --stock --nosave --jobs 4 --tag 62.0.1
+      - run: uv run --no-sync ./build.sh --stock --nosave --check --jobs 4 --tag 62.0.1
       - run: uv run --no-sync pytest -q
       - if: failure()
         run: tail -50 build/*/*.log || true

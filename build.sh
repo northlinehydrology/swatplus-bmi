@@ -9,6 +9,8 @@
 #   ./build.sh --stock         # also bin/swatplus-62.0.1-stock
 #   ./build.sh --nosave        # also bin/swatplus-62.0.1-nosave: stock with every saved
 #                              # local reset on each call except those in carried-locals.toml
+#   ./build.sh --check         # also bin/swatplus-62.0.1-check: the exchange build with
+#                              # array bounds checked, for the tests that set values
 #   ./build.sh --jobs 2        # parallel compile jobs (default 2)
 #   SWATPLUS_SRC=/path ./build.sh   # use an existing checkout of the tag
 #
@@ -27,15 +29,17 @@ TAG="62.0.1"
 JOBS=2
 STOCK=0
 NOSAVE=0
+CHECK=0
 PATCH=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --stock) STOCK=1 ;;
     --nosave) NOSAVE=1 ;;
+    --check) CHECK=1 ;;
     --jobs) JOBS="$2"; shift ;;
     --tag) TAG="$2"; shift ;;
     --patch) PATCH="$2"; shift ;;
-    -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 1 ;;
   esac
   shift
@@ -64,9 +68,16 @@ if [ -z "${SOURCE_DATE_EPOCH:-}" ]; then
 fi
 export SOURCE_DATE_EPOCH
 
-build () {   # build <source dir> <build dir> <name in bin/>
-  local src="$1" bld="$2" name="$3"
-  "$CMAKE" -S "$src" -B "$bld" -DCMAKE_BUILD_TYPE=Release -DTAG="$TAG" > "$bld.configure.log" 2>&1 \
+# Every build compiles from the same folder, $WORK/compile: gfortran writes the source path
+# into each object (for runtime error messages), so this way a SWAT+ file the patch doesn't
+# touch compiles to the same bytes in the stock and exchange builds; tools/build_parity.py
+# checks that.
+build () {   # build <source dir> <build dir> <name in bin/> [extra Fortran flags]
+  local src="$1" bld="$2" name="$3" extra="${4:-}"
+  rm -rf "$WORK/compile" "$bld"
+  cp -R "$src" "$WORK/compile"
+  "$CMAKE" -S "$WORK/compile" -B "$bld" -DCMAKE_BUILD_TYPE=Release -DTAG="$TAG" \
+    ${extra:+-DCMAKE_Fortran_FLAGS="$extra"} > "$bld.configure.log" 2>&1 \
     || { cat "$bld.configure.log" >&2; exit 1; }
   "$CMAKE" --build "$bld" -j "$JOBS" > "$bld.build.log" 2>&1 \
     || { tail -40 "$bld.build.log" >&2; exit 1; }
@@ -109,3 +120,8 @@ for p in "$PATCHES"/*.patch; do
   patch --quiet -p1 -d "$WORK/exchange-src" < "$p"
 done
 build "$WORK/exchange-src" "$WORK/exchange-build" "swatplus-$TAG-exchange"
+
+# 3b. the same with array bounds checked: an out-of-bounds write stops with an error
+if [ "$CHECK" = 1 ]; then
+  build "$WORK/exchange-src" "$WORK/check-build" "swatplus-$TAG-check" "-fcheck=bounds"
+fi
