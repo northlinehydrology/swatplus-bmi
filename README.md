@@ -9,8 +9,8 @@ through the Basic Model Interface ([BMI 2.0](https://bmi.readthedocs.io), CSDMS)
 
 A small patch adds an exchange mode to SWAT+, off by default. In exchange mode SWAT+ pauses
 before each day. While it's paused, a caller reads state (channel flow, aquifer storage, depth
-to water, recharge) and sets fluxes for the next day (a point source's flow, a water user's
-demand). A Python BMI wrapper drives it. **With nothing set, SWAT+'s output is byte-for-byte
+to water, recharge, snowpack) and sets values for the next day: fluxes (a point source's flow,
+a water user's demand) and, as a first state, soil layer temperature. A Python BMI wrapper drives it. **With nothing set, SWAT+'s output is byte-for-byte
 identical to an unpatched run, every output file, start to finish, however the run is stepped,
 read, branched or saved; a value set changes the run only through that input; and anything
 SWAT+ wouldn't use as given is refused rather than dropped.** The tests check each of those
@@ -61,8 +61,8 @@ flowchart LR
   P -- "replies on standard output:<br/>@paused, @value, @ok" --> B
 ```
 
-- **SWAT+'s side.** The patch adds seven calls to four SWAT+ files (`time_control.f90`,
-  `main.f90.in`, `command.f90`, `sd_channel_control3.f90`). Each returns at once unless SWAT+ was started with
+- **SWAT+'s side.** The patch adds eight calls to five SWAT+ files (`time_control.f90`,
+  `main.f90.in`, `command.f90`, `sd_channel_control3.f90`, `hru_control.f90`). Each returns at once unless SWAT+ was started with
   `--exchange`. With the mode on, SWAT+ stops before each day's water allocation and routing,
   answers commands, and goes on when told to.
 - **The pause point.** Values read at a pause are those at the end of the previous day. Values
@@ -259,6 +259,8 @@ objects in a project are left out.
 | `point_source_water__volume_flow_rate` | recall objects | daily ones, inside their records | m3 s-1 | the recall file's flow |
 | `place_of_use_water__volume_demand_rate` | water allocation places of use | yes | m3 s-1 | the day's demand |
 | `place_of_use_water__volume_withdrawal_rate` | water allocation places of use | no | m3 s-1 | what was actually taken |
+| `soil_layer__temperature` | HRU soil layers | yes (a state) | degC | each layer's temperature; layer 2 is `sol_tmp` in `hru_pw_day.txt` |
+| `snowpack__liquid-equivalent_depth` | HRUs | no | m | `sno_final` in `hru_wb_day.txt` |
 
 Names follow [CSDMS Standard Names](https://csdms.colorado.edu/wiki/CSDMS_Standard_Names). The
 channel volume and flow names and the recharge name are on the CSDMS list. The others are new,
@@ -296,7 +298,7 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   setting SWAT+'s own values back doesn't either. The suite checks every output file against
   unpatched SWAT+, including 46 years of Ames_sub1, and CI checks that every SWAT+ file the
   patch doesn't touch compiles to the same object as in the stock build.
-- **Small and off by default.** Seven calls in four SWAT+ files, one Fortran module, and a C file
+- **Small and off by default.** Eight calls in five SWAT+ files, one Fortran module, and a C file
   of four functions for `fork`. With the mode off, SWAT+ behaves exactly as it does without the
   patch. It's meant to be proposed to the SWAT+ team (`docs/upstream-issue.md`).
 - **No linking, any platform for stepping.** Text over standard input and output. The Python
@@ -313,9 +315,11 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
 
 - **Daily steps only.** SWAT+'s sub-daily options aren't exposed, and the groundwater exchange
   is refused with sub-daily routing.
-- **Only fluxes can be set:** point source flow, water allocation demand and a channel's
-  groundwater exchange, for the next day.
-  Not storage, land use, soils or parameters; those are scenario inputs.
+- **Only fluxes and listed states can be set:** point source flow, water allocation demand and a
+  channel's groundwater exchange, and soil layer temperature, for the next day. Not storage,
+  land use, soils or parameters; those are scenario inputs. Each settable state needs its own
+  hook in the patch, at the point where SWAT+ has computed it and before anything uses it
+  (docs/design.md, Setting states), so states are added one at a time, each with the same tests.
 - **A handful of variables so far.** Adding one is a few lines (see `fortran/`), but each needs a
   test against SWAT+'s output.
 - **One process per model, one message per day per value.** On a tiny project the messages cost
@@ -391,6 +395,34 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   `alpha` (`aqu_1d_control.f90`), so `revap_co` and `deep_seep` change aquifer storage, not
   streamflow, until the storage runs out.
 
+## Setting a state
+
+Soil layer temperature is the first state that can be set. SWAT+ computes it at the start of each
+HRU's day. The value set replaces SWAT+'s right after that, before snowmelt, runoff and
+percolation use it, and SWAT+ carries it into the next day as its own. For example, to hold
+soil layers at 0 °C or above under lasting snow, which SWAT+ 62.0.1 lets freeze hard:
+
+```python
+TS, SNOW = "soil_layer__temperature", "snowpack__liquid-equivalent_depth"
+g = m.get_var_grid(TS)
+hru_of_layer = [n.split(":")[0] for n in m.get_grid_object_names(g)]
+hru_index = {n: i for i, n in enumerate(m.get_grid_object_names(m.get_var_grid(SNOW)))}
+layer_hru = np.array([hru_index[h] for h in hru_of_layer])
+t, snow = np.empty(m.get_grid_size(g)), np.empty(len(hru_index))
+while m.get_current_time() < m.get_end_time():
+    m.get_value(TS, t)                       # yesterday's, at the end of the day
+    m.get_value(SNOW, snow)
+    hold = np.flatnonzero((snow[layer_hru] > 0.05) & (t < 0.0))   # frozen under > 5 cm of snow
+    if len(hold):
+        m.set_value_at_indices(TS, hold, np.zeros(len(hold)))     # only those layers
+    m.update()
+```
+
+Set only the layers the rule holds: setting the others to yesterday's values would replace the
+temperatures SWAT+ computes for today. The rule decides from yesterday's temperatures and snow. Setting a state
+overrides SWAT+'s own model of it, and SWAT+'s soil temperature is an empirical lag, not an
+energy balance, so no heat is accounted for: a study that sets it states the rule and why.
+
 ## What the patch never does
 
 The patch adds pauses, reads and the inputs listed above, and nothing else. It never changes
@@ -407,6 +439,8 @@ lines, then `@ready`), then `@paused <days done> <year> <day of year>`, and wait
 run [n]                    run n days (default 1)          -> @paused ... or @ended <days>
 get <variable>             one value per object             -> @value <n> <v1> ... <vn>
 set <variable> <i> <v>     object i (1-based), next day     -> @ok
+setv <variable> <n>        then n lines: every object       -> @ok
+seti <variable> <n>        then n lines "<i> <v>"           -> @ok
 save "<file>" "<run dir>"  the state at this pause          -> @ok
 load "<file>"              right after startup              -> @restore ... then @paused
 branch "<new>" "<old>" "<in>" "<out>"   fork (Mac, Linux)   -> @branched <pid>

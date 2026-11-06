@@ -3,6 +3,26 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
+## 0.4.0 (unreleased)
+
+Settable states, starting with soil layer temperature. A state can't be set at the start of the
+day like a flux, because SWAT+ computes it from yesterday's. So each settable state gets a hook
+right after SWAT+ computes it and before anything uses it, which replaces that day's value. The
+first is in `hru_control.f90`, after `stmp_solt`. With nothing set, output is still stock.
+
+- `soil_layer__temperature` (degC, settable) on a new grid, `hly`: one point per HRU soil layer,
+  HRU by HRU, at the HRU's location, with `get_grid_z` the layer's mid-depth (m). It's in degrees
+  C, as SWAT+ keeps it, so a value read and set back is exact (tested: setting SWAT+'s own
+  temperatures back every day gives stock output).
+- `snowpack__liquid-equivalent_depth` (m) on a new grid, `hru`, one point per HRU.
+- Bulk sets, protocol 3: `setv` sets every object on a grid in one command and `seti` the objects
+  given, all or nothing. `set_value` and `set_value_at_indices` use them, so a set of 12,000 soil
+  layers is one exchange, not 12,000.
+- docs/design.md, Setting states: what a set state means (it overrides SWAT+'s own model; SWAT+'s
+  soil temperature isn't an energy balance), and what adding another state takes.
+- Saved states have a new format (`SWXSTATE-3`), with set soil temperatures pending for the next
+  day.
+
 ## 0.3.0 (2026-11-06)
 
 The wrapper's claim, made exact and tested as a whole: with nothing set, every output file is

@@ -90,7 +90,7 @@ to `exchange.log`. No sockets and no C are needed for stepping.
 Startup (SWAT+ to caller):
 
 ```
-@hello swatplus-exchange 2
+@hello swatplus-exchange 3
 @model SWAT+ 2026-10-16        MODULAR Rev 2026.62.0.1
 @build 3f9c0e...                  hash of the swatplus-bmi sources it was built from
 @start 2010 1                    first year, first day of year
@@ -101,6 +101,10 @@ Startup (SWAT+ to caller):
 @obj aqu 1 aqu001 ...
 @grid rec 0
 @grid pou 0
+@grid hru 1
+@obj hru 1 hru0001 ...
+@grid hly 5                      HRU soil layers; a seventh field, the layer's mid-depth (m)
+@obj hly 1 hru0001:1 1.27328949E+02 3.55263214E+01 1.04000006E+01 5.00000000E-03
 @var channel_water__volume_outflow_rate cha out m3 s-1
 ...
 @ready
@@ -114,6 +118,8 @@ Commands, while paused:
 | `run [n]` | `@paused d y j` or `@ended d` | run *n* days (default 1) without pausing in between |
 | `get <var>` | `@value n v1 ... vn` | one value per object on the variable's grid, seventeen significant digits (an 8-byte real exactly) |
 | `set <var> <i> <v>` | `@ok` | object *i* (1-based) gets *v* for the next day; refused (`@error`) when SWAT+ would not use it as given (Setting fluxes) |
+| `setv <var> <n>`, then *n* lines `<v>` | `@ok` | every object on the grid, in grid order, in one command |
+| `seti <var> <n>`, then *n* lines `<i> <v>` | `@ok` | the objects given; for both, all or nothing: one refused value refuses them all, and the reply names it |
 | `flush` | `@ok` | write out every open file's buffer |
 | `branch "<new>" "<old>" "<in>" "<out>"` | `@branched pid` | fork; see Snapshots |
 | `save "<file>" "<run dir>"` | `@ok` | write SWAT+'s module state at this pause, and the values set for the next day, to the file (see Snapshots); refused when an open file couldn't be carried |
@@ -153,6 +159,8 @@ names follow the channel ones. CSDMS lists no aquifer or withdrawal names.
 | `soil_water_table__recharge_rate` | aqu | out | m s-1 | `aqu_d(i)%rchrg` (mm/day) | `rchrg` in `aquifer_day.txt`; a CSDMS name; what MODFLOW 6's recharge package takes |
 | `channel_water__depth` | cha | out | m | SWAT+'s rating curve (`rcurv_interp_flo`) at the day's mean outflow, `ch_out_d(i)%flo` | the working rating curve `rcurv` is put back after, so reading changes nothing |
 | `channel_water__groundwater_volume_exchange_rate` | cha | in and out | m3 s-1 | gains into `ob(iob)%trans`; losses from `ht2` after routing, counted in `ch_wat_d(i)%seep` | positive into the channel; reading gives what was exchanged on the day just done |
+| `soil_layer__temperature` | hly | in and out | degC | `soil(j)%phys(k)%tmp` | a state: setting replaces the day's value right after SWAT+ computes it (Setting states); degrees C, as SWAT+ keeps it, so a value read and set back is exact; layer 2 is `sol_tmp` in `hru_pw_day.txt` |
+| `snowpack__liquid-equivalent_depth` | hru | out | m | `hru(j)%sno_mm` | `sno_final` in `hru_wb_day.txt` |
 | `point_source_water__volume_flow_rate` | rec | in and out | m3 s-1 | `recall(i)%hd(day,yr)%flo` | settable on daily recall objects inside their records only; negative is a withdrawal |
 | `place_of_use_water__volume_demand_rate` | pou | in and out | m3 s-1 | `pou(i)%demand` | reading gives the day's demand; setting replaces SWAT+'s for the next day |
 | `place_of_use_water__volume_withdrawal_rate` | pou | out | m3 s-1 | `poud_met(i)%duty_tot%deliv` | what was actually taken |
@@ -218,6 +226,43 @@ exchange survives saving and loading.
   get SWAT+'s own. That lag is SWAT+'s, and the wrapper keeps it.
 - **The groundwater exchange**: daily routing only (above).
 - Storage can't be set.
+
+### Setting states
+
+A state is set differently from a flux. A flux is an input SWAT+ takes for
+the day, so a set flux goes in at the start of the day or where SWAT+ uses
+it. A state is something SWAT+ computes from yesterday's state each day, so
+a value set at the start of the day would be overwritten. Instead, each
+settable state has a hook placed right after SWAT+ computes it and before
+anything uses it. The hook replaces SWAT+'s value for that day with the
+value set, and SWAT+ carries it into the next day as it would carry its
+own. As with fluxes, a set lasts one day, so a held state is set every day.
+
+Soil layer temperature is the first. `stmp_solt` computes it at the start
+of each HRU's day in `hru_control.f90`. Snowmelt, the frozen-soil curve
+number (`sq_dailycn`) and percolation (`swr_percmicro`, which stops at or
+below 0 °C) come after. The hook, `exch_hru_soil`, is the line after
+`stmp_solt`. Uses: a soil temperature from another model, or a rule in the
+caller, such as holding a layer at 0 °C under lasting snow. SWAT+ 62.0.1
+lets half the snow's insulation through (`stmp_solt.f90`), so soils under
+snow can sit at −5 to −8 °C and stop percolating all winter.
+
+**What a set state means.** It overrides SWAT+'s own model of that state,
+and SWAT+'s soil temperature isn't an energy balance (it's an empirical
+lag), so no heat is accounted for. A study that sets a state states the
+rule it used and why. With gwflow's heat transport on, gwflow can change
+layer temperatures later in the day (`gwflow_soil.f90`).
+
+**Adding another state** takes, for each one:
+1. the point in SWAT+'s day after it is computed and before anything uses
+   it, and nothing later in the day that changes it again;
+2. one call there in the patch, and the variable's read, set and grid in
+   `bmi_exchange_module.f90`, with its set values saved in the state;
+3. the tests every settable variable has: nothing set is stock; setting
+   SWAT+'s own value back every day is stock; a set changes that day and
+   then only through SWAT+'s own carry-over; it runs in bounds on the
+   checked build; a set saved before its day applies after loading.
+
 
 ## Time
 
@@ -538,8 +583,9 @@ by reading the source.
 
 - Daily steps only; the groundwater exchange is refused with sub-daily
   routing.
-- Only fluxes can be set: point source flow (daily recalls inside their
-  records), water allocation demand and a channel's groundwater exchange.
+- Only fluxes and listed states can be set: point source flow (daily
+  recalls inside their records), water allocation demand, a channel's
+  groundwater exchange, and soil layer temperature.
 - A gwflow project that reads `chan_depth.gw` or `pond_div.gw` can't be
   branched or saved, and nor can a project whose `out_path` leads out of
   the run folder.
