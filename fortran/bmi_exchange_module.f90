@@ -42,7 +42,7 @@
       integer :: protocol = 2             !! protocol version
       integer, parameter :: unit_max = 1000000   !! highest unit number branch looks at
       character(len=80) :: paused_line = ""      !! the last @paused reply
-      character(len=16), parameter :: state_magic = "SWXSTATE-1"
+      character(len=16), parameter :: state_magic = "SWXSTATE-2"
 
       !! loading a saved state: run forward to the saved day, then load
       logical :: loading = .false.
@@ -670,9 +670,9 @@
       subroutine save_state (path)
 
 !!    save "<file>": writes all of SWAT+'s module state, as it is at this
-!!    pause, to <file> (bmi_state_module, generated per release). The caller
-!!    keeps a copy of the run folder with it; output files are flushed first
-!!    so that copy is complete.
+!!    pause, to <file> (bmi_state_module, generated per release), with the
+!!    values set for the next day. The caller keeps a copy of the run folder
+!!    with it; output files are flushed first so that copy is complete.
 
       use bmi_state_module, only : swx_state_save, swx_state_digest
 
@@ -690,6 +690,7 @@
       write (u) state_magic, swx_state_digest, days_done, paused_line
       write (u) size(pou_dmd_day), pou_dmd_day, pou_wdr_day
       write (u) size(chx_day), chx_day
+      write (u) size(rec_flo), rec_flo, rec_flo_on, dmd_flo, dmd_flo_on, chx_flo, chx_on
       call swx_state_save (u)
       write (u) state_magic
       close (u)
@@ -741,9 +742,10 @@
 !!    --------------------------------------------------------------------
       subroutine load_now
 
-!!    at the saved day: reads the saved state over SWAT+'s, closes the
-!!    output files, asks the caller to put the saved ones back (@restore,
-!!    answered with "restored"), and opens them again at their ends
+!!    at the saved day: reads the saved state over SWAT+'s, with the values
+!!    set for the next day, closes the output files, asks the caller to put
+!!    the saved ones back (@restore, answered with "restored"), and opens
+!!    them again at their ends
 
       use bmi_state_module, only : swx_state_load
 
@@ -769,6 +771,12 @@
         error stop 7
       end if
       read (u) chx_day
+      read (u) n
+      if (n /= size(rec_flo)) then
+        call reply ("@error the saved state has a different number of point sources")
+        error stop 7
+      end if
+      read (u) rec_flo, rec_flo_on, dmd_flo, dmd_flo_on, chx_flo, chx_on
       call swx_state_load (u)
       read (u) magic
       close (u)
@@ -776,9 +784,6 @@
         call reply ("@error the saved state ends early: " // trim(load_path))
         error stop 7
       end if
-      rec_flo_on = .false.
-      dmd_flo_on = .false.
-      chx_on = .false.
       loading = .false.
       run_left = 0
       run_free = .false.

@@ -238,8 +238,9 @@ class Exchange:
         """Save SWAT+'s state at this pause to the folder ``path``.
 
         The folder holds ``state.bin`` (every module variable, written by
-        the generated serializer) and ``run/``, a copy of the run folder
-        with every output file complete up to this pause.
+        the generated serializer, and the values set for the next day) and
+        ``run/``, a copy of the run folder with every output file complete
+        up to this pause.
         """
         if self.ended:
             raise ExchangeError("the simulation has ended; nothing left to save")
