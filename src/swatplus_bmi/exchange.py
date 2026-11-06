@@ -273,9 +273,11 @@ class Exchange:
         q = lambda p: '"' + str(p).replace('"', '') + '"'
         x._send(f"load {q(src / 'state.bin')}")
         x._expect("@restore")
-        for f in (src / "run").iterdir():           # put back the saved files SWAT+ rewrote at startup
-            if f.is_file() and f.name != "exchange.err":
-                shutil.copy2(f, run / f.name)
+        for f in (src / "run").rglob("*"):          # put back the saved files SWAT+ rewrote at startup,
+            if f.is_file() and f.name != "exchange.err":     # in out_path's folder too
+                dest = run / f.relative_to(src / "run")
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(f, dest)
         x._send("restored")
         x._paused()
         return x
