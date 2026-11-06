@@ -273,7 +273,7 @@
         chx_gain(i) = 0.
         chx_loss(i) = 0.
         if (.not. chx_on(i)) cycle
-        if (chx_flo(i) > 1.e-6) then
+        if (chx_flo(i) > 0.) then
           !! a gain joins the channel's inflow through SWAT+'s transfer hydrograph
           iob = sp_ob1%chandeg + i - 1
           ob(iob)%trans%flo = ob(iob)%trans%flo + chx_flo(i)
@@ -400,7 +400,7 @@
       logical, intent(in) :: at_end
       character(len=4096) :: line = ""
       character(len=64) :: word = ""
-      character(len=64) :: name = ""
+      character(len=1024) :: name = ""
       character(len=1024) :: path = ""
       integer :: ios = 0
       integer :: n = 0
@@ -464,9 +464,9 @@
         case ("save")
           read (line, *, iostat=ios) word, path, name
           if (ios /= 0) then
-            call reply ('@error save needs "<file>"')
+            call reply ('@error save needs "<file>" "<run dir>"')
           else
-            call save_state (trim(path))
+            call save_state (trim(path), trim(name))
           end if
 
         case ("load")
@@ -555,12 +555,18 @@
       character(len=1024) :: old_dir = ""
       character(len=1024) :: fifo_in = ""
       character(len=1024) :: fifo_out = ""
+      character(len=1200) :: msg = ""
       integer :: ios = 0
       integer :: pid = 0
 
       read (line, *, iostat=ios) word, new_dir, old_dir, fifo_in, fifo_out
       if (ios /= 0) then
         call reply ('@error branch needs "<new dir>" "<old dir>" "<command fifo>" "<reply fifo>"')
+        return
+      end if
+      call check_units (trim(old_dir), msg)
+      if (msg /= "") then
+        call reply ("@error can't branch: " // trim(msg))
         return
       end if
 
@@ -590,6 +596,54 @@
 
       return
       end subroutine branch
+
+!!    --------------------------------------------------------------------
+      subroutine check_units (run_dir, msg)
+
+!!    the open files a branch or a saved state can't carry, for an @error:
+!!    a file outside the run folder (an out_path in file.cio that leads
+!!    out of it), which the copy of the run folder doesn't have, and a
+!!    file partway through, which can't be opened again at the same place
+!!    (gwflow reads chan_depth.gw and pond_div.gw a day at a time). msg is
+!!    blank when there are none.
+
+      character(len=*), intent(in) :: run_dir
+      character(len=*), intent(out) :: msg
+      character(len=1024) :: nm = ""
+      character(len=16) :: acc = ""
+      character(len=16) :: pos = ""
+      integer :: u = 0
+      integer :: n = 0
+      integer(8) :: sz = 0
+      logical :: op = .false.
+      logical :: nd = .false.
+
+      msg = ""
+      n = len_trim(run_dir)
+      do u = 1, unit_max
+        if (u == 5 .or. u == 6) cycle
+        inquire (unit=u, opened=op)
+        if (.not. op) cycle
+        inquire (unit=u, named=nd, name=nm, access=acc, position=pos, size=sz)
+        if (.not. nd) cycle
+        if (nm(1:1) == "/") then
+          if (.not. (len_trim(nm) > n + 1 .and. nm(1:n) == run_dir(1:n) .and. nm(n+1:n+1) == "/")) then
+            msg = trim(nm) // " is outside the run folder (out_path in file.cio?)"
+            return
+          end if
+        else if (nm(1:3) == "../") then
+          msg = trim(nm) // " is outside the run folder (out_path in file.cio?)"
+          return
+        end if
+        if (pos == "ASIS" .and. sz == 0) pos = "APPEND"
+        if (acc /= "DIRECT" .and. pos /= "APPEND" .and. pos /= "REWIND") then
+          msg = trim(nm) // " is open partway through, and SWAT+ reads it again later"
+          return
+        end if
+      end do
+
+      return
+      end subroutine check_units
 
 !!    --------------------------------------------------------------------
       subroutine close_units (old_dir)
@@ -667,19 +721,27 @@
       end subroutine reopen_closed
 
 !!    --------------------------------------------------------------------
-      subroutine save_state (path)
+      subroutine save_state (path, run_dir)
 
-!!    save "<file>": writes all of SWAT+'s module state, as it is at this
-!!    pause, to <file> (bmi_state_module, generated per release), with the
-!!    values set for the next day. The caller keeps a copy of the run folder
-!!    with it; output files are flushed first so that copy is complete.
+!!    save "<file>" "<run dir>": writes all of SWAT+'s module state, as it
+!!    is at this pause, to <file> (bmi_state_module, generated per release),
+!!    with the values set for the next day. The caller keeps a copy of the
+!!    run folder with it; output files are flushed first so that copy is
+!!    complete.
 
       use bmi_state_module, only : swx_state_save, swx_state_digest
 
       character(len=*), intent(in) :: path
+      character(len=*), intent(in) :: run_dir
+      character(len=1200) :: msg = ""
       integer :: u = 0
       integer :: ios = 0
 
+      call check_units (run_dir, msg)
+      if (msg /= "") then
+        call reply ("@error can't save: " // trim(msg))
+        return
+      end if
       call flush_units
       open (newunit=u, file=path, access="stream", form="unformatted", action="write",          &
             status="replace", iostat=ios)

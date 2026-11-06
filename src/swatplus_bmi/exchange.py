@@ -205,7 +205,8 @@ class Exchange:
         SWAT+ writes out its buffers, the run folder is copied to
         ``run_dir``, and the process is duplicated with fork. Both copies
         are paused at the same point with the same state; each continues on
-        its own and writes its own outputs. Mac and Linux only.
+        its own and writes its own outputs. Mac and Linux only. Refused, as
+        for ``save_state``, when a file SWAT+ has open couldn't be carried.
         """
         if sys.platform == "win32":
             raise ExchangeError("branch needs fork, which Windows doesn't have")
@@ -223,7 +224,12 @@ class Exchange:
         os.mkfifo(f_out)
         q = lambda p: '"' + str(p).replace('"', '') + '"'
         self._send(f"branch {q(new)} {q(self.run_dir.resolve())} {q(f_in)} {q(f_out)}")
-        pid = int(self._expect("@branched")[0])
+        try:
+            pid = int(self._expect("@branched")[0])
+        except ExchangeError:
+            shutil.rmtree(new, ignore_errors=True)
+            shutil.rmtree(fifo_dir, ignore_errors=True)
+            raise
 
         b = copy.copy(self)
         b.run_dir, b.proc, b.pid, b._err = new, None, pid, None
@@ -240,7 +246,9 @@ class Exchange:
         The folder holds ``state.bin`` (every module variable, written by
         the generated serializer, and the values set for the next day) and
         ``run/``, a copy of the run folder with every output file complete
-        up to this pause.
+        up to this pause. SWAT+ refuses to save when a file it has open
+        couldn't be carried: one outside the run folder, or one it reads a
+        day at a time (gwflow's chan_depth.gw and pond_div.gw).
         """
         if self.ended:
             raise ExchangeError("the simulation has ended; nothing left to save")
@@ -249,8 +257,12 @@ class Exchange:
             raise FileExistsError(f"{out} already exists")
         out.mkdir(parents=True)
         q = lambda p: '"' + str(p).replace('"', '') + '"'
-        self._send(f"save {q(out / 'state.bin')}")
-        self._expect("@ok")
+        self._send(f"save {q(out / 'state.bin')} {q(self.run_dir.resolve())}")
+        try:
+            self._expect("@ok")
+        except ExchangeError:
+            shutil.rmtree(out, ignore_errors=True)
+            raise
         shutil.copytree(self.run_dir, out / "run", ignore=shutil.ignore_patterns("exchange.err"))
         (out / "day").write_text(f"{self.days_done}\n")
         return out
