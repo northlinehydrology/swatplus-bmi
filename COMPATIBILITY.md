@@ -37,3 +37,21 @@ and the main branch takes merged pull requests continuously.
 - If the exchange mode is merged into SWAT+ itself, the patch is no longer
   needed from that release on, and this table records which SWAT+ release
   has it built in.
+
+## What has been proven, and on which projects
+
+`tests/test_faithful.py` and the rest of the suite (docs/design.md, What the tests prove). With
+nothing set, every output file must match a stock run byte for byte however the run is driven:
+stepped while reading every variable every day, in uneven chunks, branched partway through a
+year, and saved and loaded there.
+
+| Project | What it has | Checked (SWAT+ 62.0.1, macOS 14 arm64, Nov 6, 2026) |
+|---|---|---|
+| Osu_1hru (SWAT+ refdata) | 1 HRU, 1 channel, 1 aquifer, 2010–2023 | every mode, daily printing; also with a daily point source, a water allocation user, and outputs in an `out_path` folder; setting SWAT+'s own point source flow and demand back every day; every refusal; every kind of set on the bounds-checked build |
+| Ames_sub1 (SWAT+ refdata) | 12 HRUs, crop management, 1975–2020 | stepped and reading everything, save and load, saved locals (`-m full`) |
+| Clam River, Michigan (a study's build on the NextGen hydrofabric) | 2,371 HRUs, 35 channels, 35 aquifers, 3 reservoirs, 2001–2005 | every mode (`$SWATPLUS_BMI_PROJECTS`) |
+
+Not yet covered by any project: gwflow (refused for branching and saving when it reads a file a
+day at a time), salts and other constituents, pesticides, sub-daily routing, and saved states
+moved between platforms. Run a project of your own through the same checks with
+`SWATPLUS_BMI_PROJECTS=/path/to/TxtInOut uv run pytest tests/test_faithful.py`.

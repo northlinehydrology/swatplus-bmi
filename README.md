@@ -10,10 +10,13 @@ through the Basic Model Interface ([BMI 2.0](https://bmi.readthedocs.io), CSDMS)
 A small patch adds an exchange mode to SWAT+, off by default. In exchange mode SWAT+ pauses
 before each day. While it's paused, a caller reads state (channel flow, aquifer storage, depth
 to water, recharge) and sets fluxes for the next day (a point source's flow, a water user's
-demand). A Python BMI wrapper drives it. Stepped this way, **SWAT+'s output is byte-for-byte
-identical to an unpatched run, every output file, start to finish.** A paused run can also be
-saved and loaded, or branched in memory, so a warm-up is run once and every scenario starts
-from the same state.
+demand). A Python BMI wrapper drives it. **With nothing set, SWAT+'s output is byte-for-byte
+identical to an unpatched run, every output file, start to finish, however the run is stepped,
+read, branched or saved; a value set changes the run only through that input; and anything
+SWAT+ wouldn't use as given is refused rather than dropped.** The tests check each of those
+against unpatched SWAT+ on the projects listed in [COMPATIBILITY.md](COMPATIBILITY.md). A
+paused run can also be saved and loaded, or branched in memory, so a warm-up is run once and
+every scenario starts from the same state.
 
 **Status:** working for SWAT+ 62.0.1; release 0.2.0 ([PyPI](https://pypi.org/project/swatplus-bmi/), [Zenodo](https://doi.org/10.5281/zenodo.23963201)). Tested on the two example projects that
 ship with SWAT+ (below). See [COMPATIBILITY.md](COMPATIBILITY.md) and the design note,
@@ -166,8 +169,7 @@ m.initialize("path/to/TxtInOut")       # SWAT+ starts, paused before day 1
 print(m.get_time_units())               # days since 2010-01-01 00:00:00
 print(m.get_output_var_names())
 
-q = np.empty(m.get_grid_size(m.get_var_grid("channel_water__volume_outflow_rate")),
-             dtype=np.float32)
+q = np.empty(m.get_grid_size(m.get_var_grid("channel_water__volume_outflow_rate")))
 while m.get_current_time() < m.get_end_time():
     m.update()                          # one day
     m.get_value("channel_water__volume_outflow_rate", q)   # m3/s, one per channel
@@ -191,11 +193,11 @@ DMD = "place_of_use_water__volume_demand_rate"     # m3/s
 QOUT = "channel_water__volume_outflow_rate"
 
 i = m.get_object_index(QOUT, "cha01")
-q = np.empty(m.get_grid_size(m.get_var_grid(QOUT)), np.float32)
+q = np.empty(m.get_grid_size(m.get_var_grid(QOUT)))
 while m.get_current_time() < m.get_end_time():
     m.get_value(QOUT, q)                                # yesterday's flow
     if q[i] < 0.0012:
-        m.set_value(DMD, np.array([0.0], np.float32))   # for the next day only
+        m.set_value(DMD, np.array([0.0]))               # for the next day only
     m.update()
 ```
 
@@ -254,14 +256,15 @@ objects in a project are left out.
 | `soil_water_table_surface__depth` (depth to water) | aquifers | no | m | `dep_wt` |
 | `aquifer_water__volume_outflow_rate` | aquifers | no | m3 s-1 | `flo` (return flow) |
 | `soil_water_table__recharge_rate` | aquifers | no | m s-1 | `rchrg` |
-| `point_source_water__volume_flow_rate` | daily recall objects | yes | m3 s-1 | the recall file's flow |
+| `point_source_water__volume_flow_rate` | recall objects | daily ones, inside their records | m3 s-1 | the recall file's flow |
 | `place_of_use_water__volume_demand_rate` | water allocation places of use | yes | m3 s-1 | the day's demand |
 | `place_of_use_water__volume_withdrawal_rate` | water allocation places of use | no | m3 s-1 | what was actually taken |
 
 Names follow [CSDMS Standard Names](https://csdms.colorado.edu/wiki/CSDMS_Standard_Names). The
 channel volume and flow names and the recharge name are on the CSDMS list. The others are new,
-built the same way. All values are 4-byte reals, as SWAT+ keeps them. Every variable is checked
-against SWAT+'s own daily output in the tests.
+built the same way. SWAT+ keeps 4-byte reals; values come out of BMI as 8-byte reals
+(`float64`), so a value read and set back is SWAT+'s own to the bit. Every variable is checked
+against SWAT+'s own daily output in the tests, to the digits SWAT+ prints.
 
 ## Saving state
 
@@ -271,8 +274,9 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
 
 - **The serializer is generated, not written by hand.** `tools/gen_serializer.py` reads the
   release's module declarations and writes Fortran that saves and loads every module variable
-  (65 modules, 2,048 variables, 523 derived types in 62.0.1). It's rerun on every build, and a
-  state is refused by any build other than the one that wrote it.
+  (66 modules, 2,049 variables, 524 derived types in 62.0.1), and the values set for the next
+  day. It's rerun on every build, and a state is refused by any build other than the one that
+  wrote it.
 - **Saved locals.** Fortran locals with an initializer keep their values between calls, and
   SWAT+ has about 5,400 of them. A test build that resets them all on every call
   (`build.sh --nosave`) shows which ones carry state. In 62.0.1 only one does on the test
@@ -282,11 +286,16 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   forward to the saved day without computing anything, reads the saved state over its own, and
   puts back the saved output files.
 - **Branching** copies the paused process with `fork`, which needs none of this.
+- **Refused:** a branch or save while SWAT+ has a file open outside the run folder (an
+  `out_path` that leads out of it) or partway through reading (gwflow's `chan_depth.gw` and
+  `pond_div.gw`, read a line a day). An `out_path` inside the run folder is fine.
 
 ## Strengths
 
-- **Exact.** Stepping, reading, branching and saving don't change a byte of SWAT+'s output. The
-  suite checks every output file against unpatched SWAT+, including 46 years of Ames_sub1.
+- **Exact.** Stepping, reading, branching and saving don't change a byte of SWAT+'s output, and
+  setting SWAT+'s own values back doesn't either. The suite checks every output file against
+  unpatched SWAT+, including 46 years of Ames_sub1, and CI checks that every SWAT+ file the
+  patch doesn't touch compiles to the same object as in the stock build.
 - **Small and off by default.** Seven calls in four SWAT+ files, one Fortran module, and a C file
   of four functions for `fork`. With the mode off, SWAT+ behaves exactly as it does without the
   patch. It's meant to be proposed to the SWAT+ team (`docs/upstream-issue.md`).
@@ -294,15 +303,16 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   wrapper is a separate program, which keeps the licenses apart.
 - **Standard interface.** BMI 2.0 with CSDMS names and time in days since the start date, as
   eWaterCycle expects.
-- **Warm-ups shared.** Branching is instant. Saved states work across processes, platforms and
-  sessions.
-- **Checked against SWAT+ itself.** Every variable is compared with SWAT+'s own output. The
-  water balances in the tests close to SWAT+'s printed precision, except where SWAT+ itself
-  doesn't balance; those cases are tested too (see Gotchas).
+- **Warm-ups shared.** Branching is instant. Saved states work across processes and sessions on
+  the same build (tested on macOS and Linux; a state from another build is refused).
+- **Checked against SWAT+ itself.** Every variable is compared with SWAT+'s own output to the
+  digits SWAT+ prints. The water balances in the tests close to SWAT+'s printed precision, except
+  where SWAT+ itself doesn't balance; those cases are tested too (see Gotchas).
 
 ## Weaknesses and limits
 
-- **Daily steps only.** SWAT+'s sub-daily options aren't exposed.
+- **Daily steps only.** SWAT+'s sub-daily options aren't exposed, and the groundwater exchange
+  is refused with sub-daily routing.
 - **Only fluxes can be set:** point source flow, water allocation demand and a channel's
   groundwater exchange, for the next day.
   Not storage, land use, soils or parameters; those are scenario inputs.
@@ -316,7 +326,10 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   is complete for the code the test projects run: about half of SWAT+'s procedures. That
   excludes gwflow, salts and other constituents, reservoirs, pesticides and calibration. A
   project that uses those should be checked with `build.sh --nosave` and `pytest -m full` first.
-  Branching isn't affected.
+  Saved locals don't affect branching, which copies the whole process.
+- **Proven on the test projects, not on every project.** COMPATIBILITY.md lists what has been
+  shown on which projects. A study's own project can be added to the same checks with
+  `SWATPLUS_BMI_PROJECTS=/path/to/TxtInOut uv run pytest tests/test_faithful.py`.
 - **Loading takes a moment.** A loaded process runs forward through the saved days without
   computing them. Branching is instant.
 - **NextGen can use SWAT+ only as one model for the whole domain**, not split by catchment,
@@ -328,7 +341,12 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
 ## Gotchas
 
 - **A set value lasts one day.** `set_value` before `update()` applies to that day only, then
-  SWAT+ goes back to its own inputs. Set it every day for a lasting change.
+  SWAT+ goes back to its own inputs. Set it every day for a lasting change. Outside sources,
+  water towers and unlimited sources get a set demand a day later, because SWAT+ takes their
+  water before it works out the day's demand; that lag is SWAT+'s own.
+- **A set SWAT+ wouldn't use is an error.** Only daily point sources inside their recall file's
+  years can be set; a value must be a finite number; `set_value_at_indices` needs one value per
+  index.
 - **Values read at a pause are yesterday's.** SWAT+ has also read the coming day's weather, but
   hasn't routed it. That's what a same-day rule needs, but it matters when lining up times with
   observations.
@@ -359,6 +377,26 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
 - **The scenario's first day.** A rule that reacts to yesterday's flow should read it before its
   first `update()`, also after `branch` or `load_state`. Otherwise its first decision differs
   from the unbroken run's (the notebook shows how).
+- **SWAT+ 62.0.1 ignores or misreads some inputs without a message**, and the wrapper keeps that
+  behavior. Two read-only checks find the ones met so far:
+  `swatplus_bmi.project.check_calibration(project)` lists `calibration.cal` changes SWAT+ won't
+  make (a name missing from `cal_parms.cal`; `chn`, which never reaches the routing), and
+  `check_soils(run_dir)`, after a run, compares each soil as SWAT+ read it (`checker.out`) with
+  `soils.sol`, where a blank field shifts every soil after it.
+- **Reservoirs in SWAT+ 62.0.1.** The `weir` release reads the crest height of a wetland, not the
+  reservoir's own, and a reservoir's area at the principal spillway comes out as psa^0.9 ha, not
+  psa. Use another release type, and allow for the area, until SWAT+ fixes them (draft reports:
+  `docs/upstream-issue-reservoir-weir.md`, `docs/upstream-issue-reservoir-area.md`).
+- **The aquifer's base flow follows recharge, not storage.** Base flow is recharge lagged by
+  `alpha` (`aqu_1d_control.f90`), so `revap_co` and `deep_seep` change aquifer storage, not
+  streamflow, until the storage runs out.
+
+## What the patch never does
+
+The patch adds pauses, reads and the inputs listed above, and nothing else. It never changes
+SWAT+'s physics, its inputs or its outputs, even where SWAT+ looks wrong: those are documented
+here and drafted as SWAT+ issues (`docs/upstream-issue-*.md`), and any workaround belongs in the
+model setup, not in the patch. A fix would be a separate, opt-in patch with its own name.
 
 ## The protocol
 
@@ -369,7 +407,7 @@ lines, then `@ready`), then `@paused <days done> <year> <day of year>`, and wait
 run [n]                    run n days (default 1)          -> @paused ... or @ended <days>
 get <variable>             one value per object             -> @value <n> <v1> ... <vn>
 set <variable> <i> <v>     object i (1-based), next day     -> @ok
-save "<file>"              the state at this pause          -> @ok
+save "<file>" "<run dir>"  the state at this pause          -> @ok
 load "<file>"              right after startup              -> @restore ... then @paused
 branch "<new>" "<old>" "<in>" "<out>"   fork (Mac, Linux)   -> @branched <pid>
 flush | ping                                                -> @ok
@@ -382,7 +420,7 @@ Errors come back as `@error <message>` and SWAT+ keeps waiting. Details:
 
 ## Tests
 
-`uv run pytest` builds nothing; run `build.sh --stock --nosave` first. The tests use the two
+`uv run pytest` builds nothing; run `build.sh --stock --nosave --check` first. The tests use the two
 example projects that ship with SWAT+: `Osu_1hru` (one HRU, a channel and an aquifer,
 2010-2023) in several variants (all output printed daily, a daily point source, a water user on
 the channel, a well on the aquifer), and `Ames_sub1` (12 HRUs, 1975-2020) under `-m full`. The
@@ -397,9 +435,13 @@ folders once it passes (set `SWATPLUS_BMI_KEEP_RUNS=1` to keep them).
 | Stepping changes nothing | the same, stepped one day at a time and in chunks, 14 and 46 years |
 | Values read are SWAT+'s | every variable, every day, against SWAT+'s daily output files |
 | Set values take effect exactly | a set withdrawal leaves the channel short by exactly that water; balances close |
+| Setting SWAT+'s own value back | point source flow and demand set every day to SWAT+'s own: stock output, byte for byte |
+| Sets stay in bounds | every kind of set, run on a build with array bounds checked |
+| Refusals | every set or snapshot the wrapper can't carry out faithfully raises an error |
+| The build | every SWAT+ file the patch doesn't touch compiles to the same object as in the stock build |
 | Same-day rules | a curtailment rule acts on the right days |
 | Branching | at days 0, 365, 1000 and the last; a branch of a branch; scenarios against unbroken runs |
-| Saving and loading | the same, across processes; values read back exactly; another build's state refused |
+| Saving and loading | the same, across processes; values read back exactly; a pending set kept; another build's state refused |
 | Saved locals | a build that resets them on every call matches stock, except the listed ones |
 
 CI (GitHub Actions) runs the suite on Ubuntu and macOS on every push. Each night it also runs the full-length tests and builds SWAT+

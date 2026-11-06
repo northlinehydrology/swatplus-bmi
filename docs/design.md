@@ -66,11 +66,16 @@ So, at a pause before day *d*:
   processing if *d*-1 was December 31;
 - day *d*'s weather has already been read or generated;
 - values set apply to day *d* only. After day *d*, SWAT+ goes back to its
-  own inputs (the recall file, the water allocation rules).
+  own inputs (the recall file, the water allocation rules). The one
+  exception is SWAT+'s own: it takes water from outside sources, water
+  towers and unlimited sources before it works out the day's demand, so
+  those sources get a set demand on day *d*+1, as they get SWAT+'s own
+  (Setting fluxes).
 
-With the mode off, nothing changes. The test suite checks every output file
-of the Osu_1hru example, byte for byte, against the unpatched release, both
-with the mode off and stepped one day at a time.
+With the mode off, nothing changes. The test suite checks every output file,
+byte for byte, against the unpatched release, with the mode off, stepped one
+day at a time, read every day, branched, and saved and loaded (What the tests
+prove, below, says on which projects).
 
 ## Protocol
 
@@ -85,8 +90,9 @@ to `exchange.log`. No sockets and no C are needed for stepping.
 Startup (SWAT+ to caller):
 
 ```
-@hello swatplus-exchange 1
+@hello swatplus-exchange 2
 @model SWAT+ 2026-10-16        MODULAR Rev 2026.62.0.1
+@build 3f9c0e...                  hash of the swatplus-bmi sources it was built from
 @start 2010 1                    first year, first day of year
 @days 5113                       days in the simulation
 @grid cha 1                      a grid: name, number of objects
@@ -106,11 +112,11 @@ Commands, while paused:
 | Command | Reply | Meaning |
 |---|---|---|
 | `run [n]` | `@paused d y j` or `@ended d` | run *n* days (default 1) without pausing in between |
-| `get <var>` | `@value n v1 ... vn` | one value per object on the variable's grid, nine significant digits (a 4-byte real exactly) |
-| `set <var> <i> <v>` | `@ok` | object *i* (1-based) gets *v* for the next day |
+| `get <var>` | `@value n v1 ... vn` | one value per object on the variable's grid, seventeen significant digits (an 8-byte real exactly) |
+| `set <var> <i> <v>` | `@ok` | object *i* (1-based) gets *v* for the next day; refused (`@error`) when SWAT+ would not use it as given (Setting fluxes) |
 | `flush` | `@ok` | write out every open file's buffer |
 | `branch "<new>" "<old>" "<in>" "<out>"` | `@branched pid` | fork; see Snapshots |
-| `save "<file>"` | `@ok` | write SWAT+'s module state at this pause to the file (see Snapshots) |
+| `save "<file>" "<run dir>"` | `@ok` | write SWAT+'s module state at this pause, and the values set for the next day, to the file (see Snapshots); refused when an open file couldn't be carried |
 | `load "<file>"` | `@restore`, later `@paused` | right after startup only: run forward to the saved day and load the state; the caller puts back the saved files and sends `restored` |
 | `finish` | (process exits 0) | run to the end without pausing and complete the outputs |
 | `stop` | `@bye` | exit now; outputs stay incomplete |
@@ -123,8 +129,11 @@ run the daily loop more than once.
 
 ## Variables
 
-All values are 4-byte reals in SI units. Flows that SWAT+ keeps in m3/day
-are converted to m3/s. Names follow CSDMS Standard Names (object, then quantity).
+SWAT+ keeps its values in 4-byte reals. They cross the protocol, and come out
+of BMI, as 8-byte reals (`float64`) in SI units; flows that SWAT+ keeps in
+m3/day are converted to m3/s in 8-byte arithmetic. So a value read and set
+back is SWAT+'s own 4-byte value to the bit, which 4-byte conversion didn't
+give (it changed about one value in seven by one step). Names follow CSDMS Standard Names (object, then quantity).
 `channel_water__volume`, `channel_water__volume_inflow_rate`,
 `channel_water__volume_outflow_rate` and `soil_water_table__recharge_rate`
 are on the CSDMS list (TopoFlow names,
@@ -144,12 +153,14 @@ names follow the channel ones. CSDMS lists no aquifer or withdrawal names.
 | `soil_water_table__recharge_rate` | aqu | out | m s-1 | `aqu_d(i)%rchrg` (mm/day) | `rchrg` in `aquifer_day.txt`; a CSDMS name; what MODFLOW 6's recharge package takes |
 | `channel_water__depth` | cha | out | m | SWAT+'s rating curve (`rcurv_interp_flo`) at the day's mean outflow, `ch_out_d(i)%flo` | the working rating curve `rcurv` is put back after, so reading changes nothing |
 | `channel_water__groundwater_volume_exchange_rate` | cha | in and out | m3 s-1 | gains into `ob(iob)%trans`; losses from `ht2` after routing, counted in `ch_wat_d(i)%seep` | positive into the channel; reading gives what was exchanged on the day just done |
-| `point_source_water__volume_flow_rate` | rec | in and out | m3 s-1 | `recall(i)%hd(day,yr)%flo` | daily recall objects only; negative is a withdrawal |
+| `point_source_water__volume_flow_rate` | rec | in and out | m3 s-1 | `recall(i)%hd(day,yr)%flo` | settable on daily recall objects inside their records only; negative is a withdrawal |
 | `place_of_use_water__volume_demand_rate` | pou | in and out | m3 s-1 | `pou(i)%demand` | reading gives the day's demand; setting replaces SWAT+'s for the next day |
 | `place_of_use_water__volume_withdrawal_rate` | pou | out | m3 s-1 | `poud_met(i)%duty_tot%deliv` | what was actually taken |
 
 The reading tests compare every day of every output variable with SWAT+'s
-own daily files, to the precision SWAT+ prints them.
+own daily files, to the precision SWAT+ prints them (seven or eight
+significant digits); exact agreement with SWAT+'s memory is shown by setting
+values back (What the tests prove).
 
 ### Grids and IDs
 
@@ -176,6 +187,9 @@ computes each day's stream–aquifer exchange.
 - **Reading** after the day gives what was exchanged: the gain, less what was taken.
 - **Not adjusted:** salts and other constituents (`cs_db`) on losses; for projects that simulate
   them, losses would need the same treatment there.
+- **Daily routing only.** With sub-daily routing (a time step in `time.sim` above 1) gains
+  wouldn't reach the sub-daily hydrograph SWAT+ routes and losses wouldn't come out of it, so a
+  set is refused there.
 
 The tests check that a gain raises the inflow by exactly that water, that a loss takes no more
 than the outflow and the balance closes, that a set value lasts one day, and that the day's
@@ -183,17 +197,26 @@ exchange survives saving and loading.
 
 ### Setting fluxes
 
-- A set value applies to the next day only.
-- **Point sources** (`rec`) must be daily recall objects. The value
-  replaces the recall file's flow for that day; the other constituents
-  stay as in the file. Inside the recall file's years only.
+- A set value applies to the next day only. Anything SWAT+ would not use
+  as given is refused with `@error` (an `ExchangeError` in Python), never
+  accepted and dropped: a value that isn't a finite number, or is too large
+  for a 4-byte real, and the cases below.
+- **Point sources** (`rec`) must be daily recall objects (type 1). The
+  value replaces the recall file's flow for that day; the other
+  constituents stay as in the file. Refused: sub-daily, monthly, yearly and
+  constant recalls, whose records have other shapes (setting one used to
+  write into the wrong place, or past the end of the array), and a day
+  outside the recall file's years, for which SWAT+ uses no flow at all.
 - **Water allocation demand** (`pou`) replaces the demand `wallo_start_day`
   computed. As SWAT+ does, it is capped at the place of use's `rate_max`
   and split among its points of diversion by their fractions. It affects
   withdrawals from channels, aquifers and reservoirs, which SWAT+ makes
-  during the command loop. Withdrawals from outside sources, water towers
-  and unlimited sources happen inside `wallo_start_day`, before the set
-  takes effect.
+  during the command loop, on the day it is set for. SWAT+ takes water from
+  outside sources, water towers and unlimited sources inside
+  `wallo_start_day` before it recomputes the demand, using the previous
+  day's; so those get a set demand on the following day, exactly as they
+  get SWAT+'s own. That lag is SWAT+'s, and the wrapper keeps it.
+- **The groundwater exchange**: daily routing only (above).
 - Storage can't be set.
 
 ## Time
@@ -227,10 +250,18 @@ generator. A warm-up is run once, and every scenario branches from it.
 4. The child closes the parent's reply channel, moves to the new folder,
    points standard input and output at `/dev/null` and standard error at
    its own `exchange.err`, and reopens every open file in the new folder at
-   the same place (start or end). A file open partway through reading
-   would be left shared, with a line in `exchange.log`; none is in the
-   test project. It then talks over the named pipes and replies with the
-   same `@paused` line.
+   the same place (start or end). It then talks over the named pipes and
+   replies with the same `@paused` line.
+
+Before forking, SWAT+ checks its open files and refuses the branch when one
+can't be carried: a file outside the run folder (an `out_path` in
+`file.cio` that leads out of it), which the copy doesn't have and both
+processes would write to; or a file open partway through, which can't be
+reopened at the same place and would be shared, both processes reading from
+one position. gwflow reads `chan_depth.gw` and `pond_div.gw` a line a day,
+so a gwflow project with those files can't be branched or saved. Neither
+test project has such a file at any pause. An `out_path` inside the run
+folder is fine.
 
 SIGCHLD is ignored in the parent, so finished branches are reaped and leave
 no zombies. A branch outlives its parent. The C helper (`bmi_fork.c`) is
@@ -245,14 +276,16 @@ from one warm-up, each identical to the same scenario run unbroken.
 ### Saving to a file (built; every platform)
 
 `save_state(path)` writes a folder: `state.bin`, with all of SWAT+'s module
-state, and `run/`, a copy of the run folder with every output file complete
-up to the pause. `load_state(path)` carries on from it in a new process.
-`get_state()` and `set_state(bytes)` do the same with the folder as bytes.
+state and the values set for the next day, and `run/`, a copy of the run
+folder (subfolders too, so an `out_path` inside it) with every output file
+complete up to the pause. `load_state(path)` carries on from it in a new
+process. `get_state()` and `set_state(bytes)` do the same with the folder as
+bytes. A save is refused for the same open files as a branch.
 
 **The serializer is generated, never written by hand.**
 `tools/gen_serializer.py` reads the release's module declarations and writes
 `bmi_state_module.f90`; `build.sh` runs it for every build. For 62.0.1 that's
-65 modules, 2,048 variables and 523 derived types, about 60,000 lines.
+66 modules, 2,049 variables and 524 derived types, about 60,000 lines.
 
 - Intrinsic scalars and fixed-size arrays get one write.
 - Allocatable arrays get a flag (allocated or not), their bounds, then
@@ -279,7 +312,13 @@ up to the pause. `load_state(path)` carries on from it in a new process.
 **What's left out, and why that's safe:**
 
 - **The 7 module pointers.** SWAT+ points each at a table entry just
-  before it uses it. The save/load tests pass with them left out.
+  before it uses it, so a value left from before a load is never read.
+  Checked by reading every assignment and use in 62.0.1 (Nov 6, 2026):
+  `d_tbl` is set just before every call to `conditions`, `actions` and
+  `res_hydro`; `wbody`, `wbody_wb` and `wbody_prm` at the top of
+  `res_control` and `wetland_control`, within the branch that uses them;
+  `pl_db` is set but never read; `h` and `pl_cp` are never used. Nothing
+  calls `associated` on them. The save/load tests pass with them left out.
 - **Saved locals, except the few that carry state.** In Fortran a local
   with an initializer (`real :: rto = 0.`) keeps its value between calls,
   so 5,379 locals in 537 procedures are technically state. A local can't
@@ -317,8 +356,8 @@ up to the pause. `load_state(path)` carries on from it in a new process.
   management) adds more (not yet counted), and a project with reservoirs
   and pesticides would widen it further. A new release, or a project that
   runs code the tests haven't, should be checked with `build.sh --nosave`
-  and `pytest -m full` before relying on save and load. Branching is not
-  affected: a fork copies the saved locals with everything else.
+  and `pytest -m full` before relying on save and load. Saved locals don't
+  affect branching: a fork copies them with everything else.
 - **Random numbers.** SWAT+ doesn't use Fortran's generator. Its own
   (`aunif.f90`) keeps its seeds in module variables (`rndseed`,
   `rndseed_cond` in `climate_module`), so they are saved.
@@ -343,6 +382,7 @@ output files is discarded when the saved files are put back.
   continue. Every output file matches stock, and the run that was saved
   also carries on unchanged.
 - Every output variable read after loading equals the saved value exactly.
+- A value set before saving applies after loading.
 - Two water allocation scenarios from one saved warm-up each match the same
   scenario run unbroken.
 - The `get_state`/`set_state` round trip works.
@@ -374,6 +414,47 @@ root or CAP_CHECKPOINT_RESTORE, and the same kernel and binary on restore,
 so in practice it's for containers (Docker and Podman support
 `checkpoint`). It's a fallback for long warm-ups on Linux servers, not a
 general answer.
+
+## What the tests prove
+
+The claim is three sentences, and each has its own tests:
+
+1. **With nothing set, every output file is stock SWAT+'s, however the run
+   is driven.** `tests/test_faithful.py` runs each project stepped one day
+   at a time while reading every variable every day, in uneven chunks,
+   branched partway through a year (both copies run to the end), and saved
+   and loaded there, and compares every file with a stock run, byte for
+   byte. `tests/test_stepping.py`, `test_branch.py` and `test_state.py`
+   add the mode switched off, branches and saves at the first and last
+   days, and branches of branches.
+2. **A value set changes results only through that input.** Setting
+   SWAT+'s own point source flow or demand back every day, read from a
+   first run, gives stock output, byte for byte, and so does a zero
+   groundwater exchange every day. A set on one day changes only that day
+   (`test_setting.py`, `test_groundwater.py`), by exactly the water set
+   (balances close). Every kind of set runs on a build with array bounds
+   checked (`build.sh --check`).
+3. **Anything that can't be carried out faithfully is refused.** Each
+   refusal above has a test that it raises an error and leaves the run
+   able to go on.
+
+And for the build: every SWAT+ file the patch doesn't touch compiles to
+the same object, byte for byte, as in the stock build
+(`tools/build_parity.py`, in CI), and an executable built from other
+swatplus-bmi sources is refused. In CI a test whose executable or project
+is missing fails rather than skips, and an `exchange.log` that says a file
+was left behind counts as a difference.
+
+**What isn't proven.** The checks run on SWAT+'s two example projects, a
+few variants of them, and whatever is added with `$SWATPLUS_BMI_PROJECTS`
+(COMPATIBILITY.md lists the projects checked). Code those don't run (gwflow,
+salts and other constituents, pesticides, most reservoir and wetland code,
+calibration) is covered by the reasoning in this note, not by tests. The
+saved-locals list is complete only for the procedures the test projects
+run. Saved states are checked on macOS and on Linux, each loaded on the
+platform that wrote it. A state moved between platforms would be accepted
+(its digest is of the generated serializer, the same on both) but hasn't
+been tried.
 
 ## Code organization
 
@@ -431,11 +512,37 @@ These are worth reporting upstream, separately from the exchange mode:
    diversion files even when they don't exist
    (`if (.not. i_exist .or. ... /= "null")`), creating empty files in the
    run folder. (Found by reading the code.)
+5. A yearly recall (type 3) is used in every year, inside its record or
+   not: `command.f90` tests `time%yrc >= start_yr .or. time%yrc <= end_yr`,
+   which is always true; the daily and monthly cases use `.and.`. (Found by
+   reading the code; draft issue in docs/upstream-issue-recall-yearly.md.)
+6. In `hru_lte_control.f90`, the end-of-growth decision table is checked
+   with `call conditions (isd, icmd)`, passing the command number where the
+   table number `iend` belongs (the start-of-growth call two lines up
+   passes `istart`). (Found by reading the code; draft issue in
+   docs/upstream-issue-hru-lte-conditions.md.)
+7. The reservoir `weir` release in `res_hydro.f90` takes the crest height
+   from `wet_ob(jres)%weir_hgt`, the wetland array, when it runs for
+   reservoir `jres`. (Draft issue in docs/upstream-issue-reservoir-weir.md.)
+8. With br2 = 0.9, `res_initial.f90` sets `br1 = (psa / pvol)**0.9`, so a
+   reservoir's area at the principal volume is psa^0.9 ha. (Draft issue in
+   docs/upstream-issue-reservoir-area.md.)
+9. A `chn` change in `calibration.cal` is applied after the rating curves
+   are built and never reaches the routing. (Draft issue in
+   docs/upstream-issue-calibration-chn.md; `check_calibration` warns.)
+
+Items 7–9 were found by a study's model build (Nov 6, 2026) and confirmed
+by reading the source.
 
 ## Limits
 
-- Daily steps only.
-- Only fluxes can be set: point source flow and water allocation demand.
+- Daily steps only; the groundwater exchange is refused with sub-daily
+  routing.
+- Only fluxes can be set: point source flow (daily recalls inside their
+  records), water allocation demand and a channel's groundwater exchange.
+- A gwflow project that reads `chan_depth.gw` or `pond_div.gw` can't be
+  branched or saved, and nor can a project whose `out_path` leads out of
+  the run folder.
 - Branching needs fork: Mac and Linux. Saving to a file and loading work
   everywhere, but the Windows build hasn't been tried.
 - Loading a saved state starts a new process and runs forward through the
@@ -445,6 +552,5 @@ These are worth reporting upstream, separately from the exchange mode:
   model (one formulation covering the whole SWAT+ project), not split by
   catchment, because SWAT+ routes its own network.
 - Soft and hard calibration runs are refused in exchange mode.
-- Tested on two variants of one small example (Osu_1hru: one HRU, one
-  channel, one aquifer). The larger Ames_sub1 comparisons are run once the
-  machine is free.
+- Proven on the projects in COMPATIBILITY.md, not on every project; What
+  the tests prove says what each check shows.
