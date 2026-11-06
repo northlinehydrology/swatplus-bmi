@@ -3,7 +3,7 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
-## 0.4.0 (unreleased)
+## 0.4.0 (2026-11-06)
 
 Settable states, starting with soil layer temperature. A state can't be set at the start of the
 day like a flux, because SWAT+ computes it from yesterday's. So each settable state gets a hook
