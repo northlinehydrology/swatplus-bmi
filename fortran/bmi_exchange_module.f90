@@ -462,7 +462,7 @@
           call reply ("@ok")
 
         case ("save")
-          read (line, *, iostat=ios) word, path
+          read (line, *, iostat=ios) word, path, name
           if (ios /= 0) then
             call reply ('@error save needs "<file>"')
           else
