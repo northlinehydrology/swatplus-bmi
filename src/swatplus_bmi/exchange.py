@@ -54,6 +54,7 @@ class Variable:
 class Catalog:
     protocol: int
     model: str
+    build: str           # hash of the swatplus-bmi sources the executable was built from
     start_year: int
     start_day: int       # day of year of the first simulated day
     days: int
@@ -158,6 +159,7 @@ class Exchange:
             raise ExchangeError(f"SWAT+ speaks exchange protocol {protocol}, this wrapper {PROTOCOL}")
         self._paused()
         return Catalog(protocol=protocol, model=" ".join(info.get("@model", [])),
+                       build=info["@build"][0],
                        start_year=int(info["@start"][0]), start_day=int(info["@start"][1]),
                        days=int(info["@days"][0]), grids=grids, variables=variables)
 

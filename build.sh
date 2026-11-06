@@ -99,8 +99,10 @@ rm -rf "$WORK/exchange-src"
 mkdir -p "$WORK/exchange-src"
 cp -R "$SRC/." "$WORK/exchange-src/"
 cp "$HERE"/fortran/*.f90 "$HERE"/fortran/*.c "$WORK/exchange-src/src/"
-# the saved locals that carry state, moved into a module, then the state
-# serializer, generated from this release's module declarations
+# the hash of these build files, which the wrapper checks; the saved locals that carry
+# state, moved into a module; then the state serializer, generated from this release's
+# module declarations
+"${PYTHON:-python3}" "$HERE/tools/source_hash.py" "$HERE" --fortran "$WORK/exchange-src/src/bmi_build_module.f90"
 "${PYTHON:-python3}" "$HERE/tools/carried_locals.py" "$PATCHES/carried-locals.toml" "$WORK/exchange-src/src"
 "${PYTHON:-python3}" "$HERE/tools/gen_serializer.py" "$WORK/exchange-src/src" "$WORK/exchange-src/src/bmi_state_module.f90"
 for p in "$PATCHES"/*.patch; do

@@ -142,6 +142,7 @@
       use calibration_data_module, only : cal_soft, cal_hard
       use basin_module, only : prog
       use maximum_data_module, only : db_mx
+      use bmi_build_module, only : swx_build
 
       integer :: iyr = 0
       integer :: yr = 0
@@ -189,6 +190,7 @@
 
       call reply ("@hello swatplus-exchange " // itoa(protocol))
       call reply ("@model " // trim(adjustl(prog)))
+      call reply ("@build " // swx_build)
       call reply ("@start " // itoa(time%yrc_start) // " " // itoa(max(1, time%day_start)))
       call reply ("@days " // itoa(days_total))
       call send_grid ("cha", sp_ob1%chandeg, sp_ob%chandeg)

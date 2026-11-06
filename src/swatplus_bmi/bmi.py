@@ -36,6 +36,14 @@ __all__ = ["SwatPlusBmi"]
 GRID_ORDER = ["cha", "aqu", "rec", "pou"]
 
 
+def sources_hash() -> str:
+    """The hash of this package's build files, which an exchange executable built from
+    them carries (tools/source_hash.py)."""
+    import runpy
+    from .build import assets
+    return runpy.run_path(str(assets() / "tools" / "source_hash.py"))["source_hash"](assets())
+
+
 def find_executable(given: str | None = None) -> Path:
     """The exchange-mode SWAT+ executable: given, $SWATPLUS_EXCHANGE, bin/ in a source
     checkout, or the folder ``swatplus-bmi build`` writes to."""
@@ -89,6 +97,14 @@ class SwatPlusBmi(Bmi):
         exe = find_executable(cfg.get("executable") and str((base / cfg["executable"])))
         self._x = Exchange(exe, run_dir)
         cat = self._x.catalog
+        want = sources_hash()
+        if cat.build != want:
+            self._x.stop()
+            self._x = None
+            raise ExchangeError(
+                f"{exe} was built from other swatplus-bmi sources (build {cat.build}, these "
+                f"sources {want}): rebuild it with `swatplus-bmi build` (./build.sh in a source "
+                f"checkout)")
         # grids with no objects are left out, and so are their variables
         self._grid_ids = {}
         for g in GRID_ORDER + [g for g in cat.grids if g not in GRID_ORDER]:
