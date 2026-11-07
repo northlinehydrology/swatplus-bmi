@@ -44,7 +44,10 @@ and the main branch takes merged pull requests continuously.
 `tests/test_faithful.py` and the rest of the suite (docs/design.md, What the tests prove). With
 nothing set, every output file must match a stock run byte for byte however the run is driven:
 stepped while reading every variable every day, in uneven chunks, branched partway through a
-year, and saved and loaded there.
+year, and saved and loaded there. One column is left out: `cons_bmix` in `hru_carbvars.txt`,
+which stock SWAT+ 62.0.1 prints from memory it never sets for layers below the mixing depth
+(docs/design.md, Found in SWAT+ 62.0.1, item 16); `tests/test_unset_memory.py` shows it's the
+only output on the test projects that does.
 
 | Project | What it has | Checked (SWAT+ 62.0.1, macOS 14 arm64, Nov 6, 2026) |
 |---|---|---|

@@ -546,6 +546,7 @@ folders once it passes (set `SWATPLUS_BMI_KEEP_RUNS=1` to keep them).
 | Branching | at days 0, 365, 1000 and the last; a branch of a branch; scenarios against unbroken runs |
 | Saving and loading | the same, across processes; values read back exactly; a pending set kept; another build's state refused |
 | Saved locals | a build that resets them on every call matches stock, except the listed ones |
+| Unset memory | stock SWAT+ run with its memory filled with a pattern matches stock, except `cons_bmix` in `hru_carbvars.txt`, which SWAT+ never sets below the mixing depth and the comparisons leave out |
 
 CI (GitHub Actions) runs the suite on Ubuntu and macOS on every push. Each night it also runs the full-length tests and builds SWAT+
 main with the current patch, as an early warning for the next SWAT+ release.

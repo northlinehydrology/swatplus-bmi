@@ -683,9 +683,19 @@ These are worth reporting upstream, separately from the exchange mode:
     `carried-locals.toml`, so a saved state keeps it. (In
     docs/upstream-issue-salt-module.md.)
 
+16. A soil layer's `bmix` (`soil_module.f90`) has no initial value, and
+    `mgt_biomix` sets it only down to the mixing depth, so the `cons_bmix`
+    column of `hru_carbvars.txt` prints whatever memory held for deeper
+    layers: zero in a fresh process, as a rule, and old heap contents
+    inside Python. It's the one output found to read unset memory
+    (`tests/test_unset_memory.py`), and the comparisons with stock leave
+    that column out (`UNSET` in `tests/conftest.py`). (Draft issue in
+    docs/upstream-issue-bmix.md.)
+
 Items 7–9 and 12 were found by a study's model build (Nov 6, 2026) and
 confirmed by reading the source. Items 10, 11 and 13–15 were found while
-adding chemistry to the exchange (0.5.0).
+adding chemistry to the exchange (0.5.0), and item 16 by the nightly
+comparisons (Nov 7, 2026).
 
 ## Limits
 
