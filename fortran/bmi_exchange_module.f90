@@ -47,7 +47,7 @@
       integer :: protocol = 3             !! protocol version
       integer, parameter :: unit_max = 1000000   !! highest unit number branch looks at
       character(len=80) :: paused_line = ""      !! the last @paused reply
-      character(len=16), parameter :: state_magic = "SWXSTATE-3"
+      character(len=16), parameter :: state_magic = "SWXSTATE-4"
 
       !! loading a saved state: run forward to the saved day, then load
       logical :: loading = .false.
@@ -66,6 +66,7 @@
       end type unit_file
       type (unit_file), dimension(:), allocatable :: closed
       integer :: n_closed = 0
+      type (unit_file), dimension(:), allocatable :: saved_units   !! open at the save (save_units)
 
       !! values set for the next day
       real, dimension(:), allocatable :: rec_flo         !! m3/day     |point source (recall) flow
@@ -868,6 +869,7 @@
       write (u) size(chx_day), chx_day
       write (u) size(rec_flo), rec_flo, rec_flo_on, dmd_flo, dmd_flo_on, chx_flo, chx_on
       write (u) n_hly, hly_tmp, hly_on
+      call save_units (u, run_dir)
       call swx_state_save (u)
       write (u) state_magic
       close (u)
@@ -875,6 +877,97 @@
 
       return
       end subroutine save_state
+
+!!    --------------------------------------------------------------------
+      subroutine save_units (u, run_dir)
+
+!!    the files open at this pause, for a load: SWAT+ opens some output
+!!    files only when it first writes to them (salt_balance writes units
+!!    5080-5086 that way, as fort.<unit>), so a process loading the state
+!!    may not have them open yet, and its first write would start the
+!!    restored file again from the top. Paths in run_dir become relative.
+
+      integer, intent(in) :: u
+      character(len=*), intent(in) :: run_dir
+      character(len=1024) :: nm = ""
+      character(len=16) :: acc = ""
+      character(len=16) :: frm = ""
+      character(len=16) :: act = ""
+      integer :: k = 0
+      integer :: n = 0
+      integer :: m = 0
+      integer :: rl = 0
+      logical :: op = .false.
+      logical :: nd = .false.
+
+      do m = 1, 2                                         !count, then write
+        if (m == 2) write (u) n
+        n = 0
+        do k = 1, unit_max
+          if (k == 5 .or. k == 6 .or. k == u .or. k == cmd_unit .or. k == rep_unit) cycle
+          inquire (unit=k, opened=op)
+          if (.not. op) cycle
+          inquire (unit=k, named=nd, name=nm, access=acc, form=frm, action=act, recl=rl)
+          if (.not. nd .or. acc == "DIRECT" .or. index(act, "WRITE") == 0) cycle
+          n = n + 1
+          if (m == 2) then
+            if (len_trim(nm) > len_trim(run_dir) + 1) then
+              if (nm(1:len_trim(run_dir)) == run_dir .and. nm(len_trim(run_dir)+1:len_trim(run_dir)+1) == "/") &
+                nm = nm(len_trim(run_dir)+2:)
+            end if
+            write (u) unit_file(k, nm, acc, frm, act, "APPEND", rl)
+          end if
+        end do
+      end do
+
+      return
+      end subroutine save_units
+
+!!    --------------------------------------------------------------------
+      subroutine read_units (u)
+
+      integer, intent(in) :: u
+      integer :: n = 0
+      integer :: k = 0
+
+      read (u) n
+      if (allocated(saved_units)) deallocate (saved_units)
+      allocate (saved_units(n))
+      do k = 1, n
+        read (u) saved_units(k)
+      end do
+
+      return
+      end subroutine read_units
+
+!!    --------------------------------------------------------------------
+      subroutine open_saved_units
+
+!!    after a load: opens, at its end, each output file the saving process
+!!    had open that this one hasn't opened yet (save_units)
+
+      integer :: k = 0
+      integer :: ios = 0
+      logical :: op = .false.
+
+      if (.not. allocated(saved_units)) return
+      do k = 1, size(saved_units)
+        associate (c => saved_units(k))
+        inquire (unit=c%u, opened=op)
+        if (op) cycle
+        if (c%rl > 0) then
+          open (c%u, file=trim(c%name), access=trim(c%acc), form=trim(c%frm), action=trim(c%act),  &
+                recl=c%rl, position="append", status="old", iostat=ios)
+        else
+          open (c%u, file=trim(c%name), access=trim(c%acc), form=trim(c%frm), action=trim(c%act),  &
+                position="append", status="old", iostat=ios)
+        end if
+        if (ios /= 0) write (6,*) "unit ", c%u, " (", trim(c%name), ") could not be opened again"
+        end associate
+      end do
+
+      return
+      end subroutine open_saved_units
 
 !!    --------------------------------------------------------------------
       subroutine start_load (path)
@@ -960,6 +1053,7 @@
         error stop 7
       end if
       read (u) hly_tmp, hly_on
+      call read_units (u)
       call swx_state_load (u)
       read (u) magic
       close (u)
@@ -977,6 +1071,7 @@
       read (cmd_unit, *, iostat=ios) word
       if (ios /= 0 .or. trim(word) /= "restored") error stop 3
       call reopen_closed
+      call open_saved_units
 
       return
       end subroutine load_now

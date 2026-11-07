@@ -29,6 +29,7 @@ from conftest import (CHECK, EXCHANGE, RUNS, STOCK, ames_light, differences, fre
 from swatplus_bmi import ExchangeError, SwatPlusBmi
 from test_allocation import DMD, add_allocation
 from test_setting import add_point_source
+from salts import with_salts_channel
 
 PS = "point_source_water__volume_flow_rate"
 GW = "channel_water__groundwater_volume_exchange_rate"
@@ -57,6 +58,7 @@ PROJECTS = {
     "osu-point-source": ("Osu_1hru", {"daily": True, "edit": add_point_source}),
     "osu-allocation": ("Osu_1hru", {"daily": True, "edit": add_allocation}),
     "osu-out-path": ("Osu_1hru", {"daily": True, "edit": out_path("out")}),
+    "osu-salts": ("Osu_1hru", {"daily": True, "edit": with_salts_channel}),
 }
 
 
