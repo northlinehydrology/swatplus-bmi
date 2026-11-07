@@ -8,8 +8,10 @@ Osu_1hru with everything printed daily.
 
 import numpy as np
 
+import pytest
+
 from conftest import EXCHANGE, need, project
-from swatplus_bmi import SwatPlusBmi
+from swatplus_bmi import ExchangeError, SwatPlusBmi
 from test_reading import daily_table
 
 QOUT = "channel_water__volume_outflow_rate"
@@ -111,3 +113,28 @@ def test_the_days_exchange_survives_save_and_load():
     assert np.array_equal(n.get_value(GW, np.empty(1, np.float32)), want)
     assert want[0] > 0
     n.finalize()
+
+
+def short_channel(run):
+    """Osu_1hru with its channel's length (len, km) under SWAT+'s 1 m cutoff."""
+    p = run / "hyd-sed-lte.cha"
+    lines = p.read_text().splitlines()
+    head = lines[1].split()
+    f = lines[2].split()
+    f[head.index("len")] = "0.0005"
+    lines[2] = "  ".join(f)
+    p.write_text("\n".join(lines) + "\n")
+
+
+def test_no_exchange_on_a_channel_of_no_length():
+    """SWAT+ passes a channel of no length's inflow straight on (command.f90) and never
+    routes it, so an exchange there would be dropped: refused instead."""
+    need(EXCHANGE)
+    m = SwatPlusBmi()
+    m.initialize(str(project("Osu_1hru", "gw-short", daily=True, edit=short_channel)))
+    m.update_until(10)
+    for rate in (0.0005, -0.0005):
+        with pytest.raises(ExchangeError, match="has no length"):
+            m.set_value(GW, np.array([rate]))
+    m.finalize()
+

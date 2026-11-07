@@ -1083,8 +1083,8 @@
 !!    checks a value for the next day, and keeps it if keep is true; msg says
 !!    why it is refused, blank if it isn't. Refused when SWAT+ would not use
 !!    it as given: a point source that isn't daily or has no record in the
-!!    next day's year, a groundwater exchange with sub-daily routing, a value
-!!    that isn't a finite number
+!!    next day's year, a groundwater exchange with sub-daily routing or on a
+!!    channel of no length, a value that isn't a finite number
 
       use time_module
       use hydrograph_module, only : sp_ob, sp_ob1, ob, recall
@@ -1135,15 +1135,8 @@
         end if
 
       case ("channel_water__groundwater_volume_exchange_rate")
-        if (i < 1 .or. i > sp_ob%chandeg) then
-          msg = "index out of range"
-          return
-        end if
-        if (time%step > 1) then
-          msg = "the groundwater exchange works with daily routing only; this "  //  &
-                "project routes " // itoa(time%step) // " steps a day (time.sim)"
-          return
-        end if
+        call check_exchange (i, msg)
+        if (msg /= "") return
         if (keep) then
           chx_flo(i) = real(v * 86400.d0)                   !m3/s -> m3/day
           chx_on(i) = .true.
@@ -1184,6 +1177,41 @@
 
       return
       end subroutine take_value
+
+!!    --------------------------------------------------------------------
+      subroutine check_exchange (i, msg)
+
+!!    a channel SWAT+ routes a groundwater exchange through on the next day:
+!!    daily routing, and a channel with length (one of no length passes its
+!!    inflow straight on in command and never reaches sd_channel_control3)
+
+      use time_module
+      use hydrograph_module, only : sp_ob, sp_ob1, ob
+      use sd_channel_module, only : sd_ch
+
+      integer, intent(in) :: i
+      character(len=*), intent(out) :: msg
+      integer :: iob = 0
+
+      msg = ""
+      if (i < 1 .or. i > sp_ob%chandeg) then
+        msg = "index out of range"
+        return
+      end if
+      if (time%step > 1) then
+        msg = "the groundwater exchange works with daily routing only; this "  //  &
+              "project routes " // itoa(time%step) // " steps a day (time.sim)"
+        return
+      end if
+      iob = sp_ob1%chandeg + i - 1
+      if (sd_ch(ob(iob)%num)%chl <= 1.e-3) then
+        msg = "channel " // trim(ob(iob)%name) // " has no length (chl), so SWAT+ passes its " //   &
+              "inflow straight on and routes no exchange through it"
+        return
+      end if
+
+      return
+      end subroutine check_exchange
 
 !!    --------------------------------------------------------------------
       subroutine set_value (name, i, v)
