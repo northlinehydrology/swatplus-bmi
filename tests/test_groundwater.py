@@ -10,7 +10,7 @@ import numpy as np
 
 import pytest
 
-from conftest import EXCHANGE, need, project
+from conftest import CHECK, EXCHANGE, need, project
 from swatplus_bmi import ExchangeError, SwatPlusBmi
 from test_reading import daily_table
 
@@ -138,3 +138,16 @@ def test_no_exchange_on_a_channel_of_no_length():
             m.set_value(GW, np.array([rate]))
     m.finalize()
 
+
+def test_a_gain_works_with_constituents_on(monkeypatch):
+    """With salts (and a placeholder pesticide) on, a gain goes through SWAT+'s transfer,
+    whose constituent arrays SWAT+ 62.0.1 never allocates; run on the bounds-checked build,
+    which stops on a read past them. The inflow still rises by exactly the gain."""
+    from salts import with_salts_channel
+    need(EXCHANGE, CHECK)
+    gain = 0.0005
+    b = step(project("Osu_1hru", "gw-cs-base", daily=True, edit=with_salts_channel))
+    monkeypatch.setenv("SWATPLUS_EXCHANGE", str(CHECK))
+    r = step(project("Osu_1hru", "gw-cs-gain", daily=True, edit=with_salts_channel), gain)
+    np.testing.assert_allclose(r["x"], gain, rtol=1e-6)
+    assert (np.abs((r["i"] - b["i"]) - gain) <= 2 * EPS * r["i"] + 1e-12).all()

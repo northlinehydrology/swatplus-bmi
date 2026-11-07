@@ -317,6 +317,7 @@
         if (chx_flo(i) > 0.) then
           !! a gain joins the channel's inflow through SWAT+'s transfer hydrograph
           iob = sp_ob1%chandeg + i - 1
+          call trans_cs_ready (iob)
           ob(iob)%trans%flo = ob(iob)%trans%flo + chx_flo(i)
           chx_gain(i) = chx_flo(i)
         else if (chx_flo(i) < 0.) then
@@ -333,6 +334,34 @@
 
       return
       end subroutine exch_apply
+
+!!    --------------------------------------------------------------------
+      subroutine trans_cs_ready (iob)
+
+!!    SWAT+ 62.0.1 never allocates an object's transfer constituents
+!!    (obcs%trans), but with constituents on, sd_channel_control3 adds them
+!!    to the incoming load whenever the transfer has water. That reads past
+!!    the arrays (an error with bounds checked, a hang without), for a
+!!    water allocation return as for a gain. Before a gain goes into the
+!!    transfer, this allocates them, zero, if SWAT+ hasn't; SWAT+ then sets
+!!    the incoming load again before using it, so no value changes.
+
+      use constituent_mass_module, only : obcs, obcs_alloc, cs_db
+
+      integer, intent(in) :: iob
+
+      if (cs_db%num_tot == 0) return
+      if (obcs_alloc(iob) /= 1) return
+      associate (t => obcs(iob)%trans)
+        if (.not. allocated(t%pest)) allocate (t%pest(cs_db%num_pests), source = 0.)
+        if (.not. allocated(t%path)) allocate (t%path(cs_db%num_paths), source = 0.)
+        if (.not. allocated(t%hmet)) allocate (t%hmet(cs_db%num_metals), source = 0.)
+        if (.not. allocated(t%salt)) allocate (t%salt(cs_db%num_salts), source = 0.)
+        if (.not. allocated(t%cs)) allocate (t%cs(cs_db%num_cs), source = 0.)
+      end associate
+
+      return
+      end subroutine trans_cs_ready
 
 !!    --------------------------------------------------------------------
       subroutine exch_channel (ich)
