@@ -58,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      - run: uv run ./build.sh --stock --check --jobs 4 --tag main --patch 62.0.1
+      - run: uv run ./build.sh --stock --nosave --check --jobs 4 --tag main --patch 62.0.1
       - run: uv run python tools/build_parity.py build/main --expect "$(uv run python tools/build_parity.py --expected 62.0.1)"
       - run: |
           git -C build/main/swatplus log -1 --format="SWAT+ main at %h (%cd)" --date=short
