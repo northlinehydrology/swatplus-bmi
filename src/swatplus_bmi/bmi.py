@@ -307,7 +307,7 @@ class SwatPlusBmi(Bmi):
 
     def set_value_at_indices(self, name: str, inds: np.ndarray, src: np.ndarray) -> None:
         if self._var(name).role != "in":
-            raise ValueError(f"{name} can't be set: only fluxes SWAT+ takes as inputs can")
+            raise ValueError(f"{name} can't be set: it is an output only (see get_input_var_names)")
         inds = np.asarray(inds).ravel()
         src = np.asarray(src, dtype=np.float64).ravel()
         if len(inds) != len(src):
