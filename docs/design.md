@@ -17,16 +17,17 @@ Decisions behind the design:
   model's results feeding SWAT+) is better served by writing SWAT+ input
   files directly.
 - **Daily steps.** SWAT+'s sub-daily options aren't exposed.
-- **Fluxes, and states through hooks.** Point source flow, water
-  allocation demand and a channel's groundwater exchange can be set, and
-  soil layer temperature as the first state (Setting states). Storage, land
+- **Fluxes, and states through hooks.** Point source flow and load, water
+  allocation demand, and a channel's groundwater exchange and the mass it
+  carries can be set, and soil layer temperature as the first state
+  (Setting states). Storage, land
   use, soils and parameters can't; they are scenario inputs.
 - **Snapshots.** A warm-up is run once and every scenario starts from it.
 
 ## Pieces
 
 ```
-SWAT+ 62.0.1 (tag)  + patches/62.0.1/*.patch     five edited files and CMakeLists.txt, 18 lines
+SWAT+ 62.0.1 (tag)  + patches/62.0.1/*.patch     five edited files and CMakeLists.txt, 20 lines
                     + fortran/bmi_exchange_module.f90   the exchange mode
                     + fortran/bmi_fork.c                fork for branching (Mac, Linux)
                     + bmi_state_module.f90              state serializer, generated per release
@@ -42,8 +43,10 @@ and talks to it over standard input and output; nothing is linked.
 
 ## Where SWAT+ pauses
 
-The daily loop is in `time_control.f90`. The patch adds four calls there and one in `sd_channel_control3.f90` (the channel loss hook),
-one in `main.f90.in` and one in `command.f90`. Each returns at once when
+The daily loop is in `time_control.f90`. The patch adds four calls there,
+three in `sd_channel_control3.f90` (the channel hooks), one in
+`hru_control.f90` (the soil temperature hook), one in `main.f90.in` and one
+in `command.f90`. Each returns at once when
 exchange mode is off.
 
 | Call | Where | What it does in exchange mode |
@@ -53,7 +56,10 @@ exchange mode is off.
 | `exch_pause` | each day, after the weather, the land use decision tables and the manure allocation, **before** `wallo_start_day`, as `if (exch_pause()) cycle` | sends `@paused`, then answers commands until told to run; while a saved state is loading, skips the days before the saved one |
 | `exch_apply` | each day, **after** `wallo_start_day`, before `call command` | puts values set while paused in place for this day |
 | `exch_record` | `command.f90`, after the command loop, before outputs are printed | keeps the day's water allocation demand and withdrawal, which printing zeroes |
-| `exch_channel` | `sd_channel_control3.f90`, after routing and water allocation, before the outflow is set | takes a set groundwater loss from the day's outflow and records the day's exchange |
+| `exch_channel_in` | `sd_channel_control3.f90`, right after the channel's incoming salt load (`hcs1`) is set | adds the salt set with the day's groundwater gain |
+| `exch_channel` | `sd_channel_control3.f90`, after routing and water allocation, before the outflow is set | takes a set groundwater loss from the day's outflow, with its sediment and nutrients, and records the day's exchange |
+| `exch_channel_cs` | `sd_channel_control3.f90`, after SWAT+ splits salt and constituents between outflow and storage | takes the loss's share of the outflow's salt and constituents, as seepage |
+| `exch_hru_soil` | `hru_control.f90`, right after `stmp_solt` | replaces the day's soil layer temperatures that were set |
 | `exch_end` | `time_control`, after the year loop | sends `@ended`, then answers commands until told to finish |
 
 The wait and the apply are split around `wallo_start_day` for two reasons.
@@ -166,6 +172,17 @@ names follow the channel ones. CSDMS lists no aquifer or withdrawal names.
 | `point_source_water__volume_flow_rate` | rec | in and out | m3 s-1 | `recall(i)%hd(day,yr)%flo` | settable on daily recall objects inside their records only; negative is a withdrawal |
 | `place_of_use_water__volume_demand_rate` | pou | in and out | m3 s-1 | `pou(i)%demand` | reading gives the day's demand; setting replaces SWAT+'s for the next day |
 | `place_of_use_water__volume_withdrawal_rate` | pou | out | m3 s-1 | `poud_met(i)%duty_tot%deliv` | what was actually taken |
+| `channel_water_<sp>__mass_concentration` | cha | out | kg m-3 | `obcs(iob)%hd(1)%salt(k)`, `ob(iob)%hd(1)%no3`, `%solp`, over `ob(iob)%hd(1)%flo` | the day's outflow concentration; 0 with no outflow |
+| `channel_water_<sp>__groundwater_mass_exchange_rate` | cha | in and out | kg s-1 | gains: salt into `hcs1` (`exch_channel_in`), nitrate and P into `ob(iob)%trans`; losses: the loss's share of `ht2` and `hcs2` | positive into the channel; set only with a gain; reading gives what was exchanged on the day just done |
+| `aquifer_water_<sp>__recharge_mass_rate` | aqu | out | kg s-1 | `obcs(iob)%hin(1)%salt(k)`, `ob(iob)%hin%no3`, `%solp` | what reaches the aquifer, as `aqu_1d_control` takes it; nitrate is `no3_rchg` × area in `aquifer_day.txt` |
+| `point_source_water_<sp>__mass_flow_rate` | rec | in and out | kg s-1 | `rec_salt(i)%hd_salt(day,yr)%salt(k)`, `recall(i)%hd(day,yr)%no3`, `%solp` | as for the flow: daily recalls inside their records; salt needs a daily record in `salt_recall.rec`; 0 for a diversion |
+
+`<sp>` is each salt ion as SWAT+ reads it from `constituents.cs`, in the
+salt module's order (`so4`, `ca`, `mg`, `na`, `k`, `cl`, `co3`, `hco3`),
+then `no3` (nitrate, as N) and `solp` (soluble phosphorus, as P). The
+catalog is built when SWAT+ starts: without the salt module only `no3` and
+`solp` are there. SWAT+'s other constituents (`cs`: selenium, boron) and
+pesticides and pathogens aren't exposed.
 
 The reading tests compare every day of every output variable with SWAT+'s
 own daily files, to the precision SWAT+ prints them (seven or eight
@@ -195,8 +212,22 @@ computes each day's stream–aquifer exchange.
   SWAT+'s printed balance (inflow + precipitation − evaporation − seepage − outflow − change in
   storage) still closes.
 - **Reading** after the day gives what was exchanged: the gain, less what was taken.
-- **Not adjusted:** salts and other constituents (`cs_db`) on losses; for projects that simulate
-  them, losses would need the same treatment there.
+- **Chemistry with a gain** (`channel_water_<sp>__groundwater_mass_exchange_rate`, set after the
+  gain): nitrate and phosphorus go into the transfer hydrograph with the water. Salt can't, because
+  SWAT+ 62.0.1 sets the channel's incoming salt load (`hcs1`) again after adding the transfer's
+  (Found in SWAT+ 62.0.1, item 10). So a second hook, `exch_channel_in`, right after that line,
+  adds the gain's salt to `hcs1`, which is how SWAT+ takes in an aquifer's salt. A transfer under
+  1e-6 m3 waits in `ob%trans` for a later day (SWAT+ adds it only above that), and its salt
+  waits with it.
+- **Chemistry with a loss:** the loss takes the same fraction of the day's outflow for every
+  constituent. Sediment and nutrients go with `ht2` in `exch_channel`. Salt and SWAT+'s other
+  constituents are split between outflow and storage later, so a third hook, `exch_channel_cs`,
+  after that split, takes the same fraction of the outflow's `hcs2` and adds it to the
+  channel's salt and constituent seepage (`chsalt_d%seep`, `chcs_d%seep`), as SWAT+'s own
+  seepage does. The loss's mass is read back as a negative exchange.
+- **Channels of no length** (`len` under 0.001 km) are passed straight through in `command.f90`
+  and never reach `sd_channel_control3`, so an exchange there is refused (0.4.0 and earlier
+  accepted it and SWAT+ never used it).
 - **Daily routing only.** With sub-daily routing (a time step in `time.sim` above 1) gains
   wouldn't reach the sub-daily hydrograph SWAT+ routes and losses wouldn't come out of it, so a
   set is refused there.
@@ -226,7 +257,17 @@ exchange survives saving and loading.
   `wallo_start_day` before it recomputes the demand, using the previous
   day's; so those get a set demand on the following day, exactly as they
   get SWAT+'s own. That lag is SWAT+'s, and the wrapper keeps it.
-- **The groundwater exchange**: daily routing only (above).
+- **The groundwater exchange**: daily routing only, and channels with
+  length (above). A mass with it needs a gain set first for that channel
+  and day, can't be negative, and makes a later loss for that day an
+  error, since a loss takes the outflow's own concentration.
+- **Point source loads** replace the day's load in the records SWAT+
+  reads: `recall(i)%hd(day,yr)` for nitrate and phosphorus, and
+  `rec_salt(i)%hd_salt(day,yr)` for salt, which also needs the point
+  source's record in `salt_recall.rec` to be daily (type 1) and cover the
+  year. A load on a diversion (a negative flow, set or SWAT+'s own) is
+  refused, and so is a negative flow on a day a load is set: SWAT+ gives a
+  diversion the channel's concentration (`recall_salt`, `recall_nut`).
 - Storage can't be set.
 
 ### Setting states
@@ -381,8 +422,13 @@ bytes. A save is refused for the same open files as a branch.
     is a "header written" flag, and resetting it writes the soil carbon
     layer headers again. A save/load test on Ames showed the same two files
     differing, and nothing else.
+  - On Osu_1hru with salts (0.5.0), `scoef` in `sd_channel_control3.f90`
+    carries state: SWAT+ sets it only on days whose travel time is longer
+    than the routing step and uses the last value otherwise (Found in
+    SWAT+ 62.0.1, item 15). Resetting it changes the channel's salt from
+    day 56.
   - Locals like that are listed per release in
-    `patches/<tag>/carried-locals.toml`; for 62.0.1 the list is that one.
+    `patches/<tag>/carried-locals.toml`; for 62.0.1 the list is those two.
     `tools/carried_locals.py` moves each into a generated module
     (`bmi_locals_module.f90`) at build time, and the procedure uses it
     under its old name. A module variable keeps its value between calls
@@ -421,7 +467,11 @@ the saved day's pause, the process reads the saved state over its own,
 closes its output files, and replies `@restore`. The caller then puts back
 the saved run folder's files (SWAT+ rewrote them at startup) and answers
 `restored`. SWAT+ reopens the files at their ends and pauses with the saved
-`@paused` line. The year-end processing that runs during the skipped years
+`@paused` line. A state also lists the output files the saving process had
+open; any of those the loading process hasn't opened yet is opened at its
+end too. SWAT+ opens some files only on their first write (the salt
+balance's units 5080–5086, as `fort.<unit>`); without this, the loaded
+run's first write would start the restored file again from the top. The year-end processing that runs during the skipped years
 changes only state that the load replaces, and anything it writes to
 output files is discarded when the saved files are put back.
 
@@ -477,8 +527,8 @@ The claim is three sentences, and each has its own tests:
    add the mode switched off, branches and saves at the first and last
    days, and branches of branches.
 2. **A value set changes results only through that input.** Setting
-   SWAT+'s own point source flow or demand back every day, read from a
-   first run, gives stock output, byte for byte, and so does a zero
+   SWAT+'s own point source flow, loads or demand back every day, read
+   from a first run, gives stock output, byte for byte, and so does a zero
    groundwater exchange every day. A set on one day changes only that day
    (`test_setting.py`, `test_groundwater.py`), by exactly the water set
    (balances close). Every kind of set runs on a build with array bounds
@@ -497,8 +547,12 @@ was left behind counts as a difference.
 **What isn't proven.** The checks run on SWAT+'s two example projects, a
 few variants of them, and whatever is added with `$SWATPLUS_BMI_PROJECTS`
 (COMPATIBILITY.md lists the projects checked). Code those don't run (gwflow,
-salts and other constituents, pesticides, most reservoir and wetland code,
-calibration) is covered by the reasoning in this note, not by tests. The
+salts with aquifers or point sources, which stock 62.0.1 can't run, other
+constituents, pesticide applications, most reservoir and wetland code,
+calibration) is covered by the reasoning in this note, not by tests. Of
+the chemistry variables, an aquifer's salt recharge and a point source's
+salt load have no project to run on, and SWAT+ prints no soluble P
+recharge to check against. The
 saved-locals list is complete only for the procedures the test projects
 run. Saved states are checked on macOS and on Linux, each loaded on the
 platform that wrote it. A state moved between platforms would be accepted
@@ -580,16 +634,71 @@ These are worth reporting upstream, separately from the exchange mode:
    are built and never reaches the routing. (Draft issue in
    docs/upstream-issue-calibration-chn.md; `check_calibration` warns.)
 
-Items 7–9 were found by a study's model build (Nov 6, 2026) and confirmed
-by reading the source.
+10. In `sd_channel_control3.f90`, a transfer's salt and constituents
+    (`obcs%trans`) are added to the incoming load `hcs1`, and then `hcs1`
+    is set again from `obcs%hin(1)` before routing, so they never reach
+    the channel. Nothing puts salt in a transfer in 62.0.1 (water
+    allocation adds to `ob%trans` only), so water allocation returns carry
+    no salt. (Draft issue in docs/upstream-issue-transfer-salt.md; the
+    exchange's salt goes in through its own hook.)
+11. An aquifer's soluble P outflow (`aqu_1d_control.f90`) is the day's
+    recharge volume (`ob%hin%flo`) times `minp`, not the return flow, and
+    the P arriving with recharge isn't kept anywhere. `aqu_d%minp` holds kg
+    but is labeled kg/ha. (Draft issue in
+    docs/upstream-issue-aquifer-phosphorus.md.)
+12. `ch_temp.f90`'s groundwater term is always zero with `aqu_1d_control`
+    aquifers: it reads `hdsep_in%flo_gwsw`, which no aquifer routine fills.
+    The mixing also divides flows in mixed units (HRU water yields in mm,
+    unweighted, and m3/s), and `channel_sd_day.txt`'s `water_temp` column
+    is the old air-temperature regression, not `ch_temp`'s result (the
+    column before it, headed `null`). (Draft issue in
+    docs/upstream-issue-ch-temp.md.)
+
+13. The salt module can't run with an aquifer or a point source: without
+    pesticides `salt_hru_init` writes to `cs_soil%ly`, which only
+    `pesticide_init` allocates; with them `aqu_initial` allocates
+    `cs_aqu%salt` twice; `recall_read_salt` is never called, so `rec_salt`
+    is never read; and `recall_salt` writes `div_conc_salt`, which only
+    gwflow allocates. Salts with a placeholder pesticide, no aquifer and no
+    point source do run. Salt also leaves a channel on its own schedule
+    (`scoef`), not the water's, so the outflow concentration can reach
+    10^7 g/m3 on near-zero flows; and `hru_salt_day.txt`'s header has eight
+    names its rows don't. (Draft issue in
+    docs/upstream-issue-salt-module.md; `tests/salts.py` builds both
+    projects.)
+14. `obcs%trans` (an object's transfer constituents) is never allocated,
+    so with any constituent on, a transfer into a channel reads past
+    unallocated arrays in `sd_channel_control3` (an error with bounds
+    checked; a hang without). The wrapper allocates them, zero, before
+    putting a gain in the transfer (`trans_cs_ready`), so a gain works
+    with constituents on; no value changes, since SWAT+ sets the incoming
+    load again before using it (item 10). SWAT+'s own transfers in a run
+    with nothing set are untouched. (In docs/upstream-issue-transfer-salt.md.)
+
+15. In `sd_channel_control3.f90`, the storage coefficient `scoef` is set
+    only when the travel time is longer than the routing step. On other
+    days the salt and constituent split (`hcs2 = scoef * hcs3`) and the
+    hydrograph separation use the last value computed, from an earlier day
+    or another channel (a saved local; 0 on the first call). It's in
+    `carried-locals.toml`, so a saved state keeps it. (In
+    docs/upstream-issue-salt-module.md.)
+
+Items 7–9 and 12 were found by a study's model build (Nov 6, 2026) and
+confirmed by reading the source. Items 10, 11 and 13–15 were found while
+adding chemistry to the exchange (0.5.0).
 
 ## Limits
 
 - Daily steps only; the groundwater exchange is refused with sub-daily
   routing.
-- Only fluxes and listed states can be set: point source flow (daily
-  recalls inside their records), water allocation demand, a channel's
-  groundwater exchange, and soil layer temperature.
+- Only fluxes and listed states can be set: point source flow and loads
+  (daily recalls inside their records), water allocation demand, a
+  channel's groundwater exchange and the mass a gain carries, and soil
+  layer temperature.
+- Chemistry is salt ions, nitrate and soluble phosphorus. SWAT+'s other
+  constituents, pesticides and pathogens aren't exposed; a loss takes the
+  other constituents with its water but leaves pesticides and pathogens,
+  as SWAT+'s own seepage does.
 - A gwflow project that reads `chan_depth.gw` or `pond_div.gw` can't be
   branched or saved, and nor can a project whose `out_path` leads out of
   the run folder.
