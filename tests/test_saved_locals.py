@@ -12,11 +12,13 @@ import pytest
 from conftest import BIN, STOCK, TAG, ames_light, differences, need, project, run_stock
 from test_allocation import add_allocation
 from test_setting import add_point_source
+from salts import with_salts_channel
 
 NOSAVE = BIN / f"swatplus-{TAG}-nosave"
 CASES = {"plain": {}, "daily": {"daily": True},
          "point-source": {"daily": True, "edit": add_point_source},
-         "allocation": {"daily": True, "edit": add_allocation}}
+         "allocation": {"daily": True, "edit": add_allocation},
+         "salts": {"daily": True, "edit": with_salts_channel}}
 
 
 @pytest.mark.parametrize("case", CASES)

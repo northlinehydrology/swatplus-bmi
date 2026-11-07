@@ -8,8 +8,10 @@ Osu_1hru with everything printed daily.
 
 import numpy as np
 
-from conftest import EXCHANGE, need, project
-from swatplus_bmi import SwatPlusBmi
+import pytest
+
+from conftest import CHECK, EXCHANGE, need, project
+from swatplus_bmi import ExchangeError, SwatPlusBmi
 from test_reading import daily_table
 
 QOUT = "channel_water__volume_outflow_rate"
@@ -111,3 +113,41 @@ def test_the_days_exchange_survives_save_and_load():
     assert np.array_equal(n.get_value(GW, np.empty(1, np.float32)), want)
     assert want[0] > 0
     n.finalize()
+
+
+def short_channel(run):
+    """Osu_1hru with its channel's length (len, km) under SWAT+'s 1 m cutoff."""
+    p = run / "hyd-sed-lte.cha"
+    lines = p.read_text().splitlines()
+    head = lines[1].split()
+    f = lines[2].split()
+    f[head.index("len")] = "0.0005"
+    lines[2] = "  ".join(f)
+    p.write_text("\n".join(lines) + "\n")
+
+
+def test_no_exchange_on_a_channel_of_no_length():
+    """SWAT+ passes a channel of no length's inflow straight on (command.f90) and never
+    routes it, so an exchange there would be dropped: refused instead."""
+    need(EXCHANGE)
+    m = SwatPlusBmi()
+    m.initialize(str(project("Osu_1hru", "gw-short", daily=True, edit=short_channel)))
+    m.update_until(10)
+    for rate in (0.0005, -0.0005):
+        with pytest.raises(ExchangeError, match="has no length"):
+            m.set_value(GW, np.array([rate]))
+    m.finalize()
+
+
+def test_a_gain_works_with_constituents_on(monkeypatch):
+    """With salts (and a placeholder pesticide) on, a gain goes through SWAT+'s transfer,
+    whose constituent arrays SWAT+ 62.0.1 never allocates; run on the bounds-checked build,
+    which stops on a read past them. The inflow still rises by exactly the gain."""
+    from salts import with_salts_channel
+    need(EXCHANGE, CHECK)
+    gain = 0.0005
+    b = step(project("Osu_1hru", "gw-cs-base", daily=True, edit=with_salts_channel))
+    monkeypatch.setenv("SWATPLUS_EXCHANGE", str(CHECK))
+    r = step(project("Osu_1hru", "gw-cs-gain", daily=True, edit=with_salts_channel), gain)
+    np.testing.assert_allclose(r["x"], gain, rtol=1e-6)
+    assert (np.abs((r["i"] - b["i"]) - gain) <= 2 * EPS * r["i"] + 1e-12).all()

@@ -77,18 +77,26 @@ index 8fe25aa..196511e 100644
  
        write (*,1000)
 diff --git a/src/sd_channel_control3.f90 b/src/sd_channel_control3.f90
-index 9c5c38d..709976c 100644
+index 9c5c38d..7ce62f5 100644
 --- a/src/sd_channel_control3.f90
 +++ b/src/sd_channel_control3.f90
 @@ -20,6 +20,7 @@
        use water_allocation_module
        use maximum_data_module
        use pesticide_data_module, only : pestdb  !! BUG FIX: needed for per-pesticide kd
-+      use bmi_exchange_module, only : exch_channel
++      use bmi_exchange_module, only : exch_channel, exch_channel_in, exch_channel_cs
        
        implicit none     
        
-@@ -334,6 +335,8 @@
+@@ -160,6 +161,7 @@
+       if (cs_db%num_tot > 0) then
+         hcs1 = obcs(icmd)%hin(1)
+       end if
++      call exch_channel_in (ich)   !! exchange mode: salt set with a groundwater gain joins the incoming load
+       !! zero outgoing flow and sediment - ht2
+       ht2 = hz
+   
+@@ -334,6 +336,8 @@
          call wallo_control (sd_ch(ich)%wallo_pod)
        end if
  
@@ -96,6 +104,15 @@ index 9c5c38d..709976c 100644
 +
        !! set outflow hyd to ht2 after diverting water
        ob(icmd)%hd(1) = ht2
+       
+@@ -353,6 +357,8 @@
+         end do
+       end if
+       
++      call exch_channel_cs (ich)   !! exchange mode: a set groundwater loss takes its salt
++
+       !! calculate stream temperature (component mixing model)
+       call ch_temp
        
 diff --git a/src/time_control.f90 b/src/time_control.f90
 index d357b05..c516819 100644

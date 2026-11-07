@@ -29,7 +29,9 @@ from that.
    back every day gives stock output, and its sets run in bounds on the `--check` build.
 3. **Fluxes, and states only through a hook.** A flux goes in where SWAT+ takes it. A state is
    set by a hook right after SWAT+ computes it and before anything uses it (docs/design.md,
-   Setting states). Storage, land use, soils and parameters stay scenario inputs. Nothing in
+   Setting states). Mass goes in and out with its water: a mass set with a flux enters where
+   SWAT+ takes that constituent in, and a flux that takes water takes its constituents at the
+   water's concentration, so mass balances close as the water's do. Storage, land use, soils and parameters stay scenario inputs. Nothing in
    the patch changes what SWAT+ computes; a set value is the caller's, and documented as such.
 4. **The patch stays small.** Changes to SWAT+'s own files go in `patches/<tag>/`, and as few as
    possible. Everything else goes in new files in `fortran/`.

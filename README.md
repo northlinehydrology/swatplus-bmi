@@ -9,9 +9,10 @@ through the Basic Model Interface ([BMI 2.0](https://bmi.readthedocs.io), CSDMS)
 
 A small patch adds an exchange mode to SWAT+, off by default. In exchange mode SWAT+ pauses
 before each day. While it's paused, a caller reads state (channel flow, aquifer storage, depth
-to water, recharge, snowpack) and sets values for the next day: fluxes (a point source's flow,
-a water user's demand) and, as a first state, soil layer temperature. A Python BMI wrapper
-drives it. **With nothing set, SWAT+'s output is byte-for-byte
+to water, recharge, snowpack, and the salt, nitrate and phosphorus carried with the water) and
+sets values for the next day: fluxes (a point source's flow and load, a water user's demand, a
+channel's exchange with groundwater and the mass it carries) and, as a first state, soil layer
+temperature. A Python BMI wrapper drives it. **With nothing set, SWAT+'s output is byte-for-byte
 identical to an unpatched run, every output file, start to finish, however the run is stepped,
 read, branched or saved; a value set changes the run only through that input; and anything
 SWAT+ wouldn't use as given is refused rather than dropped.** The tests check each of those
@@ -19,7 +20,7 @@ against unpatched SWAT+ on the projects listed in [COMPATIBILITY.md](COMPATIBILI
 paused run can also be saved and loaded, or branched in memory, so a warm-up is run once and
 every scenario starts from the same state.
 
-**Status:** working for SWAT+ 62.0.1; release 0.4.0 ([PyPI](https://pypi.org/project/swatplus-bmi/), [Zenodo](https://doi.org/10.5281/zenodo.23963201)). Tested on the two example projects that
+**Status:** working for SWAT+ 62.0.1; release 0.5.0 ([PyPI](https://pypi.org/project/swatplus-bmi/), [Zenodo](https://doi.org/10.5281/zenodo.23963201)). Tested on the two example projects that
 ship with SWAT+ (below) and a 2,371-HRU study build. See [COMPATIBILITY.md](COMPATIBILITY.md) and the design note,
 [docs/design.md](docs/design.md).
 
@@ -62,7 +63,7 @@ flowchart LR
   P -- "replies on standard output:<br/>@paused, @value, @ok" --> B
 ```
 
-- **SWAT+'s side.** The patch adds eight calls to five SWAT+ files (`time_control.f90`,
+- **SWAT+'s side.** The patch adds ten calls to five SWAT+ files (`time_control.f90`,
   `main.f90.in`, `command.f90`, `sd_channel_control3.f90`, `hru_control.f90`). Each returns at
   once unless SWAT+ was started with `--exchange`. With the mode on, SWAT+ stops before each day's water allocation and routing,
   answers commands, and goes on when told to.
@@ -240,6 +241,17 @@ Each day, read `channel_water__depth` for the river stage. Then set
 Read the same variable after the day for what was actually exchanged. Pass that back to the
 groundwater model, so the two balances agree.
 
+Chemistry goes the same way. For each salt ion SWAT+'s salt module simulates, and for nitrate
+(`no3`, as N) and soluble phosphorus (`solp`, as P):
+- read `aquifer_water_<ion>__recharge_mass_rate` for the mass reaching the water table, to pass
+  to a groundwater transport model;
+- with a gain, set `channel_water_<ion>__groundwater_mass_exchange_rate` for the mass the
+  groundwater brings (set the gain first). Nitrate and phosphorus go with the water through the
+  transfer; salt joins the channel's incoming load, as an aquifer's does;
+- a loss takes the same share of the outflow's salt, nitrate and phosphorus as of its water,
+  counted as seepage. `channel_water_<ion>__mass_concentration` is the day's outflow
+  concentration, and the exchange variable read after the day is the mass that went either way.
+
 ### Objects and grids
 
 Each SWAT+ object type is a BMI grid of type `points`: one point per object, longitude as x and
@@ -265,12 +277,23 @@ objects in a project are left out.
 | `place_of_use_water__volume_withdrawal_rate` | water allocation places of use | no | m3 s-1 | what was actually taken |
 | `soil_layer__temperature` | HRU soil layers | yes (a state) | degC | each layer's temperature; layer 2 is `sol_tmp` in `hru_pw_day.txt` |
 | `snowpack__liquid-equivalent_depth` | HRUs | no | m | `sno_final` in `hru_wb_day.txt` |
+| `channel_water_<sp>__mass_concentration` | channels | no | kg m-3 | the day's outflow mass over outflow volume (0 with no outflow) |
+| `channel_water_<sp>__groundwater_mass_exchange_rate` | channels | with a gain | kg s-1 | mass with the groundwater exchange, positive into the channel; a loss takes the outflow's concentration |
+| `aquifer_water_<sp>__recharge_mass_rate` | aquifers | no | kg s-1 | what SWAT+ takes into the aquifer with recharge (`no3_rchg` × area for nitrate) |
+| `point_source_water_<sp>__mass_flow_rate` | recall objects | daily ones, inside their records | kg s-1 | the recall file's load (0 for a diversion) |
+
+`<sp>` is each salt ion as SWAT+ reads it from `constituents.cs` (`so4`, `ca`, `mg`, `na`, `k`,
+`cl`, `co3`, `hco3` in the salt module's order), then `no3` (nitrate-N) and `solp` (soluble P).
+Without the salt module only `no3` and `solp` are there. A salt load needs the point source's
+daily record in `salt_recall.rec`.
 
 Names follow [CSDMS Standard Names](https://csdms.colorado.edu/wiki/CSDMS_Standard_Names). The
 channel volume and flow names and the recharge name are on the CSDMS list. The others are new,
 built the same way. SWAT+ keeps 4-byte reals; values come out of BMI as 8-byte reals
 (`float64`), so a value read and set back is SWAT+'s own to the bit. Every variable is checked
-against SWAT+'s own daily output in the tests, to the digits SWAT+ prints.
+against SWAT+'s own daily output in the tests, to the digits SWAT+ prints, except three SWAT+
+62.0.1 can't show: an aquifer's salt recharge and a point source's salt load (its salt module
+doesn't run with aquifers or point sources) and an aquifer's soluble P recharge (not printed).
 
 ## Saving state
 
@@ -285,12 +308,14 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   wrote it.
 - **Saved locals.** Fortran locals with an initializer keep their values between calls, and
   SWAT+ has about 5,400 of them. A test build that resets them all on every call
-  (`build.sh --nosave`) shows which ones carry state. In 62.0.1 only one does on the test
-  projects, a "header written" flag. It's listed in `patches/62.0.1/carried-locals.toml` and
-  moved into a module at build time so it's saved too.
+  (`build.sh --nosave`) shows which ones carry state. In 62.0.1 two do on the test projects:
+  a "header written" flag, and, with salts on, the channel routing's storage coefficient
+  (`scoef`), which SWAT+ uses stale on some days. They're listed in
+  `patches/62.0.1/carried-locals.toml` and moved into a module at build time so they're saved too.
 - **Loading.** A new process can't jump into the middle of SWAT+'s daily loop. So `load` runs it
   forward to the saved day without computing anything, reads the saved state over its own, and
-  puts back the saved output files.
+  puts back the saved output files. Files SWAT+ opens only on their first write (the salt
+  balance's `fort.508x`) are opened again at their ends, as the saving process had them.
 - **Branching** copies the paused process with `fork`, which needs none of this.
 - **Refused:** a branch or save while SWAT+ has a file open outside the run folder (an
   `out_path` that leads out of it) or partway through reading (gwflow's `chan_depth.gw` and
@@ -302,7 +327,7 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   setting SWAT+'s own values back doesn't either. The suite checks every output file against
   unpatched SWAT+, including 46 years of Ames_sub1, and CI checks that every SWAT+ file the
   patch doesn't touch compiles to the same object as in the stock build.
-- **Small and off by default.** Eight calls in five SWAT+ files, one Fortran module, and a C file
+- **Small and off by default.** Ten calls in five SWAT+ files, one Fortran module, and a C file
   of four functions for `fork`. With the mode off, SWAT+ behaves exactly as it does without the
   patch. It's meant to be proposed to the SWAT+ team (`docs/upstream-issue.md`).
 - **No linking, any platform for stepping.** Text over standard input and output. The Python
@@ -319,8 +344,9 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
 
 - **Daily steps only.** SWAT+'s sub-daily options aren't exposed, and the groundwater exchange
   is refused with sub-daily routing.
-- **Only fluxes and listed states can be set:** point source flow, water allocation demand and a
-  channel's groundwater exchange, and soil layer temperature, for the next day. Not storage,
+- **Only fluxes and listed states can be set:** point source flow and load, water allocation
+  demand, a channel's groundwater exchange and the mass it carries, and soil layer temperature,
+  for the next day. Not storage,
   land use, soils or parameters; those are scenario inputs. Each settable state needs its own
   hook in the patch, at the point where SWAT+ has computed it and before anything uses it
   (docs/design.md, Setting states), so states are added one at a time, each with the same tests.
@@ -332,7 +358,8 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   build hasn't been tried.
 - **Saved states depend on the code a project runs.** The list of saved locals that carry state
   is complete for the code the test projects run: about half of SWAT+'s procedures. That
-  excludes gwflow, salts and other constituents, reservoirs, pesticides and calibration. A
+  excludes gwflow, salts with aquifers or point sources, other constituents, reservoirs,
+  pesticide applications and calibration. A
   project that uses those should be checked with `build.sh --nosave` and `pytest -m full` first.
   Saved locals don't affect branching, which copies the whole process.
 - **Proven on the test projects, not on every project.** COMPATIBILITY.md lists what has been
@@ -354,7 +381,30 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   water before it works out the day's demand; that lag is SWAT+'s own.
 - **A set SWAT+ wouldn't use is an error.** Only daily point sources inside their recall file's
   years can be set; a value must be a finite number; `set_value_at_indices` needs one value per
-  index.
+  index. A groundwater exchange on a channel of no length (`len` under 1 m) is refused, since
+  SWAT+ passes such a channel's inflow straight on.
+- **A mass goes in with a gain, and comes out at the outflow's concentration.** Set the day's
+  groundwater gain before its mass; a mass set with a loss, or a loss set after a mass, is
+  refused. A load can't be set on a diversion (a negative point source), which SWAT+ gives the
+  channel's own concentration.
+- **SWAT+ 62.0.1 carries no salt in a transfer.** `sd_channel_control3.f90` adds the transfer's
+  salt to the channel's incoming load and then sets the load again, and water allocation puts
+  none in. So the wrapper adds a gain's salt to the incoming load directly, as SWAT+ adds an
+  aquifer's. (Draft report: `docs/upstream-issue-transfer-salt.md`.)
+- **SWAT+ 62.0.1's salt module runs only without aquifers and point sources**, and only with a
+  pesticide listed (a placeholder will do). Otherwise it stops: unallocated soil arrays, a double
+  allocation for aquifers, and `salt_recall.rec` is never read. So the salt variables are tested
+  on a channel project (`tests/salts.py`), and a salt load on a point source is refused. Nitrate
+  and phosphorus work everywhere. (Draft report: `docs/upstream-issue-salt-module.md`.)
+- **A transfer into a channel fails in SWAT+ 62.0.1 when constituents are on** (salts or
+  pesticides): the transfer's constituent arrays are never allocated, which stops a bounds-checked
+  build and hung the release build in our tests. The wrapper allocates them, zero, before it puts a
+  gain in a channel's transfer, so gains work in those projects; no value changes. SWAT+'s own
+  water allocation returns meet the same problem when nothing is set.
+- **An aquifer's soluble phosphorus outflow in SWAT+ 62.0.1 is the day's recharge volume times
+  `minp`**, not its return flow, and the phosphorus arriving with recharge is not kept. The
+  wrapper reads the recharge phosphorus all the same, so a groundwater model can carry it.
+  (Draft report: `docs/upstream-issue-aquifer-phosphorus.md`.)
 - **Values read at a pause are yesterday's.** SWAT+ has also read the coming day's weather, but
   hasn't routed it. That's what a same-day rule needs, but it matters when lining up times with
   observations.
@@ -440,7 +490,10 @@ energy balance, so no heat is accounted for: a study that sets it states the rul
 ## What the patch never does
 
 The patch adds pauses, reads and the inputs listed above, and nothing else. It never changes
-SWAT+'s physics, its inputs or its outputs, even where SWAT+ looks wrong: those are documented
+SWAT+'s physics, its inputs or its outputs, even where SWAT+ looks wrong. (One thing comes
+close: before a gain goes into a channel's transfer, the wrapper allocates the transfer's
+constituent arrays, which SWAT+ 62.0.1 forgets; they stay zero, so no value changes, but without
+them the gain would stop the run.) Problems in SWAT+ are documented
 here and drafted as SWAT+ issues (`docs/upstream-issue-*.md`), and any workaround belongs in the
 model setup, not in the patch. A fix would be a separate, opt-in patch with its own name.
 
@@ -483,7 +536,8 @@ folders once it passes (set `SWATPLUS_BMI_KEEP_RUNS=1` to keep them).
 | Stepping changes nothing | the same, stepped one day at a time and in chunks, 14 and 46 years |
 | Values read are SWAT+'s | every variable, every day, against SWAT+'s daily output files |
 | Set values take effect exactly | a set withdrawal leaves the channel short by exactly that water; balances close |
-| Setting SWAT+'s own value back | point source flow, demand and soil layer temperature set every day to SWAT+'s own: stock output, byte for byte |
+| Setting SWAT+'s own value back | point source flow and loads, demand and soil layer temperature set every day to SWAT+'s own: stock output, byte for byte |
+| Chemistry | reads against SWAT+'s salt and nutrient outputs; a gain's mass arrives exactly; a loss takes the outflow's concentration; the channel's salt balance closes |
 | A set state | a soil temperature set for a day holds that day, then carries on as SWAT+'s own; bulk and single sets give the same run |
 | Sets stay in bounds | every kind of set, run on a build with array bounds checked |
 | Refusals | every set or snapshot the wrapper can't carry out faithfully raises an error |
@@ -492,6 +546,7 @@ folders once it passes (set `SWATPLUS_BMI_KEEP_RUNS=1` to keep them).
 | Branching | at days 0, 365, 1000 and the last; a branch of a branch; scenarios against unbroken runs |
 | Saving and loading | the same, across processes; values read back exactly; a pending set kept; another build's state refused |
 | Saved locals | a build that resets them on every call matches stock, except the listed ones |
+| Unset memory | stock SWAT+ run with its memory filled with a pattern matches stock, except `cons_bmix` in `hru_carbvars.txt`, which SWAT+ never sets below the mixing depth and the comparisons leave out |
 
 CI (GitHub Actions) runs the suite on Ubuntu and macOS on every push. Each night it also runs the full-length tests and builds SWAT+
 main with the current patch, as an early warning for the next SWAT+ release.

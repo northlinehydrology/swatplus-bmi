@@ -29,6 +29,14 @@ RUNS = ROOT / "tests" / "runs"
 # files that exist only in exchange runs, or hold the console
 NOT_OUTPUT = {"exchange.log", "exchange.err", "console.txt"}
 
+# Columns stock SWAT+ prints without ever setting, so they show whatever memory held: a
+# fresh process's zeroed pages when SWAT+ runs alone, older heap contents inside Python.
+# cons_bmix is a layer's bmix, which 62.0.1 declares without a value (soil_module.f90)
+# and mgt_biomix sets only down to the mixing depth (docs/upstream-issue-bmix.md).
+# Masked with the spaces around them, since list-directed output sizes a field to its value.
+UNSET = {"hru_carbvars.txt": re.compile(rb"(?m)^([ ]*(?:[^ \n]+[ ]+){11}[^ \n]+)[ ]+[^ \n]+[ ]+"),
+         "hru_carbvars.csv": re.compile(rb"(?m)^((?:[^,\n]*,){12})[^,\n]*")}
+
 # what exchange.log says when a branch or a load couldn't carry an open file
 NOT_CARRIED = (b"partway through", b"could not be opened again")
 
@@ -149,27 +157,30 @@ def set_years(sim: Path, first: int, last: int) -> None:
     sim.write_text("\n".join(lines) + "\n")
 
 
-def run_stock(run_dir: Path, exe: Path = STOCK, *args: str) -> None:
+def run_stock(run_dir: Path, exe: Path = STOCK, *args: str, env: dict | None = None) -> None:
     with open(run_dir / "console.txt", "wb") as con:
         subprocess.run([str(exe), *args], cwd=run_dir, stdout=con, stderr=subprocess.STDOUT,
-                       check=True, timeout=3600)
+                       check=True, timeout=3600, env={**os.environ, **(env or {})})
     assert (run_dir / "success.fin").exists()
 
 
-def masked(path: Path) -> bytes:
+def masked(path: Path, unset: bool = True) -> bytes:
     data = path.read_bytes()
     if path.name == "simulation.out":
         for rx in CLOCK:
             data = rx.sub(b"<clock>", data)
+    if unset and path.name in UNSET:
+        data = UNSET[path.name].sub(rb"\1 <unset> ", data)
     return data
 
 
-def differences(a: Path, b: Path) -> list[str]:
+def differences(a: Path, b: Path, unset: bool = True) -> list[str]:
     """Every way the outputs in two run folders differ; empty means identical.
 
-    All files are compared byte for byte, inputs included; the only thing
-    left out is the clock readings in simulation.out. An exchange.log that
-    says a branch or a load left a file behind counts as a difference too.
+    All files are compared byte for byte, inputs included; the only things
+    left out are the clock readings in simulation.out and the columns SWAT+
+    prints without setting (UNSET; ``unset=False`` keeps them). An exchange.log
+    that says a branch or a load left a file behind counts as a difference too.
     """
     fa = {p.relative_to(a) for p in a.rglob("*") if p.is_file() and p.name not in NOT_OUTPUT}
     fb = {p.relative_to(b) for p in b.rglob("*") if p.is_file() and p.name not in NOT_OUTPUT}
@@ -180,7 +191,7 @@ def differences(a: Path, b: Path) -> list[str]:
     diffs += [f"only in {a.name}: {p}" for p in sorted(fa - fb)]
     diffs += [f"only in {b.name}: {p}" for p in sorted(fb - fa)]
     for p in sorted(fa & fb):
-        if masked(a / p) != masked(b / p):
+        if masked(a / p, unset) != masked(b / p, unset):
             diffs.append(f"differs: {p}")
     return diffs
 

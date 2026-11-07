@@ -3,6 +3,55 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
+## 0.5.0 (2026-11-07)
+
+Chemistry that travels with the water through the coupling: for each salt ion SWAT+'s salt module
+simulates, and for nitrate and soluble phosphorus, what a groundwater transport model needs from
+SWAT+ and gives back. With nothing set, output is still stock.
+
+- Four variables per species (`<sp>`: the salt ions from `constituents.cs`, then `no3` and
+  `solp`): `channel_water_<sp>__mass_concentration` (the day's outflow concentration, kg m-3),
+  `channel_water_<sp>__groundwater_mass_exchange_rate` (kg s-1, settable with a gain),
+  `aquifer_water_<sp>__recharge_mass_rate` (kg s-1) and `point_source_water_<sp>__mass_flow_rate`
+  (kg s-1, settable on daily point sources, as the flow is).
+- A gain's nitrate and phosphorus go with its water through the transfer hydrograph. Its salt goes
+  in through a new hook, `exch_channel_in`, because SWAT+ 62.0.1 drops a transfer's salt (docs,
+  Found in SWAT+ 62.0.1, item 10).
+- **Fixed:** a groundwater loss took a channel's water but left its salt and other constituents
+  behind, so in a project with the salt module on, every losing reach gained concentration and the
+  salt balance didn't close. A loss now takes the same share of the outflow's salt and constituents
+  as of its water, counted as seepage as SWAT+ counts its own (a new hook, `exch_channel_cs`).
+- **Fixed:** a groundwater exchange on a channel of no length (under 1 m) was accepted and never
+  used, since SWAT+ passes such a channel's inflow straight on. It's now refused.
+- **Fixed:** in a project with constituents on (salts or pesticides), a gain stopped the run (a
+  hang in the release build), because SWAT+ 62.0.1 never allocates a channel's transfer
+  constituents. The wrapper now allocates them, zero, before putting a gain in the transfer; no
+  value changes.
+- **Fixed:** a loaded state started SWAT+'s lazily opened output files (the salt balance's
+  `fort.508x`) again from the top. A state now lists the files open at the save, and a load opens
+  any not yet open at their ends.
+- **Saved locals:** `scoef` in `sd_channel_control3.f90` carries state with salts on (SWAT+ uses
+  it stale on some days), so it's in `carried-locals.toml` and saved with a state.
+- SWAT+ 62.0.1's salt module runs only without aquifers and point sources, and only with a
+  pesticide listed; the salt variables are tested on such a project (`tests/salts.py`), and a
+  salt load on a point source is refused, since SWAT+ never reads `salt_recall.rec`.
+- Refused: a mass with a loss or before the day's gain, a negative mass, a load on a diversion, a
+  salt load without a daily record in `salt_recall.rec`.
+- The read-only error from `set_value` now says the variable is an output only (it said "only
+  fluxes", which stopped being true with soil temperature in 0.4.0).
+- Found in SWAT+ 62.0.1 and drafted for upstream: the salt module's allocation and call gaps, its
+  stale storage coefficient and its own routing schedule for salt; an aquifer's soluble P outflow
+  is the day's recharge times `minp`, not its return flow, and recharge P isn't kept; `ch_temp`'s
+  groundwater term is always zero with aquifers, and its mixing divides flows in mixed units.
+- A soil layer's `bmix` is never set below the mixing depth in SWAT+ 62.0.1, so the `cons_bmix`
+  column of `hru_carbvars.txt` prints whatever memory held: zero in a stock run as a rule, and
+  sometimes not inside Python (a nightly Ames_sub1 run on macOS). The comparisons with stock leave
+  that column out, a new test runs stock SWAT+ with its memory filled with a pattern to show it's
+  the only output that reads unset memory on the test projects, and the issue is drafted for
+  upstream.
+- The patch adds ten calls to five SWAT+ files (two new, in `sd_channel_control3.f90`). Saved
+  states have a new format (`SWXSTATE-4`) with masses and loads pending for the next day.
+
 ## 0.4.0 (2026-11-06)
 
 Settable states, starting with soil layer temperature. A state can't be set at the start of the
