@@ -121,7 +121,7 @@
 
       !! the catalog: the water variables, then the chemistry variables, one per species
       !! (exch_start). var_fam is 0 for a water variable, or the chemistry family
-      integer, parameter :: nbase = 14
+      integer, parameter :: nbase = 18
       character(len=48), dimension(nbase), parameter :: base_name = [character(len=48) ::     &
             "channel_water__volume_outflow_rate",                           &
             "channel_water__volume",                                        &
@@ -136,16 +136,20 @@
             "channel_water__depth",                                        &
             "channel_water__groundwater_volume_exchange_rate",             &
             "soil_layer__temperature",                                     &
-            "snowpack__liquid-equivalent_depth"]
+            "snowpack__liquid-equivalent_depth",                           &
+            "soil_water__percolation_rate",                                &
+            "land_surface__evapotranspiration_rate",                       &
+            "land_surface__potential_evapotranspiration_rate",             &
+            "soil_water__depth"]
       character(len=8), dimension(nbase), parameter :: base_grid = [character(len=8) ::      &
             "cha", "cha", "cha", "aqu", "aqu", "aqu", "aqu", "rec", "pou", "pou",    &
-            "cha", "cha", "hly", "hru"]
+            "cha", "cha", "hly", "hru", "hru", "hru", "hru", "hru"]
       character(len=8), dimension(nbase), parameter :: base_units = [character(len=8) ::     &
             "m3 s-1", "m3", "m3 s-1", "m3", "m", "m3 s-1", "m s-1", "m3 s-1", "m3 s-1", "m3 s-1", &
-            "m", "m3 s-1", "degC", "m"]
+            "m", "m3 s-1", "degC", "m", "m s-1", "m s-1", "m s-1", "m"]
       character(len=3), dimension(nbase), parameter :: base_role = [character(len=3) ::      &
             "out", "out", "out", "out", "out", "out", "out", "in", "in", "out",  &
-            "out", "in", "in", "out"]
+            "out", "in", "in", "out", "out", "out", "out", "out"]
       !! chemistry families: <prefix><species><suffix>
       integer, parameter :: fam_conc = 1, fam_exch = 2, fam_rchg = 3, fam_load = 4
       character(len=24), dimension(4), parameter :: fam_prefix = [character(len=24) ::      &
@@ -1288,6 +1292,7 @@
       use maximum_data_module, only : db_mx
       use soil_module, only : soil
       use hru_module, only : hru
+      use output_landscape_module, only : hwb_d
 
       character(len=*), intent(in) :: name
       real(8), dimension(:), allocatable :: val
@@ -1347,6 +1352,36 @@
         do i = 1, sp_ob%hru
           iob = sp_ob1%hru + i - 1
           val(i) = hru(ob(iob)%num)%sno_mm / 1000.d0       !mm -> m
+        end do
+
+      case ("soil_water__percolation_rate")
+        !! the day's water leaving the bottom of the soil profile (sepbtm)
+        allocate (val(sp_ob%hru), source = 0.d0)
+        do i = 1, sp_ob%hru
+          iob = sp_ob1%hru + i - 1
+          val(i) = hwb_d(ob(iob)%num)%perc / 86400000.d0   !mm/day -> m/s
+        end do
+
+      case ("land_surface__evapotranspiration_rate")
+        allocate (val(sp_ob%hru), source = 0.d0)
+        do i = 1, sp_ob%hru
+          iob = sp_ob1%hru + i - 1
+          val(i) = hwb_d(ob(iob)%num)%et / 86400000.d0     !mm/day -> m/s
+        end do
+
+      case ("land_surface__potential_evapotranspiration_rate")
+        allocate (val(sp_ob%hru), source = 0.d0)
+        do i = 1, sp_ob%hru
+          iob = sp_ob1%hru + i - 1
+          val(i) = hwb_d(ob(iob)%num)%pet / 86400000.d0    !mm/day -> m/s
+        end do
+
+      case ("soil_water__depth")
+        !! the profile's water above the wilting point at the end of the day
+        allocate (val(sp_ob%hru), source = 0.d0)
+        do i = 1, sp_ob%hru
+          iob = sp_ob1%hru + i - 1
+          val(i) = soil(ob(iob)%num)%sw / 1000.d0          !mm -> m
         end do
 
       case ("aquifer_water__volume")

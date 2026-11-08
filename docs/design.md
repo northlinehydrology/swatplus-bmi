@@ -169,6 +169,10 @@ names follow the channel ones. CSDMS lists no aquifer or withdrawal names.
 | `channel_water__groundwater_volume_exchange_rate` | cha | in and out | m3 s-1 | gains into `ob(iob)%trans`; losses from `ht2` after routing, counted in `ch_wat_d(i)%seep` | positive into the channel; reading gives what was exchanged on the day just done |
 | `soil_layer__temperature` | hly | in and out | degC | `soil(j)%phys(k)%tmp` | a state: setting replaces the day's value right after SWAT+ computes it (Setting states); degrees C, as SWAT+ keeps it, so a value read and set back is exact; layer 2 is `sol_tmp` in `hru_pw_day.txt` |
 | `snowpack__liquid-equivalent_depth` | hru | out | m | `hru(j)%sno_mm` | `sno_final` in `hru_wb_day.txt` |
+| `soil_water__percolation_rate` | hru | out | m s-1 | `hwb_d(j)%perc` (`sepbtm`, mm/day) | water leaving the bottom of the soil profile on the day, `perc` in `hru_wb_day.txt`; what a groundwater model takes as recharge HRU by HRU |
+| `land_surface__evapotranspiration_rate` | hru | out | m s-1 | `hwb_d(j)%et` (mm/day) | actual ET, `et`, with ponded water's evaporation |
+| `land_surface__potential_evapotranspiration_rate` | hru | out | m s-1 | `hwb_d(j)%pet` (mm/day) | `pet` |
+| `soil_water__depth` | hru | out | m | `soil(j)%sw` (mm) | the profile's water above the wilting point at the end of the day, `sw_final` |
 | `point_source_water__volume_flow_rate` | rec | in and out | m3 s-1 | `recall(i)%hd(day,yr)%flo` | settable on daily recall objects inside their records only; negative is a withdrawal |
 | `place_of_use_water__volume_demand_rate` | pou | in and out | m3 s-1 | `pou(i)%demand` | reading gives the day's demand; setting replaces SWAT+'s for the next day |
 | `place_of_use_water__volume_withdrawal_rate` | pou | out | m3 s-1 | `poud_met(i)%duty_tot%deliv` | what was actually taken |
