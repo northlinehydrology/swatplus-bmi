@@ -77,7 +77,7 @@ first is in `hru_control.f90`, after `stmp_solt`. With nothing set, output is st
   given, all or nothing. `set_value` and `set_value_at_indices` use them, so a set of 12,000 soil
   layers is one exchange, not 12,000.
 - The README's example keeps frozen layers under more than 10 mm of snow-water equivalent at
-  0.1 °C (SWAT+ counts 0 °C as frozen). Tried at the Clam River, Michigan (11,383 layers): basin
+  0.1 °C (SWAT+ counts 0 °C as frozen). Tried on a study's 2,371-HRU basin build (11,383 layers): basin
   January–March soil temperature went from about −7 °C to about −1 °C, and percolation from 109
   to 122 mm a year.
 - docs/design.md, Setting states: what a set state means (it overrides SWAT+'s own model; SWAT+'s
@@ -149,7 +149,7 @@ independent review of 0.2.0.
   out the day's demand, so those get a set demand the following day, as they get SWAT+'s own.
   The docs had said "that day only".
 - What the tests prove, and on which projects (COMPATIBILITY.md: Osu_1hru, Ames_sub1 and a
-  2,371-HRU study build of the Clam River, Michigan), in place of claims that went further.
+  2,371-HRU study build), in place of claims that went further.
 - What the patch never does: change SWAT+'s physics, inputs or outputs, even where SWAT+ looks
   wrong.
 

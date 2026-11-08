@@ -486,7 +486,7 @@ and snow.
 
 This is a workaround a study chooses and applies through the BMI, not a change to SWAT+: with
 nothing set, SWAT+ computes soil temperature exactly as it always does, and SWAT+'s halving of
-the snow's insulation (`stmp_solt.f90`) stays as it is, documented for an upstream report. At the Clam River (11,383 layers, 2001–2005) this rule raised the basin's
+the snow's insulation (`stmp_solt.f90`) stays as it is, documented for an upstream report. On a study's 2,371-HRU basin build (11,383 layers, 2001–2005) this rule raised the basin's
 January–March soil temperature from about −7 °C to about −1 °C, and percolation from 109 to
 122 mm a year. Setting a state
 overrides SWAT+'s own model of it, and SWAT+'s soil temperature is an empirical lag, not an

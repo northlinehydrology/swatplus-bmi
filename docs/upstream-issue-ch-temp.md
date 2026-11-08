@@ -16,7 +16,7 @@ Draft for Andrew to read, edit and post himself. Not posted.
 
 **Possible fix:** fill `flo_gwsw` from the aquifer's return flow when an aquifer feeds a channel (`command.f90`, where `hdsep_in` is summed), and put every term of the mix in m3/s (area-weighted water yields).
 
-Found by a study on the Clam River, Michigan (Nov 2026), confirmed by reading the source.
+Found by a study's basin model build (Nov 2026), confirmed by reading the source.
 
 Andrew Sommerlot
 Northline Hydrology
