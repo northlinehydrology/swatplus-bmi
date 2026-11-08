@@ -3,6 +3,15 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
+## Unreleased
+
+- HRU water, read-only on the `hru` grid, each the day just done: `soil_water__percolation_rate`
+  (water leaving the bottom of the soil profile, what a groundwater model takes as recharge HRU by
+  HRU, where `soil_water_table__recharge_rate` gives it only per aquifer),
+  `land_surface__evapotranspiration_rate`, `land_surface__potential_evapotranspiration_rate` (m
+  s-1) and `soil_water__depth` (m, the profile's water above the wilting point). Read against
+  `hru_wb_day.txt` every day on Osu_1hru and on Ames_sub1's 12 HRUs.
+
 ## 0.5.0 (2026-11-07)
 
 Chemistry that travels with the water through the coupling: for each salt ion SWAT+'s salt module

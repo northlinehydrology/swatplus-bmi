@@ -9,7 +9,8 @@ through the Basic Model Interface ([BMI 2.0](https://bmi.readthedocs.io), CSDMS)
 
 A small patch adds an exchange mode to SWAT+, off by default. In exchange mode SWAT+ pauses
 before each day. While it's paused, a caller reads state (channel flow, aquifer storage, depth
-to water, recharge, snowpack, and the salt, nitrate and phosphorus carried with the water) and
+to water, recharge, each HRU's percolation, evapotranspiration and soil water, snowpack, and
+the salt, nitrate and phosphorus carried with the water) and
 sets values for the next day: fluxes (a point source's flow and load, a water user's demand, a
 channel's exchange with groundwater and the mass it carries) and, as a first state, soil layer
 temperature. A Python BMI wrapper drives it. **With nothing set, SWAT+'s output is byte-for-byte
@@ -277,6 +278,10 @@ objects in a project are left out.
 | `place_of_use_water__volume_withdrawal_rate` | water allocation places of use | no | m3 s-1 | what was actually taken |
 | `soil_layer__temperature` | HRU soil layers | yes (a state) | degC | each layer's temperature; layer 2 is `sol_tmp` in `hru_pw_day.txt` |
 | `snowpack__liquid-equivalent_depth` | HRUs | no | m | `sno_final` in `hru_wb_day.txt` |
+| `soil_water__percolation_rate` | HRUs | no | m s-1 | `perc` in `hru_wb_day.txt`: water leaving the bottom of the soil profile, recharge HRU by HRU |
+| `land_surface__evapotranspiration_rate` | HRUs | no | m s-1 | `et` |
+| `land_surface__potential_evapotranspiration_rate` | HRUs | no | m s-1 | `pet` |
+| `soil_water__depth` | HRUs | no | m | `sw_final`: the profile's water above the wilting point |
 | `channel_water_<sp>__mass_concentration` | channels | no | kg m-3 | the day's outflow mass over outflow volume (0 with no outflow) |
 | `channel_water_<sp>__groundwater_mass_exchange_rate` | channels | with a gain | kg s-1 | mass with the groundwater exchange, positive into the channel; a loss takes the outflow's concentration |
 | `aquifer_water_<sp>__recharge_mass_rate` | aquifers | no | kg s-1 | what SWAT+ takes into the aquifer with recharge (`no3_rchg` × area for nitrate) |
