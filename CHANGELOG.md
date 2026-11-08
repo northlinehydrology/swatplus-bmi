@@ -3,8 +3,15 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
-## Unreleased
+## 0.6.0 (2026-11-08)
 
+- Weather, set ahead into the gages' records: precipitation, maximum and minimum temperature,
+  solar radiation, relative humidity and wind speed, each on a grid of its gages (`pcp`, `tmp`,
+  `slr`, `hmd`, `wnd`). `set_weather(name, start, values)` writes a series of days; `set_value`
+  writes the first day SWAT+ hasn't read (`first_weather_day`: the day after the coming one, or
+  the day after that for precipitation, which SWAT+ reads a day ahead). A run given a series is
+  byte for byte the run whose files hold it (tested on Osu_1hru, also across branches, saves and
+  day-by-day sets). Protocol 4 adds `setr`.
 - HRU water, read-only on the `hru` grid, each the day just done: `soil_water__percolation_rate`
   (water leaving the bottom of the soil profile, what a groundwater model takes as recharge HRU by
   HRU, where `soil_water_table__recharge_rate` gives it only per aquifer),
@@ -77,7 +84,7 @@ first is in `hru_control.f90`, after `stmp_solt`. With nothing set, output is st
   given, all or nothing. `set_value` and `set_value_at_indices` use them, so a set of 12,000 soil
   layers is one exchange, not 12,000.
 - The README's example keeps frozen layers under more than 10 mm of snow-water equivalent at
-  0.1 °C (SWAT+ counts 0 °C as frozen). Tried at the Clam River, Michigan (11,383 layers): basin
+  0.1 °C (SWAT+ counts 0 °C as frozen). Tried on a study's 2,371-HRU basin build (11,383 layers): basin
   January–March soil temperature went from about −7 °C to about −1 °C, and percolation from 109
   to 122 mm a year.
 - docs/design.md, Setting states: what a set state means (it overrides SWAT+'s own model; SWAT+'s
@@ -149,7 +156,7 @@ independent review of 0.2.0.
   out the day's demand, so those get a set demand the following day, as they get SWAT+'s own.
   The docs had said "that day only".
 - What the tests prove, and on which projects (COMPATIBILITY.md: Osu_1hru, Ames_sub1 and a
-  2,371-HRU study build of the Clam River, Michigan), in place of claims that went further.
+  2,371-HRU study build), in place of claims that went further.
 - What the patch never does: change SWAT+'s physics, inputs or outputs, even where SWAT+ looks
   wrong.
 

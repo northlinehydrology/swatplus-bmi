@@ -52,7 +52,7 @@
       integer :: days_total = 0           !! days in the simulation
       integer :: run_left = 0             !! days to run before the next pause
       logical :: run_free = .false.       !! run to the end without pausing
-      integer :: protocol = 3             !! protocol version
+      integer :: protocol = 4             !! protocol version
       integer, parameter :: unit_max = 1000000   !! highest unit number branch looks at
       character(len=80) :: paused_line = ""      !! the last @paused reply
       character(len=16), parameter :: state_magic = "SWXSTATE-4"
@@ -121,8 +121,8 @@
 
       !! the catalog: the water variables, then the chemistry variables, one per species
       !! (exch_start). var_fam is 0 for a water variable, or the chemistry family
-      integer, parameter :: nbase = 18
-      character(len=48), dimension(nbase), parameter :: base_name = [character(len=48) ::     &
+      integer, parameter :: nbase = 24
+      character(len=64), dimension(nbase), parameter :: base_name = [character(len=64) ::     &
             "channel_water__volume_outflow_rate",                           &
             "channel_water__volume",                                        &
             "channel_water__volume_inflow_rate",                            &
@@ -140,16 +140,25 @@
             "soil_water__percolation_rate",                                &
             "land_surface__evapotranspiration_rate",                       &
             "land_surface__potential_evapotranspiration_rate",             &
-            "soil_water__depth"]
+            "soil_water__depth",                                           &
+            "atmosphere_water__precipitation_leq-volume_flux",             &
+            "atmosphere_bottom_air__max_of_temperature",                   &
+            "atmosphere_bottom_air__min_of_temperature",                   &
+            "land_surface_radiation~incoming~shortwave__energy_flux",      &
+            "atmosphere_bottom_air_water~vapor__relative_saturation",      &
+            "atmosphere_bottom_air_flow__speed"]
       character(len=8), dimension(nbase), parameter :: base_grid = [character(len=8) ::      &
             "cha", "cha", "cha", "aqu", "aqu", "aqu", "aqu", "rec", "pou", "pou",    &
-            "cha", "cha", "hly", "hru", "hru", "hru", "hru", "hru"]
+            "cha", "cha", "hly", "hru", "hru", "hru", "hru", "hru",                  &
+            "pcp", "tmp", "tmp", "slr", "hmd", "wnd"]
       character(len=8), dimension(nbase), parameter :: base_units = [character(len=8) ::     &
             "m3 s-1", "m3", "m3 s-1", "m3", "m", "m3 s-1", "m s-1", "m3 s-1", "m3 s-1", "m3 s-1", &
-            "m", "m3 s-1", "degC", "m", "m s-1", "m s-1", "m s-1", "m"]
+            "m", "m3 s-1", "degC", "m", "m s-1", "m s-1", "m s-1", "m",                  &
+            "m s-1", "degC", "degC", "W m-2", "1", "m s-1"]
       character(len=3), dimension(nbase), parameter :: base_role = [character(len=3) ::      &
             "out", "out", "out", "out", "out", "out", "out", "in", "in", "out",  &
-            "out", "in", "in", "out", "out", "out", "out", "out"]
+            "out", "in", "in", "out", "out", "out", "out", "out",                    &
+            "in", "in", "in", "in", "in", "in"]
       !! chemistry families: <prefix><species><suffix>
       integer, parameter :: fam_conc = 1, fam_exch = 2, fam_rchg = 3, fam_load = 4
       character(len=24), dimension(4), parameter :: fam_prefix = [character(len=24) ::      &
@@ -336,6 +345,11 @@
       call send_pou_grid
       call send_grid ("hru", sp_ob1%hru, sp_ob%hru)
       call send_hly_grid
+      call send_wx_grid ("pcp", 1)
+      call send_wx_grid ("tmp", 2)
+      call send_wx_grid ("slr", 4)
+      call send_wx_grid ("hmd", 5)
+      call send_wx_grid ("wnd", 6)
       do iv = 1, nvar
         call reply ("@var " // trim(var_name(iv)) // " " // trim(var_grid(iv)) // " " //   &
                     trim(var_role(iv)) // " " // trim(var_units(iv)))
@@ -707,6 +721,8 @@
       integer :: ios = 0
       integer :: n = 0
       integer :: i = 0
+      integer :: j = 0
+      integer :: k = 0
       real(8) :: v = 0.d0
 
       do
@@ -768,6 +784,19 @@
             call reply ("@error the simulation has ended; nothing left to set")
           else
             call set_values (trim(name), n, trim(word) == "seti")
+          end if
+
+        case ("setr")
+          read (line, *, iostat=ios) word, name, i, n, k
+          if (ios /= 0 .or. k < 0) then
+            call reply ("@error setr needs a variable name, a year, a day of the year and a day count")
+          else if (at_end) then
+            do j = 1, k
+              read (cmd_unit, '(a)', iostat=ios) line
+            end do
+            call reply ("@error the simulation has ended; nothing left to set")
+          else
+            call set_records (trim(name), i, n, k)
           end if
 
         case ("ping")
@@ -1437,7 +1466,11 @@
           call reply ("@error unknown variable: " // name)
           return
         end if
-        call chem_values (var_fam(iv), var_sp(iv), val)
+        if (wx_kind(name) > 0) then
+          call wx_values (wx_kind(name), val)
+        else
+          call chem_values (var_fam(iv), var_sp(iv), val)
+        end if
       end select
 
       call send_array (val)
@@ -1568,6 +1601,8 @@
       character(len=*), intent(out) :: msg
       integer :: irec = 0
       integer :: iv = 0
+      integer :: yr = 0
+      integer :: iday = 0
 
       msg = ""
 
@@ -1643,6 +1678,12 @@
           msg = "not a settable variable: " // name
         else if (var_role(iv) /= "in") then
           msg = "not a settable variable: " // name
+        else if (wx_kind(name) > 0) then
+          !! a weather record for the first day SWAT+ hasn't read
+          yr = time%yrc
+          iday = time%day
+          call add_days (yr, iday, wx_lead(wx_kind(name)))
+          call take_weather (wx_kind(name), i, yr, iday, v, keep, msg)
         else
           call take_chem (var_fam(iv), var_sp(iv), i, v, keep, msg)
         end if
@@ -1903,6 +1944,11 @@
         case ("pou"); var_size = db_mx%wallo_pou
         case ("hru"); var_size = sp_ob%hru
         case ("hly"); var_size = n_hly
+        case ("pcp"); var_size = wx_count (1)
+        case ("tmp"); var_size = wx_count (2)
+        case ("slr"); var_size = wx_count (4)
+        case ("hmd"); var_size = wx_count (5)
+        case ("wnd"); var_size = wx_count (6)
         end select
       end do
 
@@ -2054,5 +2100,466 @@
       s = trim(buf)
 
       end function itoa
+
+!!    --------------------------------------------------------------------
+!!    weather records. A set writes into a gage's record (pcp, tmp, slr,
+!!    hmd, wnd), as if its file had held that value, for a day SWAT+ hasn't
+!!    read yet. The day's weather is read before the pause (climate_control),
+!!    and precipitation a day ahead (precip_next, which decision tables use),
+!!    so set_value writes the next day's record, or for precipitation the
+!!    day after; setr writes any later day. SWAT+ then builds everything from
+!!    the record itself: the mean temperature, PET, the generator's wet and
+!!    dry days, heat units and the air temperature lag.
+
+      integer function wx_kind (name)
+
+!!    1 precipitation, 2 maximum and 3 minimum temperature, 4 solar
+!!    radiation, 5 relative humidity, 6 wind speed; 0 for any other name
+
+      character(len=*), intent(in) :: name
+
+      select case (name)
+      case ("atmosphere_water__precipitation_leq-volume_flux"); wx_kind = 1
+      case ("atmosphere_bottom_air__max_of_temperature"); wx_kind = 2
+      case ("atmosphere_bottom_air__min_of_temperature"); wx_kind = 3
+      case ("land_surface_radiation~incoming~shortwave__energy_flux"); wx_kind = 4
+      case ("atmosphere_bottom_air_water~vapor__relative_saturation"); wx_kind = 5
+      case ("atmosphere_bottom_air_flow__speed"); wx_kind = 6
+      case default; wx_kind = 0
+      end select
+
+      return
+      end function wx_kind
+
+!!    --------------------------------------------------------------------
+      integer function wx_lead (kind)
+
+!!    days from the coming day to the first record SWAT+ hasn't read
+
+      integer, intent(in) :: kind
+
+      wx_lead = 1
+      if (kind == 1) wx_lead = 2
+
+      return
+      end function wx_lead
+
+!!    --------------------------------------------------------------------
+      integer function wx_count (kind)
+
+      use maximum_data_module, only : db_mx
+
+      integer, intent(in) :: kind
+
+      select case (kind)
+      case (1); wx_count = db_mx%pcpfiles
+      case (2, 3); wx_count = db_mx%tmpfiles
+      case (4); wx_count = db_mx%slrfiles
+      case (5); wx_count = db_mx%rhfiles
+      case (6); wx_count = db_mx%wndfiles
+      case default; wx_count = 0
+      end select
+
+      return
+      end function wx_count
+
+!!    --------------------------------------------------------------------
+      integer function ylen (yr)
+
+!!    days in a year, as time_control counts them
+
+      integer, intent(in) :: yr
+
+      ylen = 365
+      if (Mod(yr,4) == 0 .and. (Mod(yr,100) /= 0 .or. Mod(yr,400) == 0)) ylen = 366
+
+      return
+      end function ylen
+
+!!    --------------------------------------------------------------------
+      subroutine add_days (yr, iday, n)
+
+!!    moves a date (year, day of the year) n days, back if n is negative
+
+      integer, intent(inout) :: yr
+      integer, intent(inout) :: iday
+      integer, intent(in) :: n
+      integer :: k = 0
+
+      do k = 1, abs(n)
+        if (n > 0) then
+          iday = iday + 1
+          if (iday > ylen(yr)) then
+            yr = yr + 1
+            iday = 1
+          end if
+        else
+          iday = iday - 1
+          if (iday < 1) then
+            yr = yr - 1
+            iday = ylen(yr)
+          end if
+        end if
+      end do
+
+      return
+      end subroutine add_days
+
+!!    --------------------------------------------------------------------
+      logical function date_before (yr1, d1, yr2, d2)
+
+      integer, intent(in) :: yr1, d1, yr2, d2
+
+      date_before = yr1 < yr2 .or. (yr1 == yr2 .and. d1 < d2)
+
+      return
+      end function date_before
+
+!!    --------------------------------------------------------------------
+      subroutine wx_slot (kind, ig, yr, iday, icol, msg)
+
+!!    the column of a gage's record table that holds a date, or why SWAT+
+!!    wouldn't read a value there (the bounds as climate_control and
+!!    cli_precip_control check them)
+
+      use time_module
+      use climate_module, only : pcp, tmp, slr, hmd, wnd, climate_measured_data
+
+      integer, intent(in) :: kind
+      integer, intent(in) :: ig
+      integer, intent(in) :: yr
+      integer, intent(in) :: iday
+      integer, intent(out) :: icol
+      character(len=*), intent(out) :: msg
+
+      msg = ""
+      icol = 0
+      if (ig < 1 .or. ig > wx_count(kind)) then
+        msg = "index out of range"
+        return
+      end if
+      select case (kind)
+      case (1); call slot (pcp(ig))
+      case (2, 3); call slot (tmp(ig))
+      case (4); call slot (slr(ig))
+      case (5); call slot (hmd(ig))
+      case (6); call slot (wnd(ig))
+      end select
+
+      return
+
+      contains
+
+      subroutine slot (g)
+      type (climate_measured_data), intent(in) :: g
+      integer :: yr_last = 0
+      integer :: day_last = 0
+
+      if (g%tstep > 0) then
+        msg = "gage " // trim(g%filename) // " has sub-daily records; only daily ones can be set"
+        return
+      end if
+      yr_last = time%yrc_start + time%nbyr - 1
+      day_last = ylen(yr_last)
+      if (time%day_end > 0) day_last = min(time%day_end, day_last)
+      if (date_before(yr_last, day_last, yr, iday)) then
+        msg = "day " // itoa(iday) // " of " // itoa(yr) // " is after the simulation ends"
+        return
+      end if
+      icol = (yr - time%yrc_start + 1) - g%yrs_start
+      if (date_before(yr, iday, g%start_yr, g%start_day) .or. date_before(g%end_yr, g%end_day, yr, iday)   &
+          .or. icol < 1 .or. icol > g%nbyr                                                     &
+          .or. (kind == 1 .and. icol > g%end_yr - g%start_yr + 1)) then
+        msg = "gage " // trim(g%filename) // " has no record for day " // itoa(iday) // " of " //  &
+              itoa(yr) // " (its file covers day " // itoa(g%start_day) // " of " //             &
+              itoa(g%start_yr) // " to day " // itoa(g%end_day) // " of " // itoa(g%end_yr) //    &
+              "), so SWAT+ would generate that day and not use the value"
+        icol = 0
+      end if
+
+      return
+      end subroutine slot
+
+      end subroutine wx_slot
+
+!!    --------------------------------------------------------------------
+      subroutine wx_access (kind, ig, iday, icol, rec, put)
+
+!!    reads (put false) or writes a gage's record for a day, in SWAT+'s units
+
+      use climate_module, only : pcp, tmp, slr, hmd, wnd, climate_measured_data
+
+      integer, intent(in) :: kind
+      integer, intent(in) :: ig
+      integer, intent(in) :: iday
+      integer, intent(in) :: icol
+      real, intent(inout) :: rec
+      logical, intent(in) :: put
+
+      select case (kind)
+      case (1); call acc (pcp(ig))
+      case (2, 3); call acc (tmp(ig))
+      case (4); call acc (slr(ig))
+      case (5); call acc (hmd(ig))
+      case (6); call acc (wnd(ig))
+      end select
+
+      return
+
+      contains
+
+      subroutine acc (g)
+      type (climate_measured_data), intent(inout) :: g
+
+      if (kind == 3) then
+        if (put) then
+          g%ts2(iday,icol) = rec
+        else
+          rec = g%ts2(iday,icol)
+        end if
+      else
+        if (put) then
+          g%ts(iday,icol) = rec
+        else
+          rec = g%ts(iday,icol)
+        end if
+      end if
+
+      return
+      end subroutine acc
+
+      end subroutine wx_access
+
+!!    --------------------------------------------------------------------
+      real(8) function wx_si (kind, rec)
+
+!!    a record in SWAT+'s units to the variable's: mm/day to m/s, MJ/m2/day
+!!    to W/m2; temperatures (deg C), humidity (a fraction) and wind (m/s) as
+!!    they are
+
+      integer, intent(in) :: kind
+      real, intent(in) :: rec
+
+      select case (kind)
+      case (1); wx_si = dble(rec) / 86400000.d0
+      case (4); wx_si = dble(rec) / 0.0864d0
+      case default; wx_si = dble(rec)
+      end select
+
+      return
+      end function wx_si
+
+!!    --------------------------------------------------------------------
+      subroutine take_weather (kind, ig, yr, iday, v, keep, msg)
+
+!!    checks a weather value for a gage and a date, and writes it into the
+!!    record if keep is true; msg says why it is refused, blank if it isn't
+
+      use time_module
+
+      integer, intent(in) :: kind
+      integer, intent(in) :: ig
+      integer, intent(in) :: yr
+      integer, intent(in) :: iday
+      real(8), intent(in) :: v
+      logical, intent(in) :: keep
+      character(len=*), intent(out) :: msg
+      integer :: icol = 0
+      integer :: yr1 = 0
+      integer :: d1 = 0
+      real :: rec = 0.
+
+      msg = ""
+      if (.not. ieee_is_finite(v)) then
+        msg = "a value must be a finite number"
+        return
+      end if
+      yr1 = time%yrc
+      d1 = time%day
+      call add_days (yr1, d1, wx_lead(kind))
+      if (date_before(yr, iday, yr1, d1)) then
+        msg = "SWAT+ has already read this record for day " // itoa(iday) // " of " // itoa(yr) //   &
+              "; the first day that can be set now is day " // itoa(d1) // " of " // itoa(yr1)
+        return
+      end if
+      call wx_slot (kind, ig, yr, iday, icol, msg)
+      if (msg /= "") return
+
+      select case (kind)
+      case (1)
+        if (v < 0.d0) msg = "precipitation can't be negative"
+        rec = real(v * 86400000.d0)                       !m/s -> mm/day
+      case (2, 3)
+        if (v <= -97.d0) msg = "SWAT+ reads a temperature of -97 or below as missing"
+        if (v > 100.d0) msg = "a temperature above 100 degC isn't weather"
+        rec = real(v)                                     !deg C
+      case (4)
+        if (v < 0.d0) msg = "solar radiation can't be negative"
+        rec = real(v * 0.0864d0)                          !W/m2 -> MJ/m2/day
+      case (5)
+        if (v < 0.d0 .or. v > 1.d0) msg = "relative humidity is a fraction, 0 to 1"
+        rec = real(v)
+      case (6)
+        if (v < 0.d0) msg = "wind speed can't be negative"
+        rec = real(v)                                     !m/s
+      end select
+      if (msg /= "") return
+
+      if (keep) call wx_access (kind, ig, iday, icol, rec, .true.)
+
+      return
+      end subroutine take_weather
+
+!!    --------------------------------------------------------------------
+      subroutine wx_values (kind, val)
+
+!!    each gage's record for the day just done; NaN where there's none (before
+!!    the first day, outside the file's records, or missing in it)
+
+      use time_module
+      use, intrinsic :: ieee_arithmetic, only : ieee_value, ieee_quiet_nan
+
+      integer, intent(in) :: kind
+      real(8), dimension(:), allocatable, intent(out) :: val
+      character(len=400) :: msg = ""
+      integer :: ig = 0
+      integer :: icol = 0
+      integer :: yr = 0
+      integer :: iday = 0
+      real :: rec = 0.
+
+      allocate (val(wx_count(kind)), source = ieee_value (0.d0, ieee_quiet_nan))
+      if (days_done == 0) return
+      if (days_done >= days_total) then
+        !! the run is over: the last day
+        yr = time%yrc_start + time%nbyr - 1
+        iday = ylen(yr)
+        if (time%day_end > 0) iday = min(time%day_end, iday)
+      else
+        yr = time%yrc
+        iday = time%day
+        call add_days (yr, iday, -1)
+      end if
+      do ig = 1, wx_count(kind)
+        call wx_slot (kind, ig, yr, iday, icol, msg)
+        if (msg /= "") cycle
+        call wx_access (kind, ig, iday, icol, rec, .false.)
+        if (rec > -97.) val(ig) = wx_si (kind, rec)
+      end do
+
+      return
+      end subroutine wx_values
+
+!!    --------------------------------------------------------------------
+      subroutine set_records (name, yr, iday, nd)
+
+!!    setr <var> <year> <day> <nd>, then nd lines, each with a value for every
+!!    gage in grid order: the records for nd days from that date. All or
+!!    nothing: if any value is refused, none is kept, and the reply names the
+!!    first one refused.
+
+      character(len=*), intent(in) :: name
+      integer, intent(in) :: yr
+      integer, intent(in) :: iday
+      integer, intent(in) :: nd
+      character(len=:), allocatable :: line
+      character(len=400) :: msg = ""
+      real(8), dimension(:,:), allocatable :: val
+      integer :: kind = 0
+      integer :: ng = 0
+      integer :: k = 0
+      integer :: ig = 0
+      integer :: y = 0
+      integer :: d = 0
+      integer :: ios = 0
+      integer :: bad = 0
+
+      kind = wx_kind(name)
+      ng = max(wx_count(kind), 0)
+      allocate (character(len=32 * ng + 64) :: line)
+      allocate (val(ng, max(nd, 0)), source = 0.d0)
+      bad = 0
+      msg = ""
+      do k = 1, nd
+        read (cmd_unit, '(a)', iostat=ios) line
+        if (ios /= 0) error stop 3
+        if (ng > 0) read (line, *, iostat=ios) val(:,k)
+        if (ios /= 0 .and. bad == 0) then
+          bad = k
+          msg = "can't read " // itoa(ng) // " values"
+        end if
+      end do
+      if (kind == 0) then
+        call reply ("@error not a weather record variable: " // name)
+        return
+      end if
+      if (iday < 1 .or. iday > ylen(yr)) then
+        call reply ("@error day " // itoa(iday) // " isn't a day of " // itoa(yr))
+        return
+      end if
+      y = yr
+      d = iday
+      do k = 1, nd
+        if (bad /= 0) exit
+        do ig = 1, ng
+          call take_weather (kind, ig, y, d, val(ig,k), .false., msg)
+          if (msg /= "") then
+            bad = k
+            msg = "gage " // itoa(ig) // ": " // trim(msg)
+            exit
+          end if
+        end do
+        call add_days (y, d, 1)
+      end do
+      if (bad /= 0) then
+        call reply ("@error day " // itoa(bad) // ": " // trim(msg))
+        return
+      end if
+      y = yr
+      d = iday
+      do k = 1, nd
+        do ig = 1, ng
+          call take_weather (kind, ig, y, d, val(ig,k), .true., msg)
+        end do
+        call add_days (y, d, 1)
+      end do
+      call reply ("@ok")
+
+      return
+      end subroutine set_records
+
+!!    --------------------------------------------------------------------
+      subroutine send_wx_grid (gname, kind)
+
+!!    a weather gage grid: the gages' file names, at their longitude and latitude
+
+      use climate_module, only : pcp, tmp, slr, hmd, wnd
+      use, intrinsic :: ieee_arithmetic, only : ieee_value, ieee_quiet_nan
+
+      character(len=*), intent(in) :: gname
+      integer, intent(in) :: kind
+      character(len=200) :: line = ""
+      character(len=50) :: fname = ""
+      integer :: i = 0
+      real :: lon = 0.
+      real :: lat = 0.
+      real :: nan = 0.
+
+      nan = ieee_value (nan, ieee_quiet_nan)
+      call reply ("@grid " // gname // " " // itoa(wx_count(kind)))
+      do i = 1, wx_count(kind)
+        select case (kind)
+        case (1); fname = pcp(i)%filename; lon = pcp(i)%long; lat = pcp(i)%lat
+        case (2); fname = tmp(i)%filename; lon = tmp(i)%long; lat = tmp(i)%lat
+        case (4); fname = slr(i)%filename; lon = slr(i)%long; lat = slr(i)%lat
+        case (5); fname = hmd(i)%filename; lon = hmd(i)%long; lat = hmd(i)%lat
+        case (6); fname = wnd(i)%filename; lon = wnd(i)%long; lat = wnd(i)%lat
+        end select
+        write (line, '(a,1x,i0,1x,a,3(1x,es15.8e2))') gname, i, trim(fname), lon, lat, nan
+        call reply ("@obj " // trim(line))
+      end do
+
+      return
+      end subroutine send_wx_grid
 
       end module bmi_exchange_module
