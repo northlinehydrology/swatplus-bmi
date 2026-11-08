@@ -13,7 +13,8 @@ to water, recharge, each HRU's percolation, evapotranspiration and soil water, s
 the salt, nitrate and phosphorus carried with the water) and
 sets values for the next day: fluxes (a point source's flow and load, a water user's demand, a
 channel's exchange with groundwater and the mass it carries) and, as a first state, soil layer
-temperature. A Python BMI wrapper drives it. **With nothing set, SWAT+'s output is byte-for-byte
+temperature. Weather is set ahead, into the gages' records: a whole series at the start, or any
+day SWAT+ hasn't read yet. A Python BMI wrapper drives it. **With nothing set, SWAT+'s output is byte-for-byte
 identical to an unpatched run, every output file, start to finish, however the run is stepped,
 read, branched or saved; a value set changes the run only through that input; and anything
 SWAT+ wouldn't use as given is refused rather than dropped.** The tests check each of those
@@ -253,6 +254,39 @@ Chemistry goes the same way. For each salt ion SWAT+'s salt module simulates, an
   counted as seepage. `channel_water_<ion>__mass_concentration` is the day's outflow
   concentration, and the exchange variable read after the day is the mass that went either way.
 
+### Weather
+
+Each weather gage SWAT+ reads a file for (precipitation, temperature, solar radiation, humidity,
+wind) is a point on its own grid (`pcp`, `tmp`, `slr`, `hmd`, `wnd`), named by its file. A
+value set goes into the gage's record, where its file would hold it, so the run is the one a
+file with that value would give: SWAT+ builds the mean temperature, PET, the generator's wet and
+dry days, heat units and the stream temperature's air lag from it, as it always does.
+
+SWAT+ reads a day's weather before the pause that comes before that day, and precipitation a day
+earlier still (its decision tables look at the next day's rain). So a weather record can be set
+for any day from `first_weather_day(name)` on: the day after the coming one, or the day after
+that for precipitation. A whole series goes in with `set_weather`, and any day not yet read can
+be set again:
+
+```python
+import datetime as dt
+P = "atmosphere_water__precipitation_leq-volume_flux"     # m s-1
+m.initialize("TxtInOut")
+m.set_weather(P, m.first_weather_day(P), era5_mm_per_day / 86_400_000)   # (days, gages)
+m.update_until(365)
+b = m.branch("TxtInOut-dry")                              # one warm-up, two futures
+b.set_weather(P, b.first_weather_day(P), dry_mm_per_day / 86_400_000)
+```
+
+`set_value` writes the first day not yet read, so a weather model can feed SWAT+ a day or two
+ahead. The first day of temperature, solar radiation, humidity and wind, and the first two of
+precipitation, come from the files. A record can only be set inside the period the gage's file
+covers (SWAT+ generates the days outside it), and only for a gage with daily records. Reading a
+weather variable gives each gage's record for the day just done (NaN where it has none). Gages
+are per file, not per HRU: a set changes a gage's values, not which gage a station uses, so
+finer weather needs a gage for each cell in the project's files. SWAT+ 62.0.1's monthly
+climate-change adjustments are never read from any input, so they stay zero.
+
 ### Objects and grids
 
 Each SWAT+ object type is a BMI grid of type `points`: one point per object, longitude as x and
@@ -282,6 +316,12 @@ objects in a project are left out.
 | `land_surface__evapotranspiration_rate` | HRUs | no | m s-1 | `et` |
 | `land_surface__potential_evapotranspiration_rate` | HRUs | no | m s-1 | `pet` |
 | `soil_water__depth` | HRUs | no | m | `sw_final`: the profile's water above the wilting point |
+| `atmosphere_water__precipitation_leq-volume_flux` | precipitation gages | yes (records ahead) | m s-1 | the gage's `.pcp` record (mm/day) |
+| `atmosphere_bottom_air__max_of_temperature` | temperature gages | yes (records ahead) | degC | the `.tmp` record's maximum |
+| `atmosphere_bottom_air__min_of_temperature` | temperature gages | yes (records ahead) | degC | the `.tmp` record's minimum |
+| `land_surface_radiation~incoming~shortwave__energy_flux` | solar radiation gages | yes (records ahead) | W m-2 | the `.slr` record (MJ/m2/day) |
+| `atmosphere_bottom_air_water~vapor__relative_saturation` | humidity gages | yes (records ahead) | 1 | the `.hmd` record (a fraction) |
+| `atmosphere_bottom_air_flow__speed` | wind gages | yes (records ahead) | m s-1 | the `.wnd` record |
 | `channel_water_<sp>__mass_concentration` | channels | no | kg m-3 | the day's outflow mass over outflow volume (0 with no outflow) |
 | `channel_water_<sp>__groundwater_mass_exchange_rate` | channels | with a gain | kg s-1 | mass with the groundwater exchange, positive into the channel; a loss takes the outflow's concentration |
 | `aquifer_water_<sp>__recharge_mass_rate` | aquifers | no | kg s-1 | what SWAT+ takes into the aquifer with recharge (`no3_rchg` × area for nitrate) |
@@ -351,7 +391,7 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   is refused with sub-daily routing.
 - **Only fluxes and listed states can be set:** point source flow and load, water allocation
   demand, a channel's groundwater exchange and the mass it carries, and soil layer temperature,
-  for the next day. Not storage,
+  for the next day, and weather records ahead (Weather). Not storage,
   land use, soils or parameters; those are scenario inputs. Each settable state needs its own
   hook in the patch, at the point where SWAT+ has computed it and before anything uses it
   (docs/design.md, Setting states), so states are added one at a time, each with the same tests.
@@ -513,6 +553,7 @@ get <variable>             one value per object             -> @value <n> <v1> .
 set <variable> <i> <v>     object i (1-based), next day     -> @ok
 setv <variable> <n>        then n lines: every object       -> @ok
 seti <variable> <n>        then n lines "<i> <v>"           -> @ok
+setr <variable> <yr> <day> <n>  then n lines, every gage    -> @ok   (weather records)
 save "<file>" "<run dir>"  the state at this pause          -> @ok
 load "<file>"              right after startup              -> @restore ... then @paused
 branch "<new>" "<old>" "<in>" "<out>"   fork (Mac, Linux)   -> @branched <pid>

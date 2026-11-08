@@ -5,6 +5,13 @@ SWAT+ releases each version supports are in COMPATIBILITY.md.
 
 ## Unreleased
 
+- Weather, set ahead into the gages' records: precipitation, maximum and minimum temperature,
+  solar radiation, relative humidity and wind speed, each on a grid of its gages (`pcp`, `tmp`,
+  `slr`, `hmd`, `wnd`). `set_weather(name, start, values)` writes a series of days; `set_value`
+  writes the first day SWAT+ hasn't read (`first_weather_day`: the day after the coming one, or
+  the day after that for precipitation, which SWAT+ reads a day ahead). A run given a series is
+  byte for byte the run whose files hold it (tested on Osu_1hru, also across branches, saves and
+  day-by-day sets). Protocol 4 adds `setr`.
 - HRU water, read-only on the `hru` grid, each the day just done: `soil_water__percolation_rate`
   (water leaving the bottom of the soil profile, what a groundwater model takes as recharge HRU by
   HRU, where `soil_water_table__recharge_rate` gives it only per aquifer),

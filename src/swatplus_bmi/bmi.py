@@ -3,14 +3,15 @@
 SWAT+ runs as its own process in exchange mode (see ``exchange.py``); this
 class is the BMI face of that process. Each object type SWAT+ exposes
 (channels, aquifers, point sources, water allocation places of use, HRUs,
-and HRU soil layers) is a BMI grid of type ``points``, one point per SWAT+
+HRU soil layers, and weather gages) is a BMI grid of type ``points``, one point per SWAT+
 object, in the order of SWAT+'s input files, with longitude as x and latitude
 as y (places of use have no location; their coordinates are NaN; soil layers
 are at their HRU's location, with z their mid-depth below the surface). ``get_grid_object_names`` gives the SWAT+
 object names for a grid.
 
 Fluxes and a few states can be set (a state is replaced right after SWAT+
-computes it, before anything uses it). A value set between updates applies to
+computes it, before anything uses it), and weather records ahead of the day
+SWAT+ reads them (``set_weather``). A value set between updates applies to
 the next day only; after that day SWAT+ goes back to its own inputs. A set SWAT+ would not
 use as given (a point source that isn't daily, a value that isn't a number) is
 refused with an error rather than dropped. Values are 8-byte reals
@@ -39,7 +40,16 @@ from .exchange import Exchange, ExchangeError
 
 __all__ = ["SwatPlusBmi"]
 
-GRID_ORDER = ["cha", "aqu", "rec", "pou", "hru", "hly"]
+GRID_ORDER = ["cha", "aqu", "rec", "pou", "hru", "hly", "pcp", "tmp", "slr", "hmd", "wnd"]
+
+# weather record variables, and the days from the coming day to the first record
+# SWAT+ hasn't read (precipitation is read a day ahead)
+WEATHER = {"atmosphere_water__precipitation_leq-volume_flux": 2,
+           "atmosphere_bottom_air__max_of_temperature": 1,
+           "atmosphere_bottom_air__min_of_temperature": 1,
+           "land_surface_radiation~incoming~shortwave__energy_flux": 1,
+           "atmosphere_bottom_air_water~vapor__relative_saturation": 1,
+           "atmosphere_bottom_air_flow__speed": 1}
 
 
 def sources_hash() -> str:
@@ -232,6 +242,46 @@ class SwatPlusBmi(Bmi):
 
     def get_output_item_count(self) -> int:
         return len(self.get_output_var_names())
+
+    # -- weather records ---------------------------------------------------
+
+    def first_weather_day(self, name: str) -> dt.date:
+        """The first day whose weather record ``name`` can still be set.
+
+        SWAT+ reads a day's weather before the pause that precedes it, and
+        precipitation a day earlier still (its decision tables look at the next
+        day's rain), so this is the day after the coming one, or for
+        precipitation the day after that.
+        """
+        if name not in WEATHER:
+            raise ValueError(f"{name} isn't a weather record variable ({', '.join(WEATHER)})")
+        self._var(name)
+        return self._start + dt.timedelta(days=self._x.days_done + WEATHER[name])
+
+    def set_weather(self, name: str, start: dt.date, values) -> None:
+        """Write a weather series into SWAT+'s gage records, from ``start`` on.
+
+        ``values`` has one row per day and one column per gage on the variable's
+        grid (a 1-D array for a single gage), in the variable's units. Each value
+        is written where the gage's file would hold it, so the run is the one a
+        file with those values would give: SWAT+ builds the mean temperature,
+        PET, the generator's wet and dry days, heat units and the rest from it.
+        Any day from ``first_weather_day(name)`` on can be set, and set again,
+        within the gage's records; a day already read, outside the records or
+        after the run ends is refused, and then nothing is written.
+        """
+        if name not in WEATHER:
+            raise ValueError(f"{name} isn't a weather record variable ({', '.join(WEATHER)})")
+        n = self.get_grid_size(self.get_var_grid(name))
+        v = np.asarray(values, dtype=np.float64)
+        if v.ndim == 1 and n == 1:
+            v = v[:, None]
+        if v.ndim != 2 or v.shape[1] != n:
+            raise ValueError(f"{name}: values must be (days, {n} gages), not {v.shape}")
+        if not np.isfinite(v).all():
+            raise ValueError(f"{name}: values must be finite numbers")
+        start = dt.date(start.year, start.month, start.day)
+        self._x.set_records(name, start.year, start.timetuple().tm_yday, v)
 
     def get_input_var_names(self) -> tuple[str, ...]:
         return tuple(n for n, v in self._vars.items() if v.role == "in")

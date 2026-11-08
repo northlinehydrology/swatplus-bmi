@@ -128,6 +128,7 @@ Commands, while paused:
 | `set <var> <i> <v>` | `@ok` | object *i* (1-based) gets *v* for the next day; refused (`@error`) when SWAT+ would not use it as given (Setting fluxes) |
 | `setv <var> <n>`, then *n* lines `<v>` | `@ok` | every object on the grid, in grid order, in one command |
 | `seti <var> <n>`, then *n* lines `<i> <v>` | `@ok` | the objects given; for both, all or nothing: one refused value refuses them all, and the reply names it |
+| `setr <var> <yr> <day> <n>`, then *n* lines of one value per gage | `@ok` | weather records for *n* days from day *day* of *yr*, written now (Setting weather records); all or nothing |
 | `flush` | `@ok` | write out every open file's buffer |
 | `branch "<new>" "<old>" "<in>" "<out>"` | `@branched pid` | fork; see Snapshots |
 | `save "<file>" "<run dir>"` | `@ok` | write SWAT+'s module state at this pause, and the values set for the next day, to the file (see Snapshots); refused when an open file couldn't be carried |
@@ -173,6 +174,12 @@ names follow the channel ones. CSDMS lists no aquifer or withdrawal names.
 | `land_surface__evapotranspiration_rate` | hru | out | m s-1 | `hwb_d(j)%et` (mm/day) | actual ET, `et`, with ponded water's evaporation |
 | `land_surface__potential_evapotranspiration_rate` | hru | out | m s-1 | `hwb_d(j)%pet` (mm/day) | `pet` |
 | `soil_water__depth` | hru | out | m | `soil(j)%sw` (mm) | the profile's water above the wilting point at the end of the day, `sw_final` |
+| `atmosphere_water__precipitation_leq-volume_flux` | pcp | in and out | m s-1 | `pcp(i)%ts(day,col)` (mm/day) | a record, set ahead (Setting weather records); reading gives the day just done's record, NaN where there's none |
+| `atmosphere_bottom_air__max_of_temperature` | tmp | in and out | degC | `tmp(i)%ts` | as above |
+| `atmosphere_bottom_air__min_of_temperature` | tmp | in and out | degC | `tmp(i)%ts2` | as above |
+| `land_surface_radiation~incoming~shortwave__energy_flux` | slr | in and out | W m-2 | `slr(i)%ts` (MJ/m2/day) | as above |
+| `atmosphere_bottom_air_water~vapor__relative_saturation` | hmd | in and out | 1 | `hmd(i)%ts` (a fraction) | as above |
+| `atmosphere_bottom_air_flow__speed` | wnd | in and out | m s-1 | `wnd(i)%ts` | as above |
 | `point_source_water__volume_flow_rate` | rec | in and out | m3 s-1 | `recall(i)%hd(day,yr)%flo` | settable on daily recall objects inside their records only; negative is a withdrawal |
 | `place_of_use_water__volume_demand_rate` | pou | in and out | m3 s-1 | `pou(i)%demand` | reading gives the day's demand; setting replaces SWAT+'s for the next day |
 | `place_of_use_water__volume_withdrawal_rate` | pou | out | m3 s-1 | `poud_met(i)%duty_tot%deliv` | what was actually taken |
@@ -311,6 +318,33 @@ layer temperatures later in the day (`gwflow_soil.f90`).
    SWAT+'s own value back every day is stock; a set changes that day and
    then only through SWAT+'s own carry-over; it runs in bounds on the
    checked build; a set saved before its day applies after loading.
+
+### Setting weather records
+
+Weather is neither a flux set for the day nor a state. SWAT+ reads each
+day's weather in `climate_control`, which runs before the pause that
+precedes the day, and precipitation one day earlier still
+(`cli_precip_control` reads the next day's record into `precip_next`, which
+decision tables test during the day). From the day's weather it builds the
+mean temperature, PET, the 30-day precipitation and PET sums, heat units,
+the stream temperature's air lag and the generator's wet and dry state. A
+value put in after that would leave all of those built from the old one.
+
+So a weather value is written into the gage's record (`pcp`, `tmp`, `slr`,
+`hmd`, `wnd` in `climate_module`), where the file's value would be, for a day
+SWAT+ hasn't read: from the day after the coming one, or for precipitation
+the day after that. Nothing reads a record before its day, so the run is the
+run whose file held the value, which the tests check byte for byte. A
+record can be set again until it's read. Records are module state, so
+branches and saved states carry them. Refused: a day already read, a day
+outside the gage's records (SWAT+ would generate it), a day after the run, a
+gage with sub-daily records, and values SWAT+ would read otherwise
+(negative precipitation, solar radiation or wind, a temperature of -97 or
+below, which SWAT+ reads as missing, a humidity outside 0 to 1).
+
+A pause before the first day's weather would let those first days be set
+too, but it moves where the first pause, branches and day-0 saves happen,
+so it's left for later; the first days come from the files.
 
 
 ## Time

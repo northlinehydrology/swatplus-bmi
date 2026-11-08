@@ -22,7 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
-PROTOCOL = 3
+PROTOCOL = 4
 
 
 class ExchangeError(RuntimeError):
@@ -205,6 +205,19 @@ class Exchange:
         if not np.isfinite(v).all():
             raise ExchangeError(f"{name}: values must be finite numbers")
         self._send(f"setv {name} {len(v)}\n" + "\n".join(repr(float(x)) for x in v))
+        self._expect("@ok")
+
+    def set_records(self, name: str, year: int, day: int, values) -> None:
+        """Write weather records (SWAT+'s units converted from the variable's) for
+        ``len(values)`` days from day ``day`` of ``year``, one row per day with a value
+        for every gage in grid order. All or nothing, as for ``set_all``."""
+        v = np.asarray(values, dtype=np.float64)
+        if v.ndim != 2:
+            raise ValueError(f"{name}: values must be one row per day, one column per gage")
+        if not np.isfinite(v).all():
+            raise ExchangeError(f"{name}: values must be finite numbers")
+        self._send(f"setr {name} {int(year)} {int(day)} {len(v)}\n"
+                   + "\n".join(" ".join(repr(float(x)) for x in row) for row in v))
         self._expect("@ok")
 
     def set_at(self, name: str, indices, values) -> None:
