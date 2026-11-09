@@ -3,6 +3,15 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
+## 0.6.1 (2026-11-08)
+
+- **Fixed:** finishing a branch (`finalize`, `run_to_end`) returned when the branch's replies
+  closed, which can be before SWAT+ has written the last of its outputs: at exit gfortran can
+  close the reply pipe before the output files, so a branch's `aquifer_aa.txt`, the basin
+  summaries and its last month's and year's lines could still be unwritten when the call
+  returned (seen on macOS runners, 10 times in 40). It now returns once the branch's process has
+  exited. The values SWAT+ computed were never affected; only reading the files too soon.
+
 ## 0.6.0 (2026-11-08)
 
 - Weather, set ahead into the gages' records: precipitation, maximum and minimum temperature,

@@ -43,6 +43,16 @@ jobs:
         run: uv run pytest -q -m full
       - if: failure()
         run: tail -50 build/*/*.log || true
+      # a failing test keeps its run folders; the Ames_sub1 ones can be gigabytes and are left out
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failed-runs-${{ matrix.os }}-${{ matrix.swatplus }}
+          path: |
+            tests/runs/
+            !tests/runs/Ames*/
+          if-no-files-found: ignore
+          retention-days: 14
 
   canary:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
