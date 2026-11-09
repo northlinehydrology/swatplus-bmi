@@ -1870,7 +1870,7 @@
           msg = "a mass with groundwater into the soil can't be negative"
           return
         end if
-        if (.not. hly_gw_on(i)) then
+        if (.not. hly_gw_on(i) .or. (v > 0.d0 .and. hly_gw(i) <= 0.)) then
           msg = "no groundwater is set into that layer for the next day; set " //                   &
                 "soil_layer_water__groundwater_inflow_rate first: the mass comes with the water"
           return

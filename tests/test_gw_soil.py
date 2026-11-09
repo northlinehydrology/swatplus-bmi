@@ -262,6 +262,9 @@ def test_a_mass_needs_the_water():
         m.set_value_at_indices(SOLP, np.array([0, 1]), np.array([1e-7, 1e-7]))
     with pytest.raises(ExchangeError, match="can't be negative"):
         m.set_value_at_indices(NO3, np.array([0]), np.array([-1e-7]))
+    m.set_value_at_indices(GW, np.array([1]), np.array([0.0]))  # no water: no mass with it
+    with pytest.raises(ExchangeError, match="no groundwater is set into that layer"):
+        m.set_value_at_indices(NO3, np.array([1]), np.array([1e-7]))
     m.set_value_at_indices(NO3, np.array([0]), np.array([1e-7]))
     m.update()
     assert values(m, NO3)[0] == pytest.approx(1e-7, rel=1e-6)
