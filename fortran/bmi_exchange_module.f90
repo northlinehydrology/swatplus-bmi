@@ -43,7 +43,7 @@
 
       private
       public :: exch_on, exch_open, exch_start, exch_pause, exch_apply, exch_record, exch_end,     &
-                exch_channel, exch_channel_in, exch_channel_cs, exch_hru_soil
+                exch_channel, exch_channel_in, exch_channel_cs, exch_hru_soil, exch_hru_gwsoil
 
       logical :: exch_on = .false.        !! exchange mode is on
       integer :: cmd_unit = input_unit    !! commands in
@@ -55,7 +55,7 @@
       integer :: protocol = 4             !! protocol version
       integer, parameter :: unit_max = 1000000   !! highest unit number branch looks at
       character(len=80) :: paused_line = ""      !! the last @paused reply
-      character(len=16), parameter :: state_magic = "SWXSTATE-4"
+      character(len=16), parameter :: state_magic = "SWXSTATE-5"
 
       !! loading a saved state: run forward to the saved day, then load
       logical :: loading = .false.
@@ -114,6 +114,9 @@
       integer, dimension(:), allocatable :: hru_hly1
       real, dimension(:), allocatable :: hly_tmp         !! deg C      |soil layer temperature set for the next day
       logical, dimension(:), allocatable :: hly_on
+      real, dimension(:), allocatable :: hly_gw          !! mm/day     |groundwater into the soil layer set for the next day
+      logical, dimension(:), allocatable :: hly_gw_on
+      real, dimension(:), allocatable :: hly_gw_day      !! mm/day     |groundwater put into the soil layer the day just done
 
       !! the day's values SWAT+ zeroes when it prints them, kept at the end of the day
       real, dimension(:), allocatable :: pou_dmd_day     !! m3/day     |place of use demand
@@ -121,7 +124,7 @@
 
       !! the catalog: the water variables, then the chemistry variables, one per species
       !! (exch_start). var_fam is 0 for a water variable, or the chemistry family
-      integer, parameter :: nbase = 24
+      integer, parameter :: nbase = 26
       character(len=64), dimension(nbase), parameter :: base_name = [character(len=64) ::     &
             "channel_water__volume_outflow_rate",                           &
             "channel_water__volume",                                        &
@@ -146,19 +149,21 @@
             "atmosphere_bottom_air__min_of_temperature",                   &
             "land_surface_radiation~incoming~shortwave__energy_flux",      &
             "atmosphere_bottom_air_water~vapor__relative_saturation",      &
-            "atmosphere_bottom_air_flow__speed"]
+            "atmosphere_bottom_air_flow__speed",                           &
+            "soil_layer_water__groundwater_inflow_rate",                   &
+            "soil_water__groundwater_inflow_rate"]
       character(len=8), dimension(nbase), parameter :: base_grid = [character(len=8) ::      &
             "cha", "cha", "cha", "aqu", "aqu", "aqu", "aqu", "rec", "pou", "pou",    &
             "cha", "cha", "hly", "hru", "hru", "hru", "hru", "hru",                  &
-            "pcp", "tmp", "tmp", "slr", "hmd", "wnd"]
+            "pcp", "tmp", "tmp", "slr", "hmd", "wnd", "hly", "hru"]
       character(len=8), dimension(nbase), parameter :: base_units = [character(len=8) ::     &
             "m3 s-1", "m3", "m3 s-1", "m3", "m", "m3 s-1", "m s-1", "m3 s-1", "m3 s-1", "m3 s-1", &
             "m", "m3 s-1", "degC", "m", "m s-1", "m s-1", "m s-1", "m",                  &
-            "m s-1", "degC", "degC", "W m-2", "1", "m s-1"]
+            "m s-1", "degC", "degC", "W m-2", "1", "m s-1", "m s-1", "m s-1"]
       character(len=3), dimension(nbase), parameter :: base_role = [character(len=3) ::      &
             "out", "out", "out", "out", "out", "out", "out", "in", "in", "out",  &
             "out", "in", "in", "out", "out", "out", "out", "out",                    &
-            "in", "in", "in", "in", "in", "in"]
+            "in", "in", "in", "in", "in", "in", "in", "out"]
       !! chemistry families: <prefix><species><suffix>
       integer, parameter :: fam_conc = 1, fam_exch = 2, fam_rchg = 3, fam_load = 4
       character(len=24), dimension(4), parameter :: fam_prefix = [character(len=24) ::      &
@@ -285,6 +290,9 @@
       allocate (hru_hly1(0:max(1, maxval([0, (ob(sp_ob1%hru + iv - 1)%num, iv = 1, sp_ob%hru)]))), source = 0)
       allocate (hly_tmp(n_hly), source = 0.)
       allocate (hly_on(n_hly), source = .false.)
+      allocate (hly_gw(n_hly), source = 0.)
+      allocate (hly_gw_on(n_hly), source = .false.)
+      allocate (hly_gw_day(n_hly), source = 0.)
       n_hly = 0
       do iv = 1, sp_ob%hru
         ihru = ob(sp_ob1%hru + iv - 1)%num
@@ -464,6 +472,9 @@
         dmd_flo_on(i) = .false.
       end do
 
+      !! groundwater into the soil goes in at exch_hru_gwsoil, HRU by HRU
+      hly_gw_day = 0.
+
       return
       end subroutine exch_apply
 
@@ -642,6 +653,37 @@
       end subroutine exch_hru_soil
 
 !!    --------------------------------------------------------------------
+      subroutine exch_hru_gwsoil (j)
+
+!!    called in swr_percmain right after gwflow_soil, where SWAT+'s own
+!!    groundwater model puts groundwater into the soil profile, before the
+!!    day's infiltration and percolation: adds the groundwater set for the
+!!    day to each of the HRU's layers and counts it as SWAT+ counts
+!!    gwflow's (gwsoilq, printed in hru_wb as gwsoilq)
+
+      use soil_module, only : soil
+      use hru_module, only : gwsoilq
+
+      integer, intent(in) :: j                            !HRU number
+      integer :: k = 0
+      integer :: i = 0
+
+      if (.not. exch_on) return
+      if (j < lbound(hru_hly1,1) .or. j > ubound(hru_hly1,1)) return
+      if (hru_hly1(j) == 0) return
+      do k = 1, soil(j)%nly
+        i = hru_hly1(j) + k - 1
+        if (.not. hly_gw_on(i)) cycle
+        soil(j)%phys(k)%st = soil(j)%phys(k)%st + hly_gw(i)
+        gwsoilq(j) = gwsoilq(j) + hly_gw(i)
+        hly_gw_day(i) = hly_gw(i)
+        hly_gw_on(i) = .false.
+      end do
+
+      return
+      end subroutine exch_hru_gwsoil
+
+!!    --------------------------------------------------------------------
       real function rating_depth (ich, flo_rate)
 
 !!    water depth on SWAT+'s rating curve for a channel at a flow rate (m3/s),
@@ -683,9 +725,10 @@
         pou_dmd_day(i) = poud_met(i)%duty_tot%duty
         pou_wdr_day(i) = poud_met(i)%duty_tot%deliv
       end do
-      !! a state set for the day applies that day only, even for an HRU the
-      !! day's commands didn't run
+      !! a state or flux set for the day applies that day only, even for an
+      !! HRU the day's commands didn't run
       hly_on = .false.
+      hly_gw_on = .false.
 
       return
       end subroutine exch_record
@@ -1098,7 +1141,7 @@
       write (u) size(pou_dmd_day), pou_dmd_day, pou_wdr_day
       write (u) size(chx_day), chx_day
       write (u) size(rec_flo), rec_flo, rec_flo_on, dmd_flo, dmd_flo_on, chx_flo, chx_on
-      write (u) n_hly, hly_tmp, hly_on
+      write (u) n_hly, hly_tmp, hly_on, hly_gw, hly_gw_on, hly_gw_day
       write (u) n_sp, chm_flo, chm_on, chm_day, chm_wait, rcm_flo, rcm_on
       call save_units (u, run_dir)
       call swx_state_save (u)
@@ -1283,7 +1326,7 @@
         call reply ("@error the saved state has a different number of soil layers")
         error stop 7
       end if
-      read (u) hly_tmp, hly_on
+      read (u) hly_tmp, hly_on, hly_gw, hly_gw_on, hly_gw_day
       read (u) n
       if (n /= n_sp) then
         call reply ("@error the saved state has a different number of salt ions")
@@ -1374,6 +1417,21 @@
         allocate (val(n_hly), source = 0.d0)
         do i = 1, n_hly
           val(i) = soil(hly_hru(i))%phys(hly_lay(i))%tmp   !deg C
+        end do
+
+      case ("soil_layer_water__groundwater_inflow_rate")
+        !! what went into each HRU soil layer on the day just done
+        allocate (val(n_hly), source = 0.d0)
+        do i = 1, n_hly
+          val(i) = hly_gw_day(i) / 86400000.d0            !mm/day -> m/s
+        end do
+
+      case ("soil_water__groundwater_inflow_rate")
+        !! the day's groundwater into the soil profile, gwflow's and set (gwsoilq)
+        allocate (val(sp_ob%hru), source = 0.d0)
+        do i = 1, sp_ob%hru
+          iob = sp_ob1%hru + i - 1
+          val(i) = hwb_d(ob(iob)%num)%gwsoil / 86400000.d0 !mm/day -> m/s
         end do
 
       case ("snowpack__liquid-equivalent_depth")
@@ -1593,6 +1651,7 @@
       use time_module
       use hydrograph_module, only : sp_ob, sp_ob1, ob, recall
       use maximum_data_module, only : db_mx
+      use basin_module, only : bsn_cc
 
       character(len=*), intent(in) :: name
       integer, intent(in) :: i
@@ -1670,6 +1729,29 @@
         if (keep) then
           hly_tmp(i) = real(v)                            !deg C
           hly_on(i) = .true.
+        end if
+
+      case ("soil_layer_water__groundwater_inflow_rate")
+        if (i < 1 .or. i > n_hly) then
+          msg = "index out of range"
+          return
+        end if
+        if (v < 0.d0) then
+          msg = "groundwater into the soil can't be negative; water leaving the soil profile " //  &
+                "is percolation (soil_water__percolation_rate)"
+          return
+        end if
+        if (abs(v) * 86400000.d0 > huge(1.)) then
+          msg = "the value is too large for SWAT+'s 4-byte reals"
+          return
+        end if
+        if (bsn_cc%gwflow == 1) then
+          msg = "the project runs SWAT+'s gwflow, which puts its own groundwater into the soil"
+          return
+        end if
+        if (keep) then
+          hly_gw(i) = real(v * 86400000.d0)               !m/s -> mm/day
+          hly_gw_on(i) = .true.
         end if
 
       case default

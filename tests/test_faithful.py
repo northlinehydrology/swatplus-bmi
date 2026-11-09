@@ -34,6 +34,7 @@ from salts import with_salts_channel
 PS = "point_source_water__volume_flow_rate"
 GW = "channel_water__groundwater_volume_exchange_rate"
 TS = "soil_layer__temperature"
+GWS = "soil_layer_water__groundwater_inflow_rate"
 
 
 def out_path(folder):
@@ -216,12 +217,15 @@ def test_a_zero_groundwater_exchange_every_day_is_stock():
 
 @pytest.mark.filterwarnings("ignore:a negative point source")
 def test_every_set_stays_in_bounds():
-    """The point source, demand and groundwater sets, run on the build with array
-    bounds checked: a write outside SWAT+'s arrays would stop it with an error."""
+    """The point source, demand, groundwater, soil temperature and groundwater-into-soil
+    sets, run on the build with array bounds checked: a write outside SWAT+'s arrays would
+    stop it with an error."""
     need(CHECK, STOCK)
-    for name, var, value in [("osu-point-source", PS, -0.0004), ("osu-allocation", DMD, 0.0002),
-                             ("osu-daily", GW, 0.0003), ("osu-daily", TS, 0.5)]:
-        run = copy_of(name, f"bounds-{name}-{var[:4]}")
+    for i, (name, var, value) in enumerate([("osu-point-source", PS, -0.0004),
+                                            ("osu-allocation", DMD, 0.0002),
+                                            ("osu-daily", GW, 0.0003), ("osu-daily", TS, 0.5),
+                                            ("osu-daily", GWS, 1e-8)]):
+        run = copy_of(name, f"bounds-{name}-{i}")
         set_every_day(run, var, [value] * 6000, exe=CHECK)
         assert (run / "success.fin").exists() or (run / "out" / "success.fin").exists()
 

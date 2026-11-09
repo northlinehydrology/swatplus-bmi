@@ -114,6 +114,26 @@ index 9c5c38d..7ce62f5 100644
        !! calculate stream temperature (component mixing model)
        call ch_temp
        
+diff --git a/src/swr_percmain.f90 b/src/swr_percmain.f90
+index 33f9165..4f3eded 100644
+--- a/src/swr_percmain.f90
++++ b/src/swr_percmain.f90
+@@ -39,6 +39,7 @@
+       use septic_data_module
+       use hydrograph_module
+       use basin_module
++      use bmi_exchange_module, only : exch_hru_gwsoil
+       
+       implicit none
+       
+@@ -65,6 +66,7 @@
+       if(bsn_cc%gwflow.eq.1) then
+         call gwflow_soil(j)
+       endif
++      call exch_hru_gwsoil (j)   !! exchange mode: groundwater set for the day goes into the soil here
+ 
+       !! initialize water entering first soil layer
+       !! ht1%flo is infiltration from overland flow routing
 diff --git a/src/time_control.f90 b/src/time_control.f90
 index d357b05..c516819 100644
 --- a/src/time_control.f90

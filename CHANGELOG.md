@@ -3,6 +3,19 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
+## Unreleased
+
+- Groundwater into the soil, the way back from a groundwater model: set
+  `soil_layer_water__groundwater_inflow_rate` (m s-1, on the soil-layer grid) for the next day,
+  and the water goes into those layers where SWAT+'s own groundwater model, gwflow, puts its own
+  (a new hook, `exch_hru_gwsoil`, right after `gwflow_soil` in `swr_percmain`), counted as SWAT+
+  counts gwflow's (`gwsoilq` in `hru_wb`). Read-only `soil_water__groundwater_inflow_rate` gives
+  each HRU's total. With percolation going down, water now goes both ways between each HRU's
+  soil and a groundwater model. Refused when negative and in projects that run gwflow. Tested
+  on Osu_1hru (read back, printed and closing over 14 years) and Ames_sub1 (one layer of one HRU
+  changes that HRU's output only). A state saved by an earlier version is refused (format
+  SWXSTATE-5).
+
 ## 0.6.1 (2026-11-08)
 
 - **Fixed:** finishing a branch (`finalize`, `run_to_end`) returned when the branch's replies

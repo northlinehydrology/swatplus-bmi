@@ -243,6 +243,25 @@ Each day, read `channel_water__depth` for the river stage. Then set
 Read the same variable after the day for what was actually exchanged. Pass that back to the
 groundwater model, so the two balances agree.
 
+Water goes both ways between the soil and the groundwater model, HRU by HRU:
+- down: `soil_water__percolation_rate` is the water leaving the bottom of each HRU's soil
+  profile, the groundwater model's recharge under that HRU;
+- up: where the groundwater model's water table rises into an HRU's soil profile, set
+  `soil_layer_water__groundwater_inflow_rate` for the next day, layer by layer. The water goes
+  into those layers where SWAT+'s own groundwater model, gwflow, puts its own (`gwflow_soil`, at
+  the start of the day's percolation), and SWAT+ counts it the same way, as `gwsoilq` in
+  `hru_wb`. SWAT+ then moves it as it moves any soil water: up to the plants, out as lateral
+  flow, back down as percolation, or to the surface where the profile can't hold it. Take the
+  same water out of the groundwater model.
+
+How much goes into which layer is the coupling's to decide. gwflow fills each layer below the
+water table in proportion to how much of it lies below, with a cell's specific yield times the
+height of the water table above the bottom of the profile as the volume. A set applies to the
+next day only; reading it after the day gives what went in, and
+`soil_water__groundwater_inflow_rate` gives each HRU's total. It can't be negative (water
+leaving the soil is percolation), and is refused in a project that runs gwflow, which would put
+in its own as well.
+
 Chemistry goes the same way. For each salt ion SWAT+'s salt module simulates, and for nitrate
 (`no3`, as N) and soluble phosphorus (`solp`, as P):
 - read `aquifer_water_<ion>__recharge_mass_rate` for the mass reaching the water table, to pass
@@ -316,6 +335,8 @@ objects in a project are left out.
 | `land_surface__evapotranspiration_rate` | HRUs | no | m s-1 | `et` |
 | `land_surface__potential_evapotranspiration_rate` | HRUs | no | m s-1 | `pet` |
 | `soil_water__depth` | HRUs | no | m | `sw_final`: the profile's water above the wilting point |
+| `soil_layer_water__groundwater_inflow_rate` | HRU soil layers | yes (the next day) | m s-1 | groundwater into the layer, where gwflow puts its own; read after the day, what went in |
+| `soil_water__groundwater_inflow_rate` | HRUs | no | m s-1 | `gwsoilq` in `hru_wb_day.txt`: groundwater into the soil profile, gwflow's or set |
 | `atmosphere_water__precipitation_leq-volume_flux` | precipitation gages | yes (records ahead) | m s-1 | the gage's `.pcp` record (mm/day) |
 | `atmosphere_bottom_air__max_of_temperature` | temperature gages | yes (records ahead) | degC | the `.tmp` record's maximum |
 | `atmosphere_bottom_air__min_of_temperature` | temperature gages | yes (records ahead) | degC | the `.tmp` record's minimum |
