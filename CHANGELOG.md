@@ -29,6 +29,10 @@ SWAT+ releases each version supports are in COMPATIBILITY.md.
   and counted as `gwsoiln`, `gwsoilp` (`hru_nb`); read-only HRU totals
   `soil_water_no3__groundwater_inflow_mass_rate` and `soil_water_solp__groundwater_inflow_mass_rate`.
   Checked against `hru_nb_day.txt` on Osu_1hru, in bounds, and across saves and branches.
+- `swatplus_bmi.project.write_weather(project, file, start, values)` writes days into a weather
+  file's records (in the file's units; NaN writes SWAT+'s missing value), for the first day (two
+  for precipitation) SWAT+ reads before a run first pauses. Written first days with the rest set
+  through the BMI are byte for byte the run on files holding the whole series.
 
 ## 0.6.1 (2026-11-08)
 

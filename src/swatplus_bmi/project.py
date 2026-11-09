@@ -7,6 +7,11 @@ label ``dbout``), SWAT+ reads the object rows by position, in its own order,
 and ignores their names. Editing the row named ``aquifer`` can then switch
 on a different object. ``set_print`` turns labels on and edits rows by name.
 
+``write_weather`` writes days into a weather file's records. Through the BMI a
+weather record can be set only for days SWAT+ hasn't read yet, and SWAT+ reads
+a run's first day (two for precipitation) before it first pauses; written
+into the run's files first, those days come from the same series.
+
 ``check_calibration`` and ``check_soils`` look for inputs SWAT+ 62.0.1
 misreads or ignores without a message. They change nothing: SWAT+ runs as it
 would anyway, and each returns what it found, one line per problem.
@@ -14,7 +19,10 @@ would anyway, and each returns what it found, one line per problem.
 
 from __future__ import annotations
 
+import datetime as dt
 from pathlib import Path
+
+import numpy as np
 
 INTERVALS = ("daily", "monthly", "yearly", "avann")
 
@@ -61,6 +69,44 @@ def set_print(project: str | Path, objects, intervals=("daily",), on: bool = Tru
     if missing:
         raise ValueError(f"no rows named {sorted(missing)} in {prt}")
     prt.write_text("\n".join(lines) + "\n")
+
+
+def write_weather(project: str | Path, file: str, start: dt.date, values) -> None:
+    """Write ``values`` into the daily records of the weather file ``file`` in ``project``,
+    one per day from ``start`` on, in the file's units (mm/day, deg C, MJ/m2/day, a
+    fraction, m/s). A temperature file takes two columns, maximum and minimum. Only days
+    the file already holds can be written, and only in a file of daily records; NaN
+    writes SWAT+'s missing value, -99, so SWAT+ generates that day. Values are written to
+    five decimals, as SWAT+'s editor writes them. All or nothing; edited in place.
+    """
+    path = Path(project) / file
+    lines = path.read_text().splitlines()
+    head = lines[2].split() if len(lines) > 2 else []
+    if len(head) < 2 or head[1] != "0":
+        raise ValueError(f"{path} isn't a file of daily weather records (tstep 0)")
+    rows, ncol = {}, None
+    for i in range(3, len(lines)):
+        f = lines[i].split()
+        if len(f) < 3:
+            continue
+        rows[(int(f[0]), int(f[1]))] = i
+        ncol = len(f) - 2
+    v = np.asarray(values, dtype=float)
+    if v.ndim == 1 and ncol == 1:
+        v = v[:, None]
+    if v.ndim != 2 or v.shape[1] != ncol:
+        raise ValueError(f"{path} holds {ncol} value(s) a day; got values of shape {np.shape(values)}")
+    out = {}
+    for k, row in enumerate(v):
+        d = start + dt.timedelta(days=k)
+        key = (d.year, d.timetuple().tm_yday)
+        if key not in rows:
+            raise ValueError(f"{path} has no record for {d}")
+        cells = "".join(f"{-99.0 if np.isnan(x) else x:>11.5f}" for x in row)
+        out[rows[key]] = f"{d.year}{key[1]:>5}{cells}"
+    for i, line in out.items():
+        lines[i] = line
+    path.write_text("\n".join(lines) + "\n")
 
 
 def _cio(project: Path, key: str) -> list[str]:

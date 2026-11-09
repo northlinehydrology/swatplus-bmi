@@ -15,6 +15,7 @@ import pytest
 
 from conftest import EXCHANGE, STOCK, differences, fresh, need, project, run_stock
 from swatplus_bmi import ExchangeError, SwatPlusBmi
+from swatplus_bmi.project import write_weather
 
 P = "atmosphere_water__precipitation_leq-volume_flux"
 TX = "atmosphere_bottom_air__max_of_temperature"
@@ -232,3 +233,48 @@ def test_refusals_keep_nothing():
     with pytest.raises(KeyError):                       # no humidity gages: no such variable
         m.set_weather(RH, first, np.array([0.5]))
     assert differences(stock, finish(m)) == []
+
+
+def test_first_days_written_and_the_rest_set_are_the_files_run():
+    """A change from the run's first day: write_weather puts the days SWAT+ reads before it
+    first pauses into the run's files, set_weather the rest. The run is the one whose files
+    hold the whole change, byte for byte."""
+    need(STOCK, EXCHANGE)
+    first, last = dt.date(2010, 1, 1), dt.date(2010, 12, 31)
+
+    def series(run):
+        """{file: (dates, values by column)} with the change, in the file's units."""
+        out = {}
+        for name in {n for n, _, _ in FILES.values()}:
+            rows = read_file(run / name)
+            dates = [d for d in sorted(rows) if first <= d <= last]
+            vals = np.array([rows[d] for d in dates])
+            for var, (fname, col, _) in FILES.items():
+                if fname == name:
+                    vals[:, col] = np.round(CHANGE[var](vals[:, col]), 5)
+            out[name] = (dates, vals)
+        return out
+
+    whole = project("Osu_1hru", "wx-written-whole", daily=True)
+    ch = series(whole)
+    for name, (dates, vals) in ch.items():
+        write_weather(whole, name, dates[0], vals)
+    run_stock(whole)
+    plain = project("Osu_1hru", "wx-written-plain", daily=True)
+    run_stock(plain)
+    assert "differs: channel_sd_day.txt" in differences(plain, whole)
+
+    mixed = project("Osu_1hru", "wx-written-mixed", daily=True)
+    m = SwatPlusBmi()
+    for name, (dates, vals) in ch.items():             # the days before the first settable one:
+        n = 2 if name == FILES[P][0] else 1            # two for precipitation, one for the rest
+        write_weather(mixed, name, dates[0], vals[:n])
+    m.initialize(str(mixed))
+    for var, (name, col, k) in FILES.items():
+        dates, vals = ch[name]
+        d0 = m.first_weather_day(var)
+        assert d0 == first + dt.timedelta(days=2 if var == P else 1)
+        i = dates.index(d0)
+        m.set_weather(var, d0, vals[i:, col] / k)
+    assert outputs_differ(whole, finish(m)) == []
+

@@ -1,11 +1,13 @@
 """The project helpers, and what an early stop leaves behind."""
 
+import datetime as dt
+
 import numpy as np
 import pytest
 
 from conftest import EXCHANGE, STOCK, need, project, run_stock
 from swatplus_bmi import SwatPlusBmi
-from swatplus_bmi.project import check_calibration, check_soils, set_print
+from swatplus_bmi.project import check_calibration, check_soils, set_print, write_weather
 
 
 def test_set_print_turns_on_exactly_the_named_object():
@@ -77,3 +79,22 @@ def test_check_soils_compares_what_swat_read_with_soils_sol():
     found = check_soils(run)
     assert found == ["PadHOEGOG: SWAT+ read hydrologic group C, depth 750.0 mm; soils.sol gives D, "
                      "750.0 mm"]
+
+
+def test_write_weather_writes_only_the_records_named_and_refuses_the_rest():
+    run = project("Osu_1hru", "wx-write")
+    tmp, pcp = run / "Imsiltmp.tmp", run / "Imsilpcp.pcp"
+    before = tmp.read_text().splitlines()
+    write_weather(run, "Imsiltmp.tmp", dt.date(2010, 3, 1), [[21.5, 3.25], [np.nan, 1.0]])
+    after = tmp.read_text().splitlines()
+    changed = [i for i, (a, b) in enumerate(zip(before, after)) if a != b]
+    assert len(after) == len(before) and len(changed) == 2
+    assert after[changed[0]].split() == ["2010", "60", "21.50000", "3.25000"]
+    assert after[changed[1]].split() == ["2010", "61", "-99.00000", "1.00000"]  # SWAT+ generates it
+    text = pcp.read_text()
+    with pytest.raises(ValueError, match="holds 1 value"):
+        write_weather(run, "Imsilpcp.pcp", dt.date(2010, 3, 1), [[1.0, 2.0]])
+    with pytest.raises(ValueError, match="no record for 2024-01-01"):
+        write_weather(run, "Imsilpcp.pcp", dt.date(2023, 12, 31), [1.0, 1.0])
+    assert pcp.read_text() == text                          # all or nothing
+

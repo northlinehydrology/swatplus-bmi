@@ -400,7 +400,10 @@ below, which SWAT+ reads as missing, a humidity outside 0 to 1).
 
 A pause before the first day's weather would let those first days be set
 too, but it moves where the first pause, branches and day-0 saves happen,
-so it's left for later; the first days come from the files.
+so it's left for later. The first days come from the files, and
+`project.write_weather` writes them there before the run starts (tested:
+written first days and set later days are byte for byte the run on files
+holding the whole series).
 
 
 ## Time

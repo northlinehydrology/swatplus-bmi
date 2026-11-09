@@ -308,8 +308,12 @@ b.set_weather(P, b.first_weather_day(P), dry_mm_per_day / 86_400_000)
 ```
 
 `set_value` writes the first day not yet read, so a weather model can feed SWAT+ a day or two
-ahead. The first day of temperature, solar radiation, humidity and wind, and the first two of
-precipitation, come from the files. A record can only be set inside the period the gage's file
+ahead. SWAT+ reads the first day of temperature, solar radiation, humidity and wind, and the
+first two of precipitation, before it first pauses, so those come from the files; to have them
+from the same series, write them into the run's files first with
+`swatplus_bmi.project.write_weather(run_dir, file, start, values)` (in the file's units), then
+set the rest. A run done that way is byte for byte the run whose files hold the whole series. A
+record can only be set inside the period the gage's file
 covers (SWAT+ generates the days outside it), and only for a gage with daily records. Reading a
 weather variable gives each gage's record for the day just done (NaN where it has none). Gages
 are per file, not per HRU: a set changes a gage's values, not which gage a station uses, so
