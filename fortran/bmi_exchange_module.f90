@@ -124,7 +124,7 @@
 
       !! the catalog: the water variables, then the chemistry variables, one per species
       !! (exch_start). var_fam is 0 for a water variable, or the chemistry family
-      integer, parameter :: nbase = 26
+      integer, parameter :: nbase = 33
       character(len=64), dimension(nbase), parameter :: base_name = [character(len=64) ::     &
             "channel_water__volume_outflow_rate",                           &
             "channel_water__volume",                                        &
@@ -151,19 +151,29 @@
             "atmosphere_bottom_air_water~vapor__relative_saturation",      &
             "atmosphere_bottom_air_flow__speed",                           &
             "soil_layer_water__groundwater_inflow_rate",                   &
-            "soil_water__groundwater_inflow_rate"]
+            "soil_water__groundwater_inflow_rate",                         &
+            "soil_layer_bottom__depth",                                    &
+            "soil_layer__thickness",                                       &
+            "soil_layer_water__depth",                                     &
+            "soil_layer_water__wilting_point_depth",                       &
+            "soil_layer_water__field_capacity_depth",                      &
+            "soil_layer_water__saturation_depth",                          &
+            "soil_layer__saturated_hydraulic_conductivity"]
       character(len=8), dimension(nbase), parameter :: base_grid = [character(len=8) ::      &
             "cha", "cha", "cha", "aqu", "aqu", "aqu", "aqu", "rec", "pou", "pou",    &
             "cha", "cha", "hly", "hru", "hru", "hru", "hru", "hru",                  &
-            "pcp", "tmp", "tmp", "slr", "hmd", "wnd", "hly", "hru"]
+            "pcp", "tmp", "tmp", "slr", "hmd", "wnd", "hly", "hru",                  &
+            "hly", "hly", "hly", "hly", "hly", "hly", "hly"]
       character(len=8), dimension(nbase), parameter :: base_units = [character(len=8) ::     &
             "m3 s-1", "m3", "m3 s-1", "m3", "m", "m3 s-1", "m s-1", "m3 s-1", "m3 s-1", "m3 s-1", &
             "m", "m3 s-1", "degC", "m", "m s-1", "m s-1", "m s-1", "m",                  &
-            "m s-1", "degC", "degC", "W m-2", "1", "m s-1", "m s-1", "m s-1"]
+            "m s-1", "degC", "degC", "W m-2", "1", "m s-1", "m s-1", "m s-1",        &
+            "m", "m", "m", "m", "m", "m", "m s-1"]
       character(len=3), dimension(nbase), parameter :: base_role = [character(len=3) ::      &
             "out", "out", "out", "out", "out", "out", "out", "in", "in", "out",  &
             "out", "in", "in", "out", "out", "out", "out", "out",                    &
-            "in", "in", "in", "in", "in", "in", "in", "out"]
+            "in", "in", "in", "in", "in", "in", "in", "out",                         &
+            "out", "out", "out", "out", "out", "out", "out"]
       !! chemistry families: <prefix><species><suffix>
       integer, parameter :: fam_conc = 1, fam_exch = 2, fam_rchg = 3, fam_load = 4
       character(len=24), dimension(4), parameter :: fam_prefix = [character(len=24) ::      &
@@ -1424,6 +1434,26 @@
         allocate (val(n_hly), source = 0.d0)
         do i = 1, n_hly
           val(i) = hly_gw_day(i) / 86400000.d0            !mm/day -> m/s
+        end do
+
+      case ("soil_layer_bottom__depth", "soil_layer__thickness", "soil_layer_water__depth",           &
+            "soil_layer_water__wilting_point_depth", "soil_layer_water__field_capacity_depth",       &
+            "soil_layer_water__saturation_depth", "soil_layer__saturated_hydraulic_conductivity")
+        !! each HRU soil layer as SWAT+ keeps it at the end of the day just done; the water
+        !! depths are above the wilting point, as SWAT+ counts them (st, fc, ul), but wpmm
+        allocate (val(n_hly), source = 0.d0)
+        do i = 1, n_hly
+          associate (ly => soil(hly_hru(i))%phys(hly_lay(i)))
+          select case (name)
+          case ("soil_layer_bottom__depth");               val(i) = ly%d / 1000.d0      !mm -> m
+          case ("soil_layer__thickness");                  val(i) = ly%thick / 1000.d0
+          case ("soil_layer_water__depth");                val(i) = ly%st / 1000.d0
+          case ("soil_layer_water__wilting_point_depth");  val(i) = ly%wpmm / 1000.d0
+          case ("soil_layer_water__field_capacity_depth"); val(i) = ly%fc / 1000.d0
+          case ("soil_layer_water__saturation_depth");     val(i) = ly%ul / 1000.d0
+          case default;                                    val(i) = ly%k / 3600000.d0   !mm/hr -> m/s
+          end select
+          end associate
         end do
 
       case ("soil_water__groundwater_inflow_rate")

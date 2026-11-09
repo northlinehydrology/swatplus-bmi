@@ -260,7 +260,10 @@ height of the water table above the bottom of the profile as the volume. A set a
 next day only; reading it after the day gives what went in, and
 `soil_water__groundwater_inflow_rate` gives each HRU's total. It can't be negative (water
 leaving the soil is percolation), and is refused in a project that runs gwflow, which would put
-in its own as well.
+in its own as well. To size and place it, each layer's bottom, water, saturation and field
+capacity are on the same grid, as SWAT+ keeps them (the water depths above the wilting point):
+the room left in a layer is `soil_layer_water__saturation_depth` less
+`soil_layer_water__depth`.
 
 Chemistry goes the same way. For each salt ion SWAT+'s salt module simulates, and for nitrate
 (`no3`, as N) and soluble phosphorus (`solp`, as P):
@@ -337,6 +340,13 @@ objects in a project are left out.
 | `soil_water__depth` | HRUs | no | m | `sw_final`: the profile's water above the wilting point |
 | `soil_layer_water__groundwater_inflow_rate` | HRU soil layers | yes (the next day) | m s-1 | groundwater into the layer, where gwflow puts its own; read after the day, what went in |
 | `soil_water__groundwater_inflow_rate` | HRUs | no | m s-1 | `gwsoilq` in `hru_wb_day.txt`: groundwater into the soil profile, gwflow's or set |
+| `soil_layer_bottom__depth` | HRU soil layers | no | m | the layer's bottom below the surface (`d`) |
+| `soil_layer__thickness` | HRU soil layers | no | m | `thick` |
+| `soil_layer_water__depth` | HRU soil layers | no | m | the layer's water above the wilting point (`st`); the layers add up to `soil_water__depth` |
+| `soil_layer_water__wilting_point_depth` | HRU soil layers | no | m | water held at the wilting point (`wpmm`) |
+| `soil_layer_water__field_capacity_depth` | HRU soil layers | no | m | water at field capacity, above the wilting point (`fc`) |
+| `soil_layer_water__saturation_depth` | HRU soil layers | no | m | water at saturation, above the wilting point (`ul`) |
+| `soil_layer__saturated_hydraulic_conductivity` | HRU soil layers | no | m s-1 | `k` (mm/hr) |
 | `atmosphere_water__precipitation_leq-volume_flux` | precipitation gages | yes (records ahead) | m s-1 | the gage's `.pcp` record (mm/day) |
 | `atmosphere_bottom_air__max_of_temperature` | temperature gages | yes (records ahead) | degC | the `.tmp` record's maximum |
 | `atmosphere_bottom_air__min_of_temperature` | temperature gages | yes (records ahead) | degC | the `.tmp` record's minimum |

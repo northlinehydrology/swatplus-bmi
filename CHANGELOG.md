@@ -15,6 +15,13 @@ SWAT+ releases each version supports are in COMPATIBILITY.md.
   on Osu_1hru (read back, printed and closing over 14 years) and Ames_sub1 (one layer of one HRU
   changes that HRU's output only). A state saved by an earlier version is refused (format
   SWXSTATE-5).
+- Each HRU soil layer as SWAT+ keeps it, read-only on the soil-layer grid, for sizing and placing
+  that water: `soil_layer_bottom__depth`, `soil_layer__thickness`, `soil_layer_water__depth`
+  (above the wilting point; the layers add up to `soil_water__depth`),
+  `soil_layer_water__wilting_point_depth`, `soil_layer_water__field_capacity_depth`,
+  `soil_layer_water__saturation_depth` and `soil_layer__saturated_hydraulic_conductivity`.
+  Checked against the soil file by SWAT+'s own layering rule (Osu_1hru's file layers, Ames_sub1's
+  `soil_lyr_depths.sol`) and the project's awc calibration.
 
 ## 0.6.1 (2026-11-08)
 

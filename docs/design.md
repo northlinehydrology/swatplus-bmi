@@ -177,6 +177,10 @@ names follow the channel ones. CSDMS lists no aquifer or withdrawal names.
 | `soil_water__depth` | hru | out | m | `soil(j)%sw` (mm) | the profile's water above the wilting point at the end of the day, `sw_final` |
 | `soil_layer_water__groundwater_inflow_rate` | hly | in and out | m s-1 | added to `soil(j)%phys(k)%st` (mm) and `gwsoilq(j)` | a flux for the next day (Groundwater into the soil); reading gives what went in on the day just done |
 | `soil_water__groundwater_inflow_rate` | hru | out | m s-1 | `hwb_d(j)%gwsoil` (`gwsoilq`, mm/day) | `gwsoilq` in `hru_wb_day.txt`: gwflow's and what was set |
+| `soil_layer_bottom__depth`, `soil_layer__thickness` | hly | out | m | `soil(j)%phys(k)%d`, `%thick` (mm) | SWAT+'s layers: a 10 mm top layer, then the file's, or the depths in `soil_lyr_depths.sol` with the file's properties averaged mm by mm (`soils_init`) |
+| `soil_layer_water__depth` | hly | out | m | `soil(j)%phys(k)%st` (mm) | water above the wilting point, as SWAT+ counts it; the layers add up to `soil(j)%sw` |
+| `soil_layer_water__wilting_point_depth`, `__field_capacity_depth`, `__saturation_depth` | hly | out | m | `%wpmm`, `%fc`, `%ul` (mm) | `fc` and `ul` are above the wilting point; `fc` is after the project's awc calibration |
+| `soil_layer__saturated_hydraulic_conductivity` | hly | out | m s-1 | `%k` (mm/hr) | |
 | `atmosphere_water__precipitation_leq-volume_flux` | pcp | in and out | m s-1 | `pcp(i)%ts(day,col)` (mm/day) | a record, set ahead (Setting weather records); reading gives the day just done's record, NaN where there's none |
 | `atmosphere_bottom_air__max_of_temperature` | tmp | in and out | degC | `tmp(i)%ts` | as above |
 | `atmosphere_bottom_air__min_of_temperature` | tmp | in and out | degC | `tmp(i)%ts2` | as above |
@@ -270,7 +274,11 @@ plants and lateral flow take from the layers as they would. So a coupled
 groundwater model gives water back to the soil where SWAT+'s own would, and
 SWAT+'s printed water balance includes it. How much goes into which layer
 is the caller's to decide (gwflow's rule is above), and so is taking the
-same water out of the groundwater model.
+same water out of the groundwater model. For that, each layer's bottom,
+thickness, water, wilting point, field capacity, saturation and conductivity
+can be read on the same grid, as SWAT+ keeps them; the tests check them
+against the soil file by SWAT+'s own layering rule on both projects, and the
+layers' water against the HRU's every day.
 
 Only additions: water leaving the soil to the groundwater is percolation,
 read with `soil_water__percolation_rate`, so a negative value is refused. A
