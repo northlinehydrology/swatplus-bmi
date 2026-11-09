@@ -14,7 +14,8 @@ refuses any other version.
 Checked Nov 4, 2026: the patch applies unchanged to SWAT+ main as of commit
 6f51536 (Oct 16, 2026). `time_control.f90`, `command.f90` and `main.f90.in`
 are identical to 62.0.1 there. Checked again Nov 6 with the `hru_control.f90`
-hook (0.4.0): it applies there too. Checked again Nov 7 with the two chemistry hooks (0.5.0).
+hook (0.4.0): it applies there too. Checked again Nov 7 with the two chemistry hooks (0.5.0), and Nov 9 with the
+groundwater-into-soil hooks in `swr_percmain`, `nut_nlch` and `nut_solp` (0.7.0).
 
 ## How SWAT+ versions work
 
