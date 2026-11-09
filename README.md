@@ -22,7 +22,7 @@ against unpatched SWAT+ on the projects listed in [COMPATIBILITY.md](COMPATIBILI
 paused run can also be saved and loaded, or branched in memory, so a warm-up is run once and
 every scenario starts from the same state.
 
-**Status:** working for SWAT+ 62.0.1; release 0.6.1 ([PyPI](https://pypi.org/project/swatplus-bmi/), [Zenodo](https://doi.org/10.5281/zenodo.23963201)). Tested on the two example projects that
+**Status:** working for SWAT+ 62.0.1; release 0.7.0 ([PyPI](https://pypi.org/project/swatplus-bmi/), [Zenodo](https://doi.org/10.5281/zenodo.23963201)). Tested on the two example projects that
 ship with SWAT+ (below) and a 2,371-HRU study build. See [COMPATIBILITY.md](COMPATIBILITY.md) and the design note,
 [docs/design.md](docs/design.md).
 
@@ -243,6 +243,35 @@ Each day, read `channel_water__depth` for the river stage. Then set
 Read the same variable after the day for what was actually exchanged. Pass that back to the
 groundwater model, so the two balances agree.
 
+Water goes both ways between the soil and the groundwater model, HRU by HRU:
+- down: `soil_water__percolation_rate` is the water leaving the bottom of each HRU's soil
+  profile, the groundwater model's recharge under that HRU;
+- up: where the groundwater model's water table rises into an HRU's soil profile, set
+  `soil_layer_water__groundwater_inflow_rate` for the next day, layer by layer. The water goes
+  into those layers where SWAT+'s own groundwater model, gwflow, puts its own (`gwflow_soil`, at
+  the start of the day's percolation), and SWAT+ counts it the same way, as `gwsoilq` in
+  `hru_wb`. SWAT+ then moves it as it moves any soil water: up to the plants, out as lateral
+  flow, back down as percolation, or to the surface where the profile can't hold it. Take the
+  same water out of the groundwater model.
+
+How much goes into which layer is the coupling's to decide. gwflow fills each layer below the
+water table in proportion to how much of it lies below, with a cell's specific yield times the
+height of the water table above the bottom of the profile as the volume. A set applies to the
+next day only; reading it after the day gives what went in, and
+`soil_water__groundwater_inflow_rate` gives each HRU's total. It can't be negative (water
+leaving the soil is percolation), and is refused in a project that runs gwflow, which would put
+in its own as well. To size and place it, each layer's bottom, water, saturation and field
+capacity are on the same grid, as SWAT+ keeps them (the water depths above the wilting point):
+the room left in a layer is `soil_layer_water__saturation_depth` less
+`soil_layer_water__depth`.
+
+Nitrate (as N) and labile phosphorus come up with the water as gwflow brings them: with the
+water set for a layer, set `soil_layer_water_no3__groundwater_inflow_mass_rate` and
+`soil_layer_water_solp__groundwater_inflow_mass_rate` (kg s-1 into the layer). They go into the
+layer's nitrate and labile P where gwflow adds its own (at the start of `nut_nlch` and
+`nut_solp`), counted as `gwsoiln` and `gwsoilp` in `hru_nb`. A mass without water set for its
+layer is refused.
+
 Chemistry goes the same way. For each salt ion SWAT+'s salt module simulates, and for nitrate
 (`no3`, as N) and soluble phosphorus (`solp`, as P):
 - read `aquifer_water_<ion>__recharge_mass_rate` for the mass reaching the water table, to pass
@@ -279,8 +308,12 @@ b.set_weather(P, b.first_weather_day(P), dry_mm_per_day / 86_400_000)
 ```
 
 `set_value` writes the first day not yet read, so a weather model can feed SWAT+ a day or two
-ahead. The first day of temperature, solar radiation, humidity and wind, and the first two of
-precipitation, come from the files. A record can only be set inside the period the gage's file
+ahead. SWAT+ reads the first day of temperature, solar radiation, humidity and wind, and the
+first two of precipitation, before it first pauses, so those come from the files; to have them
+from the same series, write them into the run's files first with
+`swatplus_bmi.project.write_weather(run_dir, file, start, values)` (in the file's units), then
+set the rest. A run done that way is byte for byte the run whose files hold the whole series. A
+record can only be set inside the period the gage's file
 covers (SWAT+ generates the days outside it), and only for a gage with daily records. Reading a
 weather variable gives each gage's record for the day just done (NaN where it has none). Gages
 are per file, not per HRU: a set changes a gage's values, not which gage a station uses, so
@@ -316,6 +349,18 @@ objects in a project are left out.
 | `land_surface__evapotranspiration_rate` | HRUs | no | m s-1 | `et` |
 | `land_surface__potential_evapotranspiration_rate` | HRUs | no | m s-1 | `pet` |
 | `soil_water__depth` | HRUs | no | m | `sw_final`: the profile's water above the wilting point |
+| `soil_layer_water__groundwater_inflow_rate` | HRU soil layers | yes (the next day) | m s-1 | groundwater into the layer, where gwflow puts its own; read after the day, what went in |
+| `soil_water__groundwater_inflow_rate` | HRUs | no | m s-1 | `gwsoilq` in `hru_wb_day.txt`: groundwater into the soil profile, gwflow's or set |
+| `soil_layer_bottom__depth` | HRU soil layers | no | m | the layer's bottom below the surface (`d`) |
+| `soil_layer__thickness` | HRU soil layers | no | m | `thick` |
+| `soil_layer_water__depth` | HRU soil layers | no | m | the layer's water above the wilting point (`st`); the layers add up to `soil_water__depth` |
+| `soil_layer_water__wilting_point_depth` | HRU soil layers | no | m | water held at the wilting point (`wpmm`) |
+| `soil_layer_water__field_capacity_depth` | HRU soil layers | no | m | water at field capacity, above the wilting point (`fc`) |
+| `soil_layer_water__saturation_depth` | HRU soil layers | no | m | water at saturation, above the wilting point (`ul`) |
+| `soil_layer__saturated_hydraulic_conductivity` | HRU soil layers | no | m s-1 | `k` (mm/hr) |
+| `soil_layer_water_no3__groundwater_inflow_mass_rate` | HRU soil layers | with the layer's water | kg s-1 | nitrate (N) with the groundwater, into the layer's nitrate |
+| `soil_layer_water_solp__groundwater_inflow_mass_rate` | HRU soil layers | with the layer's water | kg s-1 | labile P with the groundwater, into the layer's labile P |
+| `soil_water_no3__groundwater_inflow_mass_rate`, `soil_water_solp__groundwater_inflow_mass_rate` | HRUs | no | kg s-1 | `gwsoiln`, `gwsoilp` in `hru_nb_day.txt` (kg/ha) × area: gwflow's or set |
 | `atmosphere_water__precipitation_leq-volume_flux` | precipitation gages | yes (records ahead) | m s-1 | the gage's `.pcp` record (mm/day) |
 | `atmosphere_bottom_air__max_of_temperature` | temperature gages | yes (records ahead) | degC | the `.tmp` record's maximum |
 | `atmosphere_bottom_air__min_of_temperature` | temperature gages | yes (records ahead) | degC | the `.tmp` record's minimum |

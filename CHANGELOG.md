@@ -3,6 +3,37 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
+## 0.7.0 (2026-11-09)
+
+- Groundwater into the soil, the way back from a groundwater model: set
+  `soil_layer_water__groundwater_inflow_rate` (m s-1, on the soil-layer grid) for the next day,
+  and the water goes into those layers where SWAT+'s own groundwater model, gwflow, puts its own
+  (a new hook, `exch_hru_gwsoil`, right after `gwflow_soil` in `swr_percmain`), counted as SWAT+
+  counts gwflow's (`gwsoilq` in `hru_wb`). Read-only `soil_water__groundwater_inflow_rate` gives
+  each HRU's total. With percolation going down, water now goes both ways between each HRU's
+  soil and a groundwater model. Refused when negative and in projects that run gwflow. Tested
+  on Osu_1hru (read back, printed and closing over 14 years) and Ames_sub1 (one layer of one HRU
+  changes that HRU's output only). A state saved by an earlier version is refused (format
+  SWXSTATE-5).
+- Each HRU soil layer as SWAT+ keeps it, read-only on the soil-layer grid, for sizing and placing
+  that water: `soil_layer_bottom__depth`, `soil_layer__thickness`, `soil_layer_water__depth`
+  (above the wilting point; the layers add up to `soil_water__depth`),
+  `soil_layer_water__wilting_point_depth`, `soil_layer_water__field_capacity_depth`,
+  `soil_layer_water__saturation_depth` and `soil_layer__saturated_hydraulic_conductivity`.
+  Checked against the soil file by SWAT+'s own layering rule (Osu_1hru's file layers, Ames_sub1's
+  `soil_lyr_depths.sol`) and the project's awc calibration.
+- Nitrate and labile phosphorus with that groundwater, per layer:
+  `soil_layer_water_no3__groundwater_inflow_mass_rate` and
+  `soil_layer_water_solp__groundwater_inflow_mass_rate` (kg s-1, with the layer's water set),
+  added where gwflow adds its own (new hook `exch_hru_gwsoil_mass` in `nut_nlch` and `nut_solp`)
+  and counted as `gwsoiln`, `gwsoilp` (`hru_nb`); read-only HRU totals
+  `soil_water_no3__groundwater_inflow_mass_rate` and `soil_water_solp__groundwater_inflow_mass_rate`.
+  Checked against `hru_nb_day.txt` on Osu_1hru, in bounds, and across saves and branches.
+- `swatplus_bmi.project.write_weather(project, file, start, values)` writes days into a weather
+  file's records (in the file's units; NaN writes SWAT+'s missing value), for the first day (two
+  for precipitation) SWAT+ reads before a run first pauses. Written first days with the rest set
+  through the BMI are byte for byte the run on files holding the whole series.
+
 ## 0.6.1 (2026-11-08)
 
 - **Fixed:** finishing a branch (`finalize`, `run_to_end`) returned when the branch's replies

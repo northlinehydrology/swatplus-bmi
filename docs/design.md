@@ -45,8 +45,9 @@ and talks to it over standard input and output; nothing is linked.
 
 The daily loop is in `time_control.f90`. The patch adds four calls there,
 three in `sd_channel_control3.f90` (the channel hooks), one in
-`hru_control.f90` (the soil temperature hook), one in `main.f90.in` and one
-in `command.f90`. Each returns at once when
+`hru_control.f90` (the soil temperature hook), one in `swr_percmain.f90`
+(groundwater into the soil), one each in `nut_nlch.f90` and `nut_solp.f90`
+(its nitrate and phosphorus), one in `main.f90.in` and one in `command.f90`. Each returns at once when
 exchange mode is off.
 
 | Call | Where | What it does in exchange mode |
@@ -60,6 +61,8 @@ exchange mode is off.
 | `exch_channel` | `sd_channel_control3.f90`, after routing and water allocation, before the outflow is set | takes a set groundwater loss from the day's outflow, with its sediment and nutrients, and records the day's exchange |
 | `exch_channel_cs` | `sd_channel_control3.f90`, after SWAT+ splits salt and constituents between outflow and storage | takes the loss's share of the outflow's salt and constituents, as seepage |
 | `exch_hru_soil` | `hru_control.f90`, right after `stmp_solt` | replaces the day's soil layer temperatures that were set |
+| `exch_hru_gwsoil` | `swr_percmain.f90`, right after gwflow's `gwflow_soil` call, before the day's infiltration and percolation | adds the groundwater set for the day to the HRU's soil layers, counted in `gwsoilq` as gwflow's is |
+| `exch_hru_gwsoil_mass` | `nut_nlch.f90` and `nut_solp.f90`, right after gwflow adds its groundwater's nitrate and P | adds the nitrate and labile P set with the day's groundwater, counted in `gwsoiln`, `gwsoilp` |
 | `exch_end` | `time_control`, after the year loop | sends `@ended`, then answers commands until told to finish |
 
 The wait and the apply are split around `wallo_start_day` for two reasons.
@@ -174,6 +177,14 @@ names follow the channel ones. CSDMS lists no aquifer or withdrawal names.
 | `land_surface__evapotranspiration_rate` | hru | out | m s-1 | `hwb_d(j)%et` (mm/day) | actual ET, `et`, with ponded water's evaporation |
 | `land_surface__potential_evapotranspiration_rate` | hru | out | m s-1 | `hwb_d(j)%pet` (mm/day) | `pet` |
 | `soil_water__depth` | hru | out | m | `soil(j)%sw` (mm) | the profile's water above the wilting point at the end of the day, `sw_final` |
+| `soil_layer_water__groundwater_inflow_rate` | hly | in and out | m s-1 | added to `soil(j)%phys(k)%st` (mm) and `gwsoilq(j)` | a flux for the next day (Groundwater into the soil); reading gives what went in on the day just done |
+| `soil_water__groundwater_inflow_rate` | hru | out | m s-1 | `hwb_d(j)%gwsoil` (`gwsoilq`, mm/day) | `gwsoilq` in `hru_wb_day.txt`: gwflow's and what was set |
+| `soil_layer_bottom__depth`, `soil_layer__thickness` | hly | out | m | `soil(j)%phys(k)%d`, `%thick` (mm) | SWAT+'s layers: a 10 mm top layer, then the file's, or the depths in `soil_lyr_depths.sol` with the file's properties averaged mm by mm (`soils_init`) |
+| `soil_layer_water__depth` | hly | out | m | `soil(j)%phys(k)%st` (mm) | water above the wilting point, as SWAT+ counts it; the layers add up to `soil(j)%sw` |
+| `soil_layer_water__wilting_point_depth`, `__field_capacity_depth`, `__saturation_depth` | hly | out | m | `%wpmm`, `%fc`, `%ul` (mm) | `fc` and `ul` are above the wilting point; `fc` is after the project's awc calibration |
+| `soil_layer__saturated_hydraulic_conductivity` | hly | out | m s-1 | `%k` (mm/hr) | |
+| `soil_layer_water_no3__groundwater_inflow_mass_rate`, `soil_layer_water_solp__groundwater_inflow_mass_rate` | hly | in and out | kg s-1 | added to `soil1(j)%mn(k)%no3`, `soil1(j)%mp(k)%lab` (kg/ha) and `gwsoiln`, `gwsoilp` | with the layer's groundwater the next day; reading gives what went in |
+| `soil_water_no3__groundwater_inflow_mass_rate`, `soil_water_solp__groundwater_inflow_mass_rate` | hru | out | kg s-1 | `hnb_d(j)%gwsoiln`, `%gwsoilp` (kg/ha) x area | `gwsoiln`, `gwsoilp` in `hru_nb_day.txt` |
 | `atmosphere_water__precipitation_leq-volume_flux` | pcp | in and out | m s-1 | `pcp(i)%ts(day,col)` (mm/day) | a record, set ahead (Setting weather records); reading gives the day just done's record, NaN where there's none |
 | `atmosphere_bottom_air__max_of_temperature` | tmp | in and out | degC | `tmp(i)%ts` | as above |
 | `atmosphere_bottom_air__min_of_temperature` | tmp | in and out | degC | `tmp(i)%ts2` | as above |
@@ -246,6 +257,51 @@ computes each day's stream–aquifer exchange.
 The tests check that a gain raises the inflow by exactly that water, that a loss takes no more
 than the outflow and the balance closes, that a set value lasts one day, and that the day's
 exchange survives saving and loading.
+
+### Groundwater into the soil
+
+The way back from a groundwater model to the land. SWAT+ has it already, for
+its own groundwater model: with gwflow on, `gwflow_soil` runs at the top of
+`swr_percmain`, before the day's infiltration and percolation. Where a
+cell's water table is within an HRU's soil profile, it takes the cell's
+specific yield times the height of the water table above the bottom of the
+profile, over the part of the cell in the HRU, and adds it to the layers
+below the water table in proportion to how much of each lies below. It
+adds to `soil(j)%phys(k)%st` and counts the water in `gwsoilq(j)`, which
+`hru_control` prints as `gwsoilq` in `hru_wb`; the cell loses it.
+
+The hook, `exch_hru_gwsoil`, is the next line. It adds the water set for
+each of the HRU's layers, the same way, to the same two places. Everything
+after is SWAT+'s own: percolation moves water above field capacity down,
+saturation excess sends what the profile can't hold to the surface, and
+plants and lateral flow take from the layers as they would. So a coupled
+groundwater model gives water back to the soil where SWAT+'s own would, and
+SWAT+'s printed water balance includes it. How much goes into which layer
+is the caller's to decide (gwflow's rule is above), and so is taking the
+same water out of the groundwater model. For that, each layer's bottom,
+thickness, water, wilting point, field capacity, saturation and conductivity
+can be read on the same grid, as SWAT+ keeps them; the tests check them
+against the soil file by SWAT+'s own layering rule on both projects, and the
+layers' water against the HRU's every day.
+
+Only additions: water leaving the soil to the groundwater is percolation,
+read with `soil_water__percolation_rate`, so a negative value is refused. A
+project that runs gwflow is refused too, since gwflow would put in its own.
+gwflow also brings solutes and heat with the water. Nitrate and labile
+phosphorus it keeps by layer (`hru_soil`) and adds at the top of `nut_nlch`
+and `nut_solp`, to `soil1(j)%mn(k)%no3` and `soil1(j)%mp(k)%lab`, counted
+in `gwsoiln` and `gwsoilp` (`hru_nb`). A second hook, `exch_hru_gwsoil_mass`,
+is the next line in each and adds the mass set with a layer's groundwater the
+same way. A mass needs the water set for its layer that day, as a channel
+gain's does. Salts (`salt_lch`, `cs_lch`) are left out: SWAT+ 62.0.1's salt
+module can't run with aquifers. Heat is left out too.
+
+The tests set a different amount into each layer every third day for two
+years and check that it goes in as set, is printed as `gwsoilq`, and closes:
+over the run, the water added, less the irrigation the wetter soil no longer
+needed, leaves as more runoff, lateral flow, percolation and ET, within
+0.5 mm of 2,632 mm. On a 12-HRU basin, water set into one layer of one HRU
+changes that HRU's output only.
 
 ### Setting fluxes
 
@@ -344,7 +400,10 @@ below, which SWAT+ reads as missing, a humidity outside 0 to 1).
 
 A pause before the first day's weather would let those first days be set
 too, but it moves where the first pause, branches and day-0 saves happen,
-so it's left for later; the first days come from the files.
+so it's left for later. The first days come from the files, and
+`project.write_weather` writes them there before the run starts (tested:
+written first days and set later days are byte for byte the run on files
+holding the whole series).
 
 
 ## Time
@@ -568,8 +627,8 @@ The claim is three sentences, and each has its own tests:
    SWAT+'s own point source flow, loads or demand back every day, read
    from a first run, gives stock output, byte for byte, and so does a zero
    groundwater exchange every day. A set on one day changes only that day
-   (`test_setting.py`, `test_groundwater.py`), by exactly the water set
-   (balances close). Every kind of set runs on a build with array bounds
+   (`test_setting.py`, `test_groundwater.py`, `test_gw_soil.py`), by
+   exactly the water set (balances close). Every kind of set runs on a build with array bounds
    checked (`build.sh --check`).
 3. **Anything that can't be carried out faithfully is refused.** Each
    refusal above has a test that it raises an error and leaves the run

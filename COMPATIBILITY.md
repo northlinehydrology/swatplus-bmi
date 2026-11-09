@@ -14,7 +14,8 @@ refuses any other version.
 Checked Nov 4, 2026: the patch applies unchanged to SWAT+ main as of commit
 6f51536 (Oct 16, 2026). `time_control.f90`, `command.f90` and `main.f90.in`
 are identical to 62.0.1 there. Checked again Nov 6 with the `hru_control.f90`
-hook (0.4.0): it applies there too. Checked again Nov 7 with the two chemistry hooks (0.5.0).
+hook (0.4.0): it applies there too. Checked again Nov 7 with the two chemistry hooks (0.5.0), and Nov 9 with the
+groundwater-into-soil hooks in `swr_percmain`, `nut_nlch` and `nut_solp` (0.7.0).
 
 ## How SWAT+ versions work
 
@@ -51,9 +52,9 @@ only output on the test projects that does.
 
 | Project | What it has | Checked (SWAT+ 62.0.1, macOS 14 arm64, Nov 6, 2026) |
 |---|---|---|
-| Osu_1hru (SWAT+ refdata) | 1 HRU, 1 channel, 1 aquifer, 2010–2023 | every mode, daily printing; also with a daily point source (with nitrate and phosphorus), a water allocation user, and outputs in an `out_path` folder; setting SWAT+'s own point source flow and loads, demand and soil layer temperatures back every day; weather records set as a series, day by day, again before they're read, and across a branch, a save and a load, each byte for byte the run on rewritten weather files; every refusal; every kind of set on the bounds-checked build |
+| Osu_1hru (SWAT+ refdata) | 1 HRU, 1 channel, 1 aquifer, 2010–2023 | every mode, daily printing; also with a daily point source (with nitrate and phosphorus), a water allocation user, and outputs in an `out_path` folder; setting SWAT+'s own point source flow and loads, demand and soil layer temperatures back every day; weather records set as a series, day by day, again before they're read, and across a branch, a save and a load, each byte for byte the run on rewritten weather files; groundwater set into the soil layers, read back, printed as `gwsoilq` and closing over the run, and carried across a branch, a save and a load; every refusal; every kind of set on the bounds-checked build |
 | Osu_1hru with salts (`tests/salts.py`) | the eight salt ions and a placeholder pesticide, no aquifer and no point source (what stock 62.0.1's salt module can run) | every mode; saved locals; salt reads against `channel_salt_day.txt`; a gain's salt and a loss's, with the channel's salt balance closing every day (Nov 7, 2026) |
-| Ames_sub1 (SWAT+ refdata) | 12 HRUs, crop management, 1975–2020 | stepped and reading everything, save and load, saved locals (`-m full`) |
+| Ames_sub1 (SWAT+ refdata) | 12 HRUs, crop management, 1975–2020 | stepped and reading everything, save and load, saved locals (`-m full`); HRU water read against `hru_wb_day.txt` HRU by HRU, and groundwater set into one layer of one HRU changing only that HRU's output (1975) |
 | A study's basin build (on the NextGen hydrofabric) | 2,371 HRUs (11,383 soil layers), 35 channels, 35 aquifers, 3 reservoirs, 2001–2005 | every mode, reading every variable every day (`$SWATPLUS_BMI_PROJECTS`), again with 0.5.0's chemistry variables on Nov 7; a soil-temperature hold, run by the study |
 
 Not yet covered by any project: gwflow (refused for branching and saving when it reads a file a
