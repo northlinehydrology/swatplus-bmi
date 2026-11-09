@@ -1,0 +1,41 @@
+# Temporary, not to be merged: runs the save-then-branch weather test many times on
+# macOS 15, where it has failed twice in CI and never locally, and keeps every failing
+# run's folders.
+name: branch-stress
+
+on:
+  push:
+    branches: [branch-flake]
+  workflow_dispatch:
+
+jobs:
+  stress:
+    runs-on: macos-15
+    env:
+      SWATPLUS_TAG: "62.0.1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: uv run ./build.sh --stock --jobs 4 --tag "$SWATPLUS_TAG"
+      - name: The save-then-branch test, 40 times
+        run: |
+          mkdir -p failed
+          fails=0
+          for i in $(seq 40); do
+            rm -rf tests/runs
+            if ! SWATPLUS_BMI_KEEP_RUNS=1 uv run pytest -q tests/test_weather.py::test_saved_and_branched_runs_keep_the_records > "log-$i.txt" 2>&1; then
+              fails=$((fails + 1))
+              mv tests/runs "failed/run-$i"
+              cp "log-$i.txt" "failed/run-$i/pytest.txt"
+              grep -E "differs|Error" "log-$i.txt" | head -5
+            fi
+          done
+          echo "failed $fails of 40"
+          test "$fails" = 0
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: branch-stress-failures
+          path: failed/
+          if-no-files-found: ignore
+          retention-days: 14
