@@ -3,7 +3,7 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
-## Unreleased
+## 0.7.0 (2026-11-09)
 
 - Groundwater into the soil, the way back from a groundwater model: set
   `soil_layer_water__groundwater_inflow_rate` (m s-1, on the soil-layer grid) for the next day,
