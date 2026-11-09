@@ -3,7 +3,7 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
-## Unreleased
+## 0.6.1 (2026-11-08)
 
 - **Fixed:** finishing a branch (`finalize`, `run_to_end`) returned when the branch's replies
   closed, which can be before SWAT+ has written the last of its outputs: at exit gfortran can
