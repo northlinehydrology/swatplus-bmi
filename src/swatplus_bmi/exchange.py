@@ -18,11 +18,37 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import numpy as np
 
 PROTOCOL = 4
+
+
+def _wait_gone(pid: int, timeout: float | None) -> None:
+    """Wait until the process pid has exited. A branch's replies can close before it has
+    finished: at exit gfortran can close the reply pipe before SWAT+'s output files, and
+    the last of SWAT+'s buffered writes, the average annual summaries among them, reach
+    the files after that (seen on macOS runners: a comparison made when the replies
+    closed found aquifer_aa.txt different from stock, and the file the same a moment later). A branch is never
+    left a zombie (its parent ignores SIGCHLD, or it has gone to init), but one shown as
+    a zombie on Linux counts as gone."""
+    end = None if timeout is None else time.monotonic() + timeout
+    stat = Path(f"/proc/{pid}/stat")
+    while True:
+        try:
+            os.kill(pid, 0)
+        except (ProcessLookupError, PermissionError):
+            return
+        try:
+            if stat.read_text().rsplit(") ", 1)[1].startswith("Z"):
+                return
+        except (OSError, IndexError):
+            pass
+        if end is not None and time.monotonic() > end:
+            raise TimeoutError(f"SWAT+ branch {pid} still running after {timeout} s")
+        time.sleep(0.005)
 
 
 class ExchangeError(RuntimeError):
@@ -349,7 +375,8 @@ class Exchange:
             pass
         if self.proc is not None:
             code = self.proc.wait(timeout=timeout)
-        else:                    # a branch is not our child: it has ended when its replies close
+        else:                    # a branch is not our child: wait for its process to go
+            _wait_gone(self.pid, timeout)
             code = 0
         self._close()
         return code

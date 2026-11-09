@@ -7,6 +7,7 @@ taking different decisions can be checked against unbroken runs taking the
 same decisions.
 """
 
+import os
 import sys
 
 import numpy as np
@@ -40,6 +41,23 @@ def test_branch_then_both_continue_is_stock(day):
 
     assert differences(stock, RUNS / f"Osu_1hru-br{day}-parent") == []
     assert differences(stock, RUNS / f"Osu_1hru-br{day}-child") == []
+
+
+
+def test_a_finished_branch_has_exited():
+    """finalize returns once the branch's process has gone, not when its replies close:
+    SWAT+ writes the last of its outputs after that (aquifer_aa.txt and the other
+    summaries, found unfinished on macOS runners)."""
+    need(EXCHANGE)
+    parent = SwatPlusBmi()
+    parent.initialize(str(project("Osu_1hru", "Osu_1hru-br-exit-parent", daily=True)))
+    parent.update_until(365)
+    child = parent.branch(fresh("Osu_1hru-br-exit-child"))
+    pid = child._x.pid
+    child.finalize()
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
+    parent.finalize()
 
 
 def test_warm_up_once_then_scenarios_match_unbroken_runs():
