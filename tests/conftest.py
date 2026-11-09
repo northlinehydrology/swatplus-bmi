@@ -40,9 +40,11 @@ UNSET = {"hru_carbvars.txt": re.compile(rb"(?m)^([ ]*(?:[^ \n]+[ ]+){11}[^ \n]+)
 # what exchange.log says when a branch or a load couldn't carry an open file
 NOT_CARRIED = (b"partway through", b"could not be opened again")
 
-# clock readings SWAT+ writes to simulation.out: wall time, run date, build time
-CLOCK = [re.compile(rb"\d{1,2}:\s?\d{1,2}:\s?\d{1,2}"),
-         re.compile(rb"\d{1,2}/\s?\d{1,2}/\d{4}"),
+# clock readings SWAT+ writes to simulation.out: wall time, run date, build time. The time and
+# date are i2 fields, so 9 o'clock prints as " 9": each field is matched whole, or a run either
+# side of 10:00 or midnight would print a different number of spaces before the mask
+CLOCK = [re.compile(rb"[ \d]\d:[ \d]\d:[ \d]\d"),
+         re.compile(rb"[ \d]\d/[ \d]\d/\d{4}"),
          re.compile(rb"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d")]
 
 
