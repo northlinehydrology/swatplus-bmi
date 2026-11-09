@@ -9,16 +9,22 @@ gives water back to the soil where gwflow would. Test projects: Osu_1hru (one
 HRU) and Ames_sub1 (12 HRUs), everything printed daily.
 """
 
+import os
+
 import numpy as np
 import pytest
 
-from conftest import EXCHANGE, STOCK, differences, fresh, need, project, run_stock
+from conftest import CHECK, EXCHANGE, STOCK, differences, fresh, need, project, run_stock
 from swatplus_bmi import ExchangeError, SwatPlusBmi
 from test_reading import daily_table
 
 GW = "soil_layer_water__groundwater_inflow_rate"
 GWH = "soil_water__groundwater_inflow_rate"
 PERC = "soil_water__percolation_rate"
+NO3, SOLP = ("soil_layer_water_no3__groundwater_inflow_mass_rate",
+             "soil_layer_water_solp__groundwater_inflow_mass_rate")
+NO3H, SOLPH = ("soil_water_no3__groundwater_inflow_mass_rate",
+               "soil_water_solp__groundwater_inflow_mass_rate")
 MM_DAY = 86_400_000.0          # m/s -> mm/day
 
 
@@ -190,14 +196,90 @@ def test_refusals_keep_nothing():
     m.finalize()
 
 
+def test_nitrate_and_phosphorus_come_with_the_water():
+    """Every fifth day of the first year, water and a different nitrate and labile P mass into
+    each layer. Read back as set, and printed (gwsoiln, gwsoilp in hru_nb, kg/ha) as SWAT+
+    prints gwflow's; nothing on the other days."""
+    need(EXCHANGE)
+    m = started("gws-mass")
+    n = m.get_grid_size(m.get_var_grid(GW))
+    area = m._x.catalog.grids["hru"].area_ha[0]
+    no3 = np.linspace(1.0, 3.0, n) * area / 86400 / n   # 2 kg/ha a day in all
+    solp = no3 / 10
+    put = set()
+    back = {}
+    while m.get_current_time() < m.get_end_time():
+        day = int(m.get_current_time())
+        if day < 365 and day % 5 == 0:
+            m.set_value(GW, np.full(n, 1.0 / MM_DAY))
+            m.set_value(NO3, no3)
+            m.set_value(SOLP, solp)
+            put.add(day)
+        m.update()
+        back[day] = [values(m, v) for v in (NO3, SOLP, NO3H, SOLPH)]
+    run = finish(m)
+    nb = daily_table(run / "hru_nb_day.txt")["hru0001"]
+    for day, (a, b, ah, bh) in back.items():
+        if day in put:
+            np.testing.assert_allclose(a, no3, rtol=1e-6)
+            np.testing.assert_allclose(b, solp, rtol=1e-6)
+            assert ah[0] == pytest.approx(no3.sum(), rel=1e-5)
+            assert bh[0] == pytest.approx(solp.sum(), rel=1e-5)
+            assert nb["gwsoiln"][day] == pytest.approx(no3.sum() * 86400 / area, abs=6e-4)
+            assert nb["gwsoilp"][day] == pytest.approx(solp.sum() * 86400 / area, abs=6e-4)
+        else:
+            assert not (a.any() or b.any() or ah.any() or bh.any())
+            assert nb["gwsoiln"][day] == 0 and nb["gwsoilp"][day] == 0
+
+
+def test_water_and_mass_every_day_stay_in_bounds():
+    """Water, nitrate and phosphorus into every layer every day of the run, on the build with
+    array bounds checked: a write outside SWAT+'s arrays would stop it with an error."""
+    need(CHECK)
+    os.environ["SWATPLUS_EXCHANGE"] = str(CHECK)
+    try:
+        m = started("gws-bounds")
+        n = m.get_grid_size(m.get_var_grid(GW))
+        while m.get_current_time() < m.get_end_time():
+            m.set_value(GW, np.full(n, 0.5 / MM_DAY))
+            m.set_value(NO3, np.full(n, 1e-7))
+            m.set_value(SOLP, np.full(n, 1e-8))
+            m.update()
+        run = finish(m)
+    finally:
+        os.environ.pop("SWATPLUS_EXCHANGE", None)
+    assert (run / "success.fin").exists()
+
+
+def test_a_mass_needs_the_water():
+    need(EXCHANGE)
+    m = started("gws-mass-refuse", 30)
+    n = m.get_grid_size(m.get_var_grid(GW))
+    with pytest.raises(ExchangeError, match="set soil_layer_water__groundwater_inflow_rate first"):
+        m.set_value(NO3, np.full(n, 1e-6))
+    m.set_value_at_indices(GW, np.array([0]), np.array([1e-8]))
+    with pytest.raises(ExchangeError, match="value 2: no groundwater is set into that layer"):
+        m.set_value_at_indices(SOLP, np.array([0, 1]), np.array([1e-7, 1e-7]))
+    with pytest.raises(ExchangeError, match="can't be negative"):
+        m.set_value_at_indices(NO3, np.array([0]), np.array([-1e-7]))
+    m.set_value_at_indices(NO3, np.array([0]), np.array([1e-7]))
+    m.update()
+    assert values(m, NO3)[0] == pytest.approx(1e-7, rel=1e-6)
+    assert not values(m, SOLP).any()
+    m.finalize()
+
+
 def test_set_before_a_save_or_branch_goes_in_after():
-    """Set for the next day, then save and branch: the loaded run, the branch and the
-    original all put it in, and all three finish as the same run."""
+    """Set water, nitrate and phosphorus for the next day, then save and branch: the loaded
+    run, the branch and the original all put them in, and all three finish as the same run."""
     need(EXCHANGE)
     m = started("gws-save", 400)
     n = m.get_grid_size(m.get_var_grid(GW))
     v = np.linspace(1.0, 3.0, n) / MM_DAY
+    mass = np.linspace(1e-6, 3e-6, n)
     m.set_value(GW, v)
+    m.set_value(NO3, mass)
+    m.set_value(SOLP, mass / 10)
     snap = m.save_state(fresh("gws-snap"))
     b = m.branch(fresh("gws-branch"))
     k = SwatPlusBmi()
@@ -206,6 +288,8 @@ def test_set_before_a_save_or_branch_goes_in_after():
     for x in (m, b, k):
         x.update()
         np.testing.assert_allclose(values(x, GW), v, rtol=1e-6)
+        np.testing.assert_allclose(values(x, NO3), mass, rtol=1e-6)
+        np.testing.assert_allclose(values(x, SOLP), mass / 10, rtol=1e-6)
     runs = [finish(x) for x in (m, b, k)]
     assert differences(runs[0], runs[1]) == []
     assert differences(runs[0], runs[2]) == []

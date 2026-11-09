@@ -43,7 +43,8 @@
 
       private
       public :: exch_on, exch_open, exch_start, exch_pause, exch_apply, exch_record, exch_end,     &
-                exch_channel, exch_channel_in, exch_channel_cs, exch_hru_soil, exch_hru_gwsoil
+                exch_channel, exch_channel_in, exch_channel_cs, exch_hru_soil, exch_hru_gwsoil,   &
+                exch_hru_gwsoil_mass
 
       logical :: exch_on = .false.        !! exchange mode is on
       integer :: cmd_unit = input_unit    !! commands in
@@ -117,6 +118,10 @@
       real, dimension(:), allocatable :: hly_gw          !! mm/day     |groundwater into the soil layer set for the next day
       logical, dimension(:), allocatable :: hly_gw_on
       real, dimension(:), allocatable :: hly_gw_day      !! mm/day     |groundwater put into the soil layer the day just done
+      !! by nutrient (1 nitrate as N, 2 labile P) and layer, kg/day: mass with that groundwater
+      real, dimension(:,:), allocatable :: hly_gwm
+      logical, dimension(:,:), allocatable :: hly_gwm_on
+      real, dimension(:,:), allocatable :: hly_gwm_day
 
       !! the day's values SWAT+ zeroes when it prints them, kept at the end of the day
       real, dimension(:), allocatable :: pou_dmd_day     !! m3/day     |place of use demand
@@ -124,7 +129,7 @@
 
       !! the catalog: the water variables, then the chemistry variables, one per species
       !! (exch_start). var_fam is 0 for a water variable, or the chemistry family
-      integer, parameter :: nbase = 33
+      integer, parameter :: nbase = 37
       character(len=64), dimension(nbase), parameter :: base_name = [character(len=64) ::     &
             "channel_water__volume_outflow_rate",                           &
             "channel_water__volume",                                        &
@@ -158,22 +163,26 @@
             "soil_layer_water__wilting_point_depth",                       &
             "soil_layer_water__field_capacity_depth",                      &
             "soil_layer_water__saturation_depth",                          &
-            "soil_layer__saturated_hydraulic_conductivity"]
+            "soil_layer__saturated_hydraulic_conductivity",                &
+            "soil_layer_water_no3__groundwater_inflow_mass_rate",          &
+            "soil_layer_water_solp__groundwater_inflow_mass_rate",         &
+            "soil_water_no3__groundwater_inflow_mass_rate",                &
+            "soil_water_solp__groundwater_inflow_mass_rate"]
       character(len=8), dimension(nbase), parameter :: base_grid = [character(len=8) ::      &
             "cha", "cha", "cha", "aqu", "aqu", "aqu", "aqu", "rec", "pou", "pou",    &
             "cha", "cha", "hly", "hru", "hru", "hru", "hru", "hru",                  &
             "pcp", "tmp", "tmp", "slr", "hmd", "wnd", "hly", "hru",                  &
-            "hly", "hly", "hly", "hly", "hly", "hly", "hly"]
+            "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hru", "hru"]
       character(len=8), dimension(nbase), parameter :: base_units = [character(len=8) ::     &
             "m3 s-1", "m3", "m3 s-1", "m3", "m", "m3 s-1", "m s-1", "m3 s-1", "m3 s-1", "m3 s-1", &
             "m", "m3 s-1", "degC", "m", "m s-1", "m s-1", "m s-1", "m",                  &
             "m s-1", "degC", "degC", "W m-2", "1", "m s-1", "m s-1", "m s-1",        &
-            "m", "m", "m", "m", "m", "m", "m s-1"]
+            "m", "m", "m", "m", "m", "m", "m s-1", "kg s-1", "kg s-1", "kg s-1", "kg s-1"]
       character(len=3), dimension(nbase), parameter :: base_role = [character(len=3) ::      &
             "out", "out", "out", "out", "out", "out", "out", "in", "in", "out",  &
             "out", "in", "in", "out", "out", "out", "out", "out",                    &
             "in", "in", "in", "in", "in", "in", "in", "out",                         &
-            "out", "out", "out", "out", "out", "out", "out"]
+            "out", "out", "out", "out", "out", "out", "out", "in", "in", "out", "out"]
       !! chemistry families: <prefix><species><suffix>
       integer, parameter :: fam_conc = 1, fam_exch = 2, fam_rchg = 3, fam_load = 4
       character(len=24), dimension(4), parameter :: fam_prefix = [character(len=24) ::      &
@@ -303,6 +312,9 @@
       allocate (hly_gw(n_hly), source = 0.)
       allocate (hly_gw_on(n_hly), source = .false.)
       allocate (hly_gw_day(n_hly), source = 0.)
+      allocate (hly_gwm(2,n_hly), source = 0.)
+      allocate (hly_gwm_on(2,n_hly), source = .false.)
+      allocate (hly_gwm_day(2,n_hly), source = 0.)
       n_hly = 0
       do iv = 1, sp_ob%hru
         ihru = ob(sp_ob1%hru + iv - 1)%num
@@ -482,8 +494,10 @@
         dmd_flo_on(i) = .false.
       end do
 
-      !! groundwater into the soil goes in at exch_hru_gwsoil, HRU by HRU
+      !! groundwater into the soil goes in at exch_hru_gwsoil, HRU by HRU, and its
+      !! nitrate and phosphorus at exch_hru_gwsoil_mass
       hly_gw_day = 0.
+      hly_gwm_day = 0.
 
       return
       end subroutine exch_apply
@@ -694,6 +708,46 @@
       end subroutine exch_hru_gwsoil
 
 !!    --------------------------------------------------------------------
+      subroutine exch_hru_gwsoil_mass (j, k)
+
+!!    called at the top of nut_nlch (k = 1, nitrate) and nut_solp (k = 2,
+!!    labile phosphorus), right after gwflow adds what its groundwater
+!!    brings to the soil: adds the mass set with the day's groundwater to
+!!    each of the HRU's layers and counts it as SWAT+ counts gwflow's
+!!    (gwsoiln, gwsoilp, printed in hru_nb)
+
+      use organic_mineral_mass_module, only : soil1
+      use soil_module, only : soil
+      use hru_module, only : hru, gwsoiln, gwsoilp
+
+      integer, intent(in) :: j                            !HRU number
+      integer, intent(in) :: k                            !1 nitrate, 2 labile P
+      integer :: ly = 0
+      integer :: i = 0
+      real :: add = 0.                                    !kg/ha
+
+      if (.not. exch_on) return
+      if (j < lbound(hru_hly1,1) .or. j > ubound(hru_hly1,1)) return
+      if (hru_hly1(j) == 0) return
+      do ly = 1, soil(j)%nly
+        i = hru_hly1(j) + ly - 1
+        if (.not. hly_gwm_on(k,i)) cycle
+        add = hly_gwm(k,i) / hru(j)%area_ha               !kg/day -> kg/ha
+        if (k == 1) then
+          soil1(j)%mn(ly)%no3 = soil1(j)%mn(ly)%no3 + add
+          gwsoiln(j) = gwsoiln(j) + add
+        else
+          soil1(j)%mp(ly)%lab = soil1(j)%mp(ly)%lab + add
+          gwsoilp(j) = gwsoilp(j) + add
+        end if
+        hly_gwm_day(k,i) = hly_gwm(k,i)
+        hly_gwm_on(k,i) = .false.
+      end do
+
+      return
+      end subroutine exch_hru_gwsoil_mass
+
+!!    --------------------------------------------------------------------
       real function rating_depth (ich, flo_rate)
 
 !!    water depth on SWAT+'s rating curve for a channel at a flow rate (m3/s),
@@ -739,6 +793,7 @@
       !! HRU the day's commands didn't run
       hly_on = .false.
       hly_gw_on = .false.
+      hly_gwm_on = .false.
 
       return
       end subroutine exch_record
@@ -1151,7 +1206,7 @@
       write (u) size(pou_dmd_day), pou_dmd_day, pou_wdr_day
       write (u) size(chx_day), chx_day
       write (u) size(rec_flo), rec_flo, rec_flo_on, dmd_flo, dmd_flo_on, chx_flo, chx_on
-      write (u) n_hly, hly_tmp, hly_on, hly_gw, hly_gw_on, hly_gw_day
+      write (u) n_hly, hly_tmp, hly_on, hly_gw, hly_gw_on, hly_gw_day, hly_gwm, hly_gwm_on, hly_gwm_day
       write (u) n_sp, chm_flo, chm_on, chm_day, chm_wait, rcm_flo, rcm_on
       call save_units (u, run_dir)
       call swx_state_save (u)
@@ -1336,7 +1391,7 @@
         call reply ("@error the saved state has a different number of soil layers")
         error stop 7
       end if
-      read (u) hly_tmp, hly_on, hly_gw, hly_gw_on, hly_gw_day
+      read (u) hly_tmp, hly_on, hly_gw, hly_gw_on, hly_gw_day, hly_gwm, hly_gwm_on, hly_gwm_day
       read (u) n
       if (n /= n_sp) then
         call reply ("@error the saved state has a different number of salt ions")
@@ -1374,13 +1429,14 @@
       use maximum_data_module, only : db_mx
       use soil_module, only : soil
       use hru_module, only : hru
-      use output_landscape_module, only : hwb_d
+      use output_landscape_module, only : hwb_d, hnb_d
 
       character(len=*), intent(in) :: name
       real(8), dimension(:), allocatable :: val
       integer :: i = 0
       integer :: iob = 0
       integer :: iv = 0
+      integer :: k = 0
 
       select case (name)
 
@@ -1454,6 +1510,27 @@
           case default;                                    val(i) = ly%k / 3600000.d0   !mm/hr -> m/s
           end select
           end associate
+        end do
+
+      case ("soil_layer_water_no3__groundwater_inflow_mass_rate", "soil_layer_water_solp__groundwater_inflow_mass_rate")
+        !! the mass that went into each HRU soil layer with the day's groundwater
+        k = 1
+        if (name(18:21) == "solp") k = 2
+        allocate (val(n_hly), source = 0.d0)
+        do i = 1, n_hly
+          val(i) = hly_gwm_day(k,i) / 86400.d0             !kg/day -> kg/s
+        end do
+
+      case ("soil_water_no3__groundwater_inflow_mass_rate", "soil_water_solp__groundwater_inflow_mass_rate")
+        !! the day's nitrate or labile P into the soil profile with groundwater, gwflow's and set
+        allocate (val(sp_ob%hru), source = 0.d0)
+        do i = 1, sp_ob%hru
+          iob = sp_ob1%hru + i - 1
+          if (name(12:14) == "no3") then
+            val(i) = hnb_d(ob(iob)%num)%gwsoiln * hru(ob(iob)%num)%area_ha / 86400.d0   !kg/ha/day -> kg/s
+          else
+            val(i) = hnb_d(ob(iob)%num)%gwsoilp * hru(ob(iob)%num)%area_ha / 86400.d0
+          end if
         end do
 
       case ("soil_water__groundwater_inflow_rate")
@@ -1782,6 +1859,30 @@
         if (keep) then
           hly_gw(i) = real(v * 86400000.d0)               !m/s -> mm/day
           hly_gw_on(i) = .true.
+        end if
+
+      case ("soil_layer_water_no3__groundwater_inflow_mass_rate", "soil_layer_water_solp__groundwater_inflow_mass_rate")
+        if (i < 1 .or. i > n_hly) then
+          msg = "index out of range"
+          return
+        end if
+        if (v < 0.d0) then
+          msg = "a mass with groundwater into the soil can't be negative"
+          return
+        end if
+        if (.not. hly_gw_on(i)) then
+          msg = "no groundwater is set into that layer for the next day; set " //                   &
+                "soil_layer_water__groundwater_inflow_rate first: the mass comes with the water"
+          return
+        end if
+        if (keep) then
+          if (name(18:21) == "solp") then
+            hly_gwm(2,i) = real(v * 86400.d0)             !kg/s -> kg/day
+            hly_gwm_on(2,i) = .true.
+          else
+            hly_gwm(1,i) = real(v * 86400.d0)
+            hly_gwm_on(1,i) = .true.
+          end if
         end if
 
       case default

@@ -46,7 +46,8 @@ and talks to it over standard input and output; nothing is linked.
 The daily loop is in `time_control.f90`. The patch adds four calls there,
 three in `sd_channel_control3.f90` (the channel hooks), one in
 `hru_control.f90` (the soil temperature hook), one in `swr_percmain.f90`
-(groundwater into the soil), one in `main.f90.in` and one in `command.f90`. Each returns at once when
+(groundwater into the soil), one each in `nut_nlch.f90` and `nut_solp.f90`
+(its nitrate and phosphorus), one in `main.f90.in` and one in `command.f90`. Each returns at once when
 exchange mode is off.
 
 | Call | Where | What it does in exchange mode |
@@ -61,6 +62,7 @@ exchange mode is off.
 | `exch_channel_cs` | `sd_channel_control3.f90`, after SWAT+ splits salt and constituents between outflow and storage | takes the loss's share of the outflow's salt and constituents, as seepage |
 | `exch_hru_soil` | `hru_control.f90`, right after `stmp_solt` | replaces the day's soil layer temperatures that were set |
 | `exch_hru_gwsoil` | `swr_percmain.f90`, right after gwflow's `gwflow_soil` call, before the day's infiltration and percolation | adds the groundwater set for the day to the HRU's soil layers, counted in `gwsoilq` as gwflow's is |
+| `exch_hru_gwsoil_mass` | `nut_nlch.f90` and `nut_solp.f90`, right after gwflow adds its groundwater's nitrate and P | adds the nitrate and labile P set with the day's groundwater, counted in `gwsoiln`, `gwsoilp` |
 | `exch_end` | `time_control`, after the year loop | sends `@ended`, then answers commands until told to finish |
 
 The wait and the apply are split around `wallo_start_day` for two reasons.
@@ -181,6 +183,8 @@ names follow the channel ones. CSDMS lists no aquifer or withdrawal names.
 | `soil_layer_water__depth` | hly | out | m | `soil(j)%phys(k)%st` (mm) | water above the wilting point, as SWAT+ counts it; the layers add up to `soil(j)%sw` |
 | `soil_layer_water__wilting_point_depth`, `__field_capacity_depth`, `__saturation_depth` | hly | out | m | `%wpmm`, `%fc`, `%ul` (mm) | `fc` and `ul` are above the wilting point; `fc` is after the project's awc calibration |
 | `soil_layer__saturated_hydraulic_conductivity` | hly | out | m s-1 | `%k` (mm/hr) | |
+| `soil_layer_water_no3__groundwater_inflow_mass_rate`, `soil_layer_water_solp__groundwater_inflow_mass_rate` | hly | in and out | kg s-1 | added to `soil1(j)%mn(k)%no3`, `soil1(j)%mp(k)%lab` (kg/ha) and `gwsoiln`, `gwsoilp` | with the layer's groundwater the next day; reading gives what went in |
+| `soil_water_no3__groundwater_inflow_mass_rate`, `soil_water_solp__groundwater_inflow_mass_rate` | hru | out | kg s-1 | `hnb_d(j)%gwsoiln`, `%gwsoilp` (kg/ha) x area | `gwsoiln`, `gwsoilp` in `hru_nb_day.txt` |
 | `atmosphere_water__precipitation_leq-volume_flux` | pcp | in and out | m s-1 | `pcp(i)%ts(day,col)` (mm/day) | a record, set ahead (Setting weather records); reading gives the day just done's record, NaN where there's none |
 | `atmosphere_bottom_air__max_of_temperature` | tmp | in and out | degC | `tmp(i)%ts` | as above |
 | `atmosphere_bottom_air__min_of_temperature` | tmp | in and out | degC | `tmp(i)%ts2` | as above |
@@ -283,8 +287,14 @@ layers' water against the HRU's every day.
 Only additions: water leaving the soil to the groundwater is percolation,
 read with `soil_water__percolation_rate`, so a negative value is refused. A
 project that runs gwflow is refused too, since gwflow would put in its own.
-gwflow also brings solutes and heat with the water (`hru_soil`,
-`gwflow_soil.f90`); the BMI brings water only, for now.
+gwflow also brings solutes and heat with the water. Nitrate and labile
+phosphorus it keeps by layer (`hru_soil`) and adds at the top of `nut_nlch`
+and `nut_solp`, to `soil1(j)%mn(k)%no3` and `soil1(j)%mp(k)%lab`, counted
+in `gwsoiln` and `gwsoilp` (`hru_nb`). A second hook, `exch_hru_gwsoil_mass`,
+is the next line in each and adds the mass set with a layer's groundwater the
+same way. A mass needs the water set for its layer that day, as a channel
+gain's does. Salts (`salt_lch`, `cs_lch`) are left out: SWAT+ 62.0.1's salt
+module can't run with aquifers. Heat is left out too.
 
 The tests set a different amount into each layer every third day for two
 years and check that it goes in as set, is printed as `gwsoilq`, and closes:

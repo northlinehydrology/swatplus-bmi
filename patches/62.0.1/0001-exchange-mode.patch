@@ -76,6 +76,46 @@ index 8fe25aa..196511e 100644
        prog = " SWAT+ @TODAY@        MODULAR Rev @YEAR@.@SWAT_VERSION@"
  
        write (*,1000)
+diff --git a/src/nut_nlch.f90 b/src/nut_nlch.f90
+index 5552c64..787eedf 100644
+--- a/src/nut_nlch.f90
++++ b/src/nut_nlch.f90
+@@ -35,6 +35,7 @@
+       use hru_module, only : hru, latno3, percn, surqno3, tileno3, surfq, ihru, qtile, gwsoiln
+       use gwflow_module, only : gw_soil_flag,gw_solute_flag,hru_soil
+       use soil_module
++      use bmi_exchange_module, only : exch_hru_gwsoil_mass
+       
+       implicit none 
+ 
+@@ -64,6 +65,7 @@
+           gwsoiln(j) = gwsoiln(j) + hru_soil(j,jj,1) !HRU total
+         enddo
+       endif
++      call exch_hru_gwsoil_mass (j, 1)   !! exchange mode: nitrate set with the groundwater goes in here
+       
+       percnlyr = 0.
+ 
+diff --git a/src/nut_solp.f90 b/src/nut_solp.f90
+index 76271c1..d6d3a28 100644
+--- a/src/nut_solp.f90
++++ b/src/nut_solp.f90
+@@ -24,6 +24,7 @@
+       use output_landscape_module
+       use hydrograph_module, only : ht1
+       use utils
++      use bmi_exchange_module, only : exch_hru_gwsoil_mass
+       
+       implicit none 
+ 
+@@ -45,6 +46,7 @@
+           gwsoilp(j) = gwsoilp(j) + hru_soil(j,jj,2) !HRU total
+         enddo
+       endif
++      call exch_hru_gwsoil_mass (j, 2)   !! exchange mode: phosphorus set with the groundwater goes in here
+       
+       hls_d(j)%surqsolp = 0.
+       hls_d(j)%lchlabp = 0.
 diff --git a/src/sd_channel_control3.f90 b/src/sd_channel_control3.f90
 index 9c5c38d..7ce62f5 100644
 --- a/src/sd_channel_control3.f90

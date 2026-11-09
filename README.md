@@ -265,6 +265,13 @@ capacity are on the same grid, as SWAT+ keeps them (the water depths above the w
 the room left in a layer is `soil_layer_water__saturation_depth` less
 `soil_layer_water__depth`.
 
+Nitrate (as N) and labile phosphorus come up with the water as gwflow brings them: with the
+water set for a layer, set `soil_layer_water_no3__groundwater_inflow_mass_rate` and
+`soil_layer_water_solp__groundwater_inflow_mass_rate` (kg s-1 into the layer). They go into the
+layer's nitrate and labile P where gwflow adds its own (at the start of `nut_nlch` and
+`nut_solp`), counted as `gwsoiln` and `gwsoilp` in `hru_nb`. A mass without water set for its
+layer is refused.
+
 Chemistry goes the same way. For each salt ion SWAT+'s salt module simulates, and for nitrate
 (`no3`, as N) and soluble phosphorus (`solp`, as P):
 - read `aquifer_water_<ion>__recharge_mass_rate` for the mass reaching the water table, to pass
@@ -347,6 +354,9 @@ objects in a project are left out.
 | `soil_layer_water__field_capacity_depth` | HRU soil layers | no | m | water at field capacity, above the wilting point (`fc`) |
 | `soil_layer_water__saturation_depth` | HRU soil layers | no | m | water at saturation, above the wilting point (`ul`) |
 | `soil_layer__saturated_hydraulic_conductivity` | HRU soil layers | no | m s-1 | `k` (mm/hr) |
+| `soil_layer_water_no3__groundwater_inflow_mass_rate` | HRU soil layers | with the layer's water | kg s-1 | nitrate (N) with the groundwater, into the layer's nitrate |
+| `soil_layer_water_solp__groundwater_inflow_mass_rate` | HRU soil layers | with the layer's water | kg s-1 | labile P with the groundwater, into the layer's labile P |
+| `soil_water_no3__groundwater_inflow_mass_rate`, `soil_water_solp__groundwater_inflow_mass_rate` | HRUs | no | kg s-1 | `gwsoiln`, `gwsoilp` in `hru_nb_day.txt` (kg/ha) × area: gwflow's or set |
 | `atmosphere_water__precipitation_leq-volume_flux` | precipitation gages | yes (records ahead) | m s-1 | the gage's `.pcp` record (mm/day) |
 | `atmosphere_bottom_air__max_of_temperature` | temperature gages | yes (records ahead) | degC | the `.tmp` record's maximum |
 | `atmosphere_bottom_air__min_of_temperature` | temperature gages | yes (records ahead) | degC | the `.tmp` record's minimum |

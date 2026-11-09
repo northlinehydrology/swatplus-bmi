@@ -22,6 +22,13 @@ SWAT+ releases each version supports are in COMPATIBILITY.md.
   `soil_layer_water__saturation_depth` and `soil_layer__saturated_hydraulic_conductivity`.
   Checked against the soil file by SWAT+'s own layering rule (Osu_1hru's file layers, Ames_sub1's
   `soil_lyr_depths.sol`) and the project's awc calibration.
+- Nitrate and labile phosphorus with that groundwater, per layer:
+  `soil_layer_water_no3__groundwater_inflow_mass_rate` and
+  `soil_layer_water_solp__groundwater_inflow_mass_rate` (kg s-1, with the layer's water set),
+  added where gwflow adds its own (new hook `exch_hru_gwsoil_mass` in `nut_nlch` and `nut_solp`)
+  and counted as `gwsoiln`, `gwsoilp` (`hru_nb`); read-only HRU totals
+  `soil_water_no3__groundwater_inflow_mass_rate` and `soil_water_solp__groundwater_inflow_mass_rate`.
+  Checked against `hru_nb_day.txt` on Osu_1hru, in bounds, and across saves and branches.
 
 ## 0.6.1 (2026-11-08)
 
