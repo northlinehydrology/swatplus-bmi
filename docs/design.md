@@ -845,10 +845,25 @@ These are worth reporting upstream, separately from the exchange mode:
     that column out (`UNSET` in `tests/conftest.py`). (Draft issue in
     docs/upstream-issue-bmix.md.)
 
+17. `hru_output.f90` moves `hwb_d(j)%sw_init` and `sno_init` on to the
+    day's final values only inside its daily print block (`pco%day_print
+    == "y"`). With daily printing off, or outside the print window, they
+    keep their first values, so `sw_ave` and `snopack` (the averages of
+    initial and final) and the monthly and yearly `sw_init`, `sw_ave` and
+    `snopack` built from them are off. The generated reads show SWAT+'s
+    values as they are; `soil_water__depth` reads `soil(j)%sw` directly.
+
+18. Some header labels don't match what's printed under them:
+    `aquifer_day.txt`'s `orgn` and `orgp` columns print `aqu_d%cbn` and
+    `aqu_d%orgn` (`aqu_header` has no carbon column and `aquifer_dynamic`
+    no organic P), and `hru_ls`'s `lat3no3` is `latno3`. The generated
+    reads follow the printed headers, so they match the files.
+
 Items 7–9 and 12 were found by a study's model build (Nov 6, 2026) and
 confirmed by reading the source. Items 10, 11 and 13–15 were found while
 adding chemistry to the exchange (0.5.0), and item 16 by the nightly
-comparisons (Nov 7, 2026).
+comparisons (Nov 7, 2026), and items 17 and 18 while generating the
+reads of every printed column (0.8.0).
 
 ## Limits
 
