@@ -3,7 +3,7 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
-## Unreleased
+## 0.8.0 (2026-11-11)
 
 - Every column of SWAT+'s daily output records, read-only, under SWAT+'s own names and units:
   `<file>:<column>`, the column as `<file>_day.txt` heads it (`hru_wb:perc`, `aquifer:rchrg`,
