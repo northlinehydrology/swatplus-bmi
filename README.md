@@ -349,34 +349,40 @@ and nothing else, so a run is the one stock SWAT+ makes from the same `calibrati
 tests check it byte for byte). `swatplus_bmi.calibration.Change` and `write_changes` do the same
 from Python.
 
-Not every change SWAT+ reads is one it makes. `tools/audit_parameters.py` tried each of the 226
-parameters in the SWAT+ editor's `cal_parms.cal` alone on the test projects and read SWAT+'s
+Not every change SWAT+ reads is one it makes. `tools/audit_parameters.py` tried each parameter
+in the SWAT+ editor's `cal_parms.cal` alone on the test projects, from both the 2.2.0 list (226
+rows, the one in SWAT+'s example projects) and the 3.1.0 list (261 rows, the current one,
+unchanged through 4.0.0, with 48 names the older one lacks and 13 it dropped), and read SWAT+'s
 source where a change moved nothing ([docs/parameters-62.0.1.md](docs/parameters-62.0.1.md)).
-In 62.0.1:
+Of 274 rows in either list, in 62.0.1:
 
-- **81 made:** they moved the output of a test project with their objects.
-- **17 skipped:** SWAT+ reads the name and has no code for it (`spcon`, `cherod`, the channel
-  water quality `algae`, `organicn` and others). Refused.
-- **35 refused** for what the code does:
-  - 25 are used only while SWAT+ starts up, before it applies `calibration.cal`, so the change
-    reaches nothing: `chn`, `fps`, `fpn` and `chk` (the rating curves and storage
-    coefficients), `usle_p`, `ovn`, `slope_len`, and `nperco`, `pperco`, `phoskd`, `psp` and
-    `cmn`, which SWAT+ copies into each HRU when it starts. Three more are never used:
-    `evlai`, and `init_slow` and `init_passive`, read only by a routine nothing calls.
+- **91 made:** they moved the output of a test project with their objects.
+- **22 skipped:** SWAT+ reads the name and has no code for it. Among them editor 3.1's HRU
+  `lai_pot`, `harv_idx` and `phu_mat`, and the names editor 3.0 gave `chseq` and a new one
+  (`flood_sedfrac`, `part_size`). Refused.
+- **50 refused** for what the code does:
+  - 33 are used only while SWAT+ starts up, before it applies `calibration.cal`, so the change
+    reaches nothing: `chn`, `fps`, `fpn`, `chk` and `chss` (the rating curves and storage
+    coefficients), `usle_p`, `ovn`, `slope_len`, the aquifer's starting `dep_wt_init`,
+    `flo_init_mm` and `cbn_init`, and `nperco`, `nperco_lchtile`, `pperco`, `phoskd`, `psp`
+    and `cmn`, which SWAT+ copies into each HRU when it starts.
+  - 4 are overwritten: a soil's `lab_p`, `cbn`, `hum_c_n` and `hum_c_p` change the soil's
+    pools, which SWAT+ sets again from its inputs right after (`soil_nutcarb_init`).
+  - 5 are never read (`evlai`, `rs6`, `rs7`, `rk6`, `flo_dist`).
   - Channel `d50` is set to 1.0 every day, and `tile_latk` changes the tile lag.
-  - The five plant (`plt`) rows have no plant code: SWAT+ changes plants only for `phu_mat`,
+  - The six plant (`plt`) rows have no plant code: SWAT+ changes plants only for `phu_mat`,
     `lai_pot`, `harv_idx` and `epco`, and those by plant-database number.
-- **93 not checked:** neither project has their objects (reservoirs, HRU-lte, pesticides), or
-  their process doesn't run there (tiles, cracks, lapse rates, sub-daily unit hydrographs, the carbon rates). Allowed, with
-  a warning.
+- **111 not checked:** neither project has their objects (reservoirs, HRU-lte, pesticides,
+  gwflow), or their process doesn't run there (tiles, cracks, lapse rates, sub-daily unit
+  hydrographs, the carbon rates). Allowed, with a warning.
 
 An `absval` outside `cal_parms.cal`'s range is refused (SWAT+ would quietly use the nearer end),
 as are an unknown change type (SWAT+ would leave whatever memory held), objects that aren't in
 the project, layers on a parameter that isn't a soil's, and conditions on anything but an HRU's
 soil group, texture or land use (SWAT+ would read them for another object's number). A
 relative change is clamped to the range by SWAT+ object by object, which the wrapper can't see
-ahead. Names SWAT+ 62.0.1 has code for but the editor's list doesn't carry (`nperco_h`,
-`usle_c` and 56 others) aren't checked yet, so they're refused.
+ahead. 15 names SWAT+ 62.0.1 has code for are in neither editor list (`nperco_h`, `cmn_h`,
+`tile_K` and others); they aren't checked, so they're refused.
 
 ### Objects and grids
 

@@ -473,22 +473,31 @@ the test runs both and compares them byte for byte.
 
 What SWAT+ does with each change isn't what its file format suggests, so
 the wrapper refuses on evidence. `tools/audit_parameters.py run` tries each
-parameter in the SWAT+ editor's `cal_parms.cal` alone, as an `absval` for
+parameter in the SWAT+ editor's `cal_parms.cal`, as 2.2.0 wrote it (in
+SWAT+'s example projects) and as 3.1.0 has it (rebuilt from the editor's
+update code; unchanged through 4.0.0), keyed by name and object type, alone,
+as an `absval` for
 every object, on both test projects with everything printed daily, and
-compares every output file with the run without it (two identical runs
-first, to leave out anything that differs between them; the unset
+compares every output file with the run without it under the same list
+(two identical runs first, to leave out anything that differs between
+them; the unset
 `cons_bmix` column masked). `summary` turns that into
 `src/swatplus_bmi/calibration-62.0.1.json` and the table in
 `docs/parameters-62.0.1.md`, with SWAT+'s source read for every change
 that moved nothing:
 
-- **made** (81): moved an output on a project with its objects.
-- **skipped** (17): no case in `cal_parm_select`; refused.
-- **refused** (35): used only while SWAT+ starts up, before `proc_cal`
-  (25, from `hrudb_init`'s copies of `nperco` and the other nutrient
-  coefficients to the rating curves); never used (3); `d50`, reset to 1.0
-  each day; `tile_latk`, which changes the tile lag; the five plant rows.
-- **not checked** (93): no test project has their objects, or their
+Of 274 rows:
+
+- **made** (91): moved an output on a project with its objects.
+- **skipped** (22): no case in `cal_parm_select`; refused. Editor 3.1's
+  HRU `lai_pot`, `harv_idx` and `phu_mat` are among them.
+- **refused** (50): used only while SWAT+ starts up, before `proc_cal`
+  (33, from `hrudb_init`'s copies of `nperco` and the other nutrient
+  coefficients and `aqu_initial`'s starting aquifer to the rating curves);
+  overwritten (4: a soil's pools, which `soil_nutcarb_init` sets again right
+  after `proc_cal`); never read (5); `d50`, reset to 1.0 each day;
+  `tile_latk`, which changes the tile lag; the six plant rows.
+- **not checked** (111): no test project has their objects, or their
   process doesn't run there (Osu_1hru's one HRU is a rice paddy, whose
   runoff doesn't use the curve number; neither project has tiles,
   elevation bands or pesticides). Allowed, with a warning.
@@ -500,9 +509,16 @@ count for the type, `layers` on anything but a soil parameter, and
 conditions other than `hsg`, `texture` and `landuse` with `=`, or on
 anything but HRU, soil and layer parameters (the condition code reads the
 HRU arrays at the object's number, whatever the object). The project needs
-a `cal_parms.cal`; without one SWAT+ makes no change at all. Names
-SWAT+ has code for but the editor's list lacks (`nperco_h`, `usle_c` and
-56 others) aren't checked yet, so they're refused.
+a `cal_parms.cal`; without one SWAT+ makes no change at all. The 15 names
+SWAT+ has code for that neither editor list has (`nperco_h` and the other
+HRU-level nutrient coefficients, gwflow's `tile_K`) aren't checked, so
+they're refused.
+
+Reading the source is where errors creep in, so each reason names the
+routine and, where it matters, the line. One was caught on the second
+pass: `soil_nutcarb_init` is called from `main.f90.in` (line 126, after
+`proc_cal`, on purpose, so the carbon pools' start-up fractions take
+effect), which a search of the `.f90` files alone missed.
 
 Prior art: the SWAT+ team's
 [swatplus-calibration-test-suite](https://github.com/swat-model/swatplus-calibration-test-suite)
@@ -510,8 +526,7 @@ Prior art: the SWAT+ team's
 parameters are sensitive, and whether a change through `calibration.cal`
 gives the same result as one in the parameter's own file. The audit here
 asks the first question of 62.0.1 and reads the source for the answers; its
-second comparison, and its parameter tables, are the way to check the 58
-names the editor's list lacks.
+second comparison, made with its parameter tables, is the next step.
 
 Objects and conditions are tested on Ames_sub1 by the first day's curve
 number (`hru_wb:cn`): later days can't show which HRUs changed, because

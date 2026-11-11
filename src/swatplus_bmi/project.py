@@ -138,7 +138,7 @@ def check_calibration(project: str | Path) -> list[str]:
     known = set()
     if parms.exists():
         rows = parms.read_text().splitlines()[3:]
-        known = {r.split()[0] for r in rows if r.split()}
+        known = {r.split()[0]: r.split()[1] for r in rows if len(r.split()) > 1}
     out = []
     rows = upd.read_text().splitlines()
     i, n = 3, int(rows[1].split()[0])
@@ -154,8 +154,8 @@ def check_calibration(project: str | Path) -> list[str]:
         elif name == "chn":
             out.append(f"{upd.name}: chn has no effect on routing; SWAT+ builds the channel rating "
                        "curves before it applies calibration.cal")
-        elif evidence().get(name, {}).get("verdict") in REFUSED:
-            out.append(f"{upd.name}: {name}: {evidence()[name]['why']}")
+        elif evidence().get(f"{name}/{known[name]}", {}).get("verdict") in REFUSED:
+            out.append(f"{upd.name}: {name}: {evidence()[f'{name}/{known[name]}']['why']}")
         i += 1 + conds                                    # condition lines follow the change
     return out
 

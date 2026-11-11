@@ -1,4 +1,4 @@
-"""Parameter changes at initialize, through SWAT+'s own calibration.cal (0.8.0).
+"""Parameter changes at initialize, through SWAT+'s own calibration.cal (0.9.0).
 
 The wrapper only writes rows into the run copy's calibration.cal; SWAT+ makes
 the changes. So the test of faithfulness is stock SWAT+ given the same file:
@@ -11,11 +11,12 @@ given Osu_1hru's cal_parms.cal).
 
 import re
 import shutil
+import sys
 
 import numpy as np
 import pytest
 
-from conftest import EXCHANGE, RUNS, STOCK, differences, made, need, project, refdata, run_stock
+from conftest import EXCHANGE, ROOT, RUNS, STOCK, differences, made, need, project, refdata, run_stock
 from swatplus_bmi import SwatPlusBmi
 from swatplus_bmi.calibration import Change, check_changes, evidence, write_changes
 
@@ -145,11 +146,32 @@ def test_a_change_needs_a_run_dir_and_a_cal_parms_cal(tmp_path):
     assert "no cal_parms.cal" in problems[0]
 
 
-def test_the_evidence_covers_every_parameter_in_the_editors_list():
-    rows = [r.split() for r in (refdata() / "Osu_1hru" / "cal_parms.cal").read_text().splitlines()[3:]]
-    names = {r[0] for r in rows if r}
+def editor_lists():
+    sys.path.insert(0, str(ROOT / "tools"))
+    from audit_parameters import editor_3_1, parms
+    older = parms(refdata() / "Osu_1hru" / "cal_parms.cal")
+    return {"2.2.0": older, "3.1.0": editor_3_1(older)}
+
+
+def test_the_evidence_covers_every_parameter_in_both_editor_lists():
     ev = evidence()
-    assert names == set(ev)
+    for ver, rows in editor_lists().items():
+        keys = {f"{n}/{typ}" for n, typ, _, _ in rows}
+        assert keys <= set(ev), ver
+        assert all(ver in ev[k]["in_lists"] for k in keys)
     assert {e["verdict"] for e in ev.values()} == {"made", "not checked", "skipped", "refused"}
     assert all(e["why"] for e in ev.values() if e["verdict"] != "made")
     assert sum(e["verdict"] == "made" for e in ev.values()) >= 80
+
+
+def test_a_project_with_the_newer_editors_list_is_checked_against_it():
+    """Editor 3.1 lists lai_pot for HRUs, and SWAT+ 62.0.1 has no code for it there; its new
+    nperco_lchtile is checked like any other."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    from audit_parameters import write_parms
+    run = project("Osu_1hru", "cal-editor-3.1", years=(2010, 2010))
+    write_parms(editor_lists()["3.1.0"], run / "cal_parms.cal")
+    problems, _ = check_changes(run, [Change("lai_pot", 10.0)])
+    assert len(problems) == 1 and "has no code for it" in problems[0]
+    problems, _ = check_changes(run, [Change("nperco_lchtile", 0.5, "absval")])
+    assert not [p for p in problems if "isn't known" in p]

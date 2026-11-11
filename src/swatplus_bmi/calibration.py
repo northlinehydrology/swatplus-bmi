@@ -77,7 +77,8 @@ class Change:
 
 @cache
 def evidence() -> dict:
-    """What tools/audit_parameters.py found, by parameter: obj_typ, verdict, why."""
+    """What tools/audit_parameters.py found, by "name/obj_typ": name, obj_typ, verdict, why, the
+    editor lists that have it, and the projects whose output it moved."""
     return json.loads((Path(__file__).parent / "calibration-62.0.1.json").read_text())["params"]
 
 
@@ -127,13 +128,13 @@ def check_changes(project: str | Path, changes) -> tuple[list[str], list[str]]:
             problems.append(f"{where} not in the project's cal_parms.cal, so SWAT+ would skip it")
             continue
         typ, lo, hi = parms[c.name]
-        e = ev.get(c.name)
+        e = ev.get(f"{c.name}/{typ}")
         if e is None:
-            problems.append(f"{where} not in the editor's cal_parms.cal the tests checked, so it "
-                            "isn't known what SWAT+ 62.0.1 does with it")
-            continue
-        if e["obj_typ"] != typ:
-            problems.append(f"{where} the project lists it for {typ}, the checked list for {e['obj_typ']}")
+            others = sorted(v["obj_typ"] for v in ev.values() if v["name"] == c.name)
+            problems.append(f"{where} the project lists it for {typ}" + (
+                f"; the editor's lists the tests checked have it for {', '.join(others)}" if others else
+                ", and it isn't in the editor's lists the tests checked") +
+                ", so it isn't known what SWAT+ 62.0.1 does with it")
             continue
         if e["verdict"] in REFUSED:
             problems.append(f"{where} {e['why']}")
