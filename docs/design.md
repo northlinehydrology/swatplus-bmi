@@ -504,6 +504,15 @@ a `cal_parms.cal`; without one SWAT+ makes no change at all. Names
 SWAT+ has code for but the editor's list lacks (`nperco_h`, `usle_c` and
 56 others) aren't checked yet, so they're refused.
 
+Prior art: the SWAT+ team's
+[swatplus-calibration-test-suite](https://github.com/swat-model/swatplus-calibration-test-suite)
+(C. J. Chawanda, 0.1.0, September 2023, for 60.x executables) reports which
+parameters are sensitive, and whether a change through `calibration.cal`
+gives the same result as one in the parameter's own file. The audit here
+asks the first question of 62.0.1 and reads the source for the answers; its
+second comparison, and its parameter tables, are the way to check the 58
+names the editor's list lacks.
+
 Objects and conditions are tested on Ames_sub1 by the first day's curve
 number (`hru_wb:cn`): later days can't show which HRUs changed, because
 its decision tables draw from one random number generator in HRU order,

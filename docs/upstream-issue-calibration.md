@@ -24,6 +24,8 @@ Each parameter in the SWAT+ editor's `cal_parms.cal` (the one shipped with `refd
 
 **Possible fixes:** apply `calibration.cal` before the start-up routines that derive values from parameters, or call them again for changed objects (as the `cn2` and `awc` cases already do with `curno` and `soil_awc_init`); make the `bsn_prm` copies in `hrudb_init` follow a change; remove the `d50` reset; fix the three wrong variables; warn on a name with no code, and on an unknown change type.
 
+The swatplus-calibration-test-suite (0.1.0, 2023) would find the first kind as a difference between a change in `calibration.cal` and the same change in the parameter's file; these are 62.0.1 results, from runs and the source.
+
 Found while adding parameter changes to swatplus-bmi (Nov 2026), by runs and by reading the source.
 
 Andrew Sommerlot
