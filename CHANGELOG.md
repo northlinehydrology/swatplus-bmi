@@ -3,7 +3,7 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
-## Unreleased
+## 0.9.0 (2026-11-11)
 
 - Parameters at initialize, through SWAT+'s own `calibration.cal`: `[[parameter]]` tables in
   the TOML config (name, value, change type, objects, soil layers, conditions), written into the
