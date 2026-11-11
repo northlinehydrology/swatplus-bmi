@@ -939,20 +939,31 @@ These are worth reporting upstream, separately from the exchange mode:
     docs/upstream-issue-calibration.md, which extends the `chn` one): 25
     parameters are read only by start-up routines that run before
     `proc_cal`, among them `nperco`, `pperco`, `phoskd`, `psp` and `cmn`,
-    which `hrudb_init` copies into each HRU; `evlai`, `init_slow` and
-    `init_passive` are never used; `sd_channel_sediment3` sets `d50` to 1.0
-    each day; `tile_latk` changes the tile lag, the plant `epco` changes
+    which `hrudb_init` copies into each HRU, and the aquifer's starting
+    values, which `aqu_initial` copies; a soil's `lab_p`, `cbn`, `hum_c_n`
+    and `hum_c_p` are overwritten by `soil_nutcarb_init` right after; five
+    are never read; `sd_channel_sediment3` sets `d50` to 1.0 each day; `tile_latk` changes the tile lag, the plant `epco` changes
     `lai_pot`, and the climate `temp` case indexes `tmp(ig)` with `ig`
     unset; 17 names have no code; plant rows count objects in
     plant-database rows and use them as HRU numbers; and `chg_par` has no
-    default for an unknown change type.
+    default for an unknown change type. Editor 3.x adds its own: HRU
+    `lai_pot`, `harv_idx` and `phu_mat`, `flood_sedfrac` (its new name for
+    `chseq`) and `part_size` have no code.
+
+20. `aqu_initial.f90`, line 172, computes each aquifer's starting storage
+    from `aqu_d(iaqdb)%dep_wt`, where `iaqdb` is the aquifer's row in the
+    database (`ob(iob)%props`), not the aquifer: the line before sets
+    `aqu_d(iaq)%dep_wt`. With one aquifer per database row in order the two
+    agree; otherwise an aquifer starts with storage from another
+    aquifer's water table, or from zero. (In
+    docs/upstream-issue-calibration.md.)
 
 Items 7–9 and 12 were found by a study's model build (Nov 6, 2026) and
 confirmed by reading the source. Items 10, 11 and 13–15 were found while
 adding chemistry to the exchange (0.5.0), and item 16 by the nightly
 comparisons (Nov 7, 2026), items 17 and 18 while generating the
-reads of every printed column (0.8.0), and item 19 while adding parameters
-at initialize (0.8.0).
+reads of every printed column (0.8.0), and items 19 and 20 while adding
+parameters at initialize (0.9.0).
 
 ## Limits
 
