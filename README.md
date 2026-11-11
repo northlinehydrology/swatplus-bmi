@@ -22,7 +22,7 @@ against unpatched SWAT+ on the projects listed in [COMPATIBILITY.md](COMPATIBILI
 paused run can also be saved and loaded, or branched in memory, so a warm-up is run once and
 every scenario starts from the same state.
 
-**Status:** working for SWAT+ 62.0.1; release 0.7.0 ([PyPI](https://pypi.org/project/swatplus-bmi/), [Zenodo](https://doi.org/10.5281/zenodo.23963201)). Tested on the two example projects that
+**Status:** working for SWAT+ 62.0.1; release 0.8.0 ([PyPI](https://pypi.org/project/swatplus-bmi/), [Zenodo](https://doi.org/10.5281/zenodo.23963201)). Tested on the two example projects that
 ship with SWAT+ (below) and a 2,371-HRU study build. See [COMPATIBILITY.md](COMPATIBILITY.md) and the design note,
 [docs/design.md](docs/design.md).
 
@@ -325,7 +325,8 @@ climate-change adjustments are never read from any input, so they stay zero.
 Each SWAT+ object type is a BMI grid of type `points`: one point per object, longitude as x and
 latitude as y (water users have no location: NaN). `get_grid_object_names(grid)` gives the
 SWAT+ object names, and `get_object_index(var, name)` gives an object's index. Grids with no
-objects in a project are left out.
+objects in a project are left out. Landscape units and the basin (for the
+`lsunit_*` and `basin_*` reads below) have no location either.
 
 ## Variables
 
@@ -385,6 +386,38 @@ against SWAT+'s own daily output in the tests, to the digits SWAT+ prints, excep
 62.0.1 can't show: an aquifer's salt recharge and a point source's salt load (its salt module
 doesn't run with aquifers or point sources) and an aquifer's soluble P recharge (not printed).
 
+### Every printed daily column
+
+Besides the variables above, every column of SWAT+'s daily output records can be read, under
+SWAT+'s own names and units: `<file>:<column>`, the daily file without `_day.txt` and the column
+as its header prints it, in the units printed under it. `hru_wb:perc` is `perc` in
+`hru_wb_day.txt`, in mm; `channel_sd:no3_out` is `no3_out` in `channel_sd_day.txt`, in kgN.
+They're read-only, and they're there whether or not the file is printed. The files covered are
+`hru_wb`, `hru_nb`, `hru_ls`, `hru_pw`, `lsunit_wb`, `lsunit_nb`, `lsunit_ls`, `lsunit_pw`,
+`basin_wb`, `basin_nb`, `basin_ls`, `basin_pw`, `aquifer` and `channel_sd`: 360 columns in
+62.0.1. The value is the record SWAT+ holds for the day just done, which is what it prints for
+that day; the tests check every one against the printed files, day by day.
+
+They're generated at build time from SWAT+'s source (`tools/gen_reads.py`), so a new SWAT+
+release brings its own columns. Left out: columns SWAT+ heads `null` (a hydrograph's
+temperature), columns that aren't part of a record (`channel_sd`'s water temperature;
+`hru_wb`'s plant cover and operation text), and the water balances' `sw_init` and `sno_init`,
+which SWAT+ moves on to the next day's start right after printing (the day's start is the day
+before's `sw_final` and `sno_final`). `python tools/gen_reads.py <SWAT+ src/> --list` prints the
+table, with the record component under each column where the names differ.
+
+Three things come from SWAT+, not from the wrapper:
+- SWAT+ makes these records at the end of each day it summarizes, after `print.prt`'s
+  `nyskip` years. Before the first day and after a day in those years there's no record, and
+  a read gives NaN. The curated variables have values on every day.
+- Some headers name the wrong thing. In 62.0.1 `aquifer`'s `orgn` column holds the aquifer's
+  carbon (`cbn`) and its `orgp` column its organic N (`orgn`). The read follows the printed
+  header, so it matches the file.
+- SWAT+ moves `hru_wb`'s `sw_init` and `sno_init` on to the day's final values only on days
+  it prints daily output. With daily printing off they stay at their first values, and
+  `sw_ave` and `snopack` (averages of the initial and final values) are off with them. The
+  curated `soil_water__depth` and `snowpack__liquid-equivalent_depth` don't have this problem.
+
 ## Saving state
 
 BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `get_state` and
@@ -440,8 +473,10 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   land use, soils or parameters; those are scenario inputs. Each settable state needs its own
   hook in the patch, at the point where SWAT+ has computed it and before anything uses it
   (docs/design.md, Setting states), so states are added one at a time, each with the same tests.
-- **A handful of variables so far.** Adding one is a few lines (see `fortran/`), but each needs a
-  test against SWAT+'s output.
+- **Curated names for a handful of variables.** Every printed daily column of the HRU, landscape
+  unit, basin, aquifer and channel records can be read under its SWAT+ name (Every printed
+  daily column), but CSDMS-named variables in SI units are added one at a time, each with a
+  test against SWAT+'s output. Reservoir, wetland and other records aren't generated yet.
 - **One process per model, one message per day per value.** On a tiny project the messages cost
   more than SWAT+'s computing. On a real project computing dominates.
 - **Branching needs fork:** Mac and Linux. Saving and loading work everywhere, but the Windows
@@ -626,6 +661,7 @@ folders once it passes (set `SWATPLUS_BMI_KEEP_RUNS=1` to keep them).
 | Exchange mode off changes nothing | every output file against unpatched SWAT+, byte for byte |
 | Stepping changes nothing | the same, stepped one day at a time and in chunks, 14 and 46 years |
 | Values read are SWAT+'s | every variable, every day, against SWAT+'s daily output files |
+| Every printed daily column | each generated read, every object, every day, against the printed file; NaN in skipped years |
 | Set values take effect exactly | a set withdrawal leaves the channel short by exactly that water; balances close |
 | Setting SWAT+'s own value back | point source flow and loads, demand and soil layer temperature set every day to SWAT+'s own: stock output, byte for byte |
 | Chemistry | reads against SWAT+'s salt and nutrient outputs; a gain's mass arrives exactly; a loss takes the outflow's concentration; the channel's salt balance closes |

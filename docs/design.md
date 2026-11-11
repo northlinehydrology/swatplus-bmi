@@ -101,7 +101,7 @@ to `exchange.log`. No sockets and no C are needed for stepping.
 Startup (SWAT+ to caller):
 
 ```
-@hello swatplus-exchange 3
+@hello swatplus-exchange 5
 @model SWAT+ 2026-10-16        MODULAR Rev 2026.62.0.1
 @build 3f9c0e...                  hash of the swatplus-bmi sources it was built from
 @start 2010 1                    first year, first day of year
@@ -116,7 +116,14 @@ Startup (SWAT+ to caller):
 @obj hru 1 hru0001 ...
 @grid hly 5                      HRU soil layers; a seventh field, the layer's mid-depth (m)
 @obj hly 1 hru0001:1 1.27328949E+02 3.55263214E+01 1.04000006E+01 5.00000000E-03
+(the weather gages' grids, pcp, tmp, slr, hmd and wnd)
+@grid lsu 1                      landscape units; no location (NaN)
+@obj lsu 1 lsu01 NaN NaN 1.04000006E+01
+@grid bsn 1                      the basin; none without landscape unit elements
+@obj bsn 1 Osu NaN NaN 1.04000006E+01
 @var channel_water__volume_outflow_rate cha out m3 s-1
+...
+@var hru_wb:perc hru out mm      a printed daily column (generated), in SWAT+'s units
 ...
 @ready
 @paused 0 2010 1                 days done, year and day of year of the next day
@@ -210,6 +217,52 @@ The reading tests compare every day of every output variable with SWAT+'s
 own daily files, to the precision SWAT+ prints them (seven or eight
 significant digits); exact agreement with SWAT+'s memory is shown by setting
 values back (What the tests prove).
+
+### Every printed daily column (generated)
+
+Besides the curated variables, each column of SWAT+'s daily output records
+is a read-only variable named `<file>:<column>`: the daily file without
+`_day.txt`, and the column as its header prints it (`hru_wb:perc`,
+`aquifer:rchrg`, `channel_sd:flo_out`), in the units printed under it. No
+conversion and no new names: these are SWAT+'s own, for anyone who knows
+the output files, and the curated CSDMS names stay the ones to couple with.
+
+- **Generated, not hand-written.** `tools/gen_reads.py` reads this release's
+  source at build time (before the state serializer) and writes
+  `bmi_reads_module.f90`: the catalog (name, grid, units) and one `select
+  case` that returns column *k* of object *n*'s record. A column is matched
+  to the record component printed under it by position, as SWAT+'s write
+  statements do: the header type's leading columns are the date and the
+  object, and the rest follow the printed components in order. The
+  generator stops if a header names fewer columns than the record has, a
+  component isn't a real, or a column name repeats in a file.
+- **Covered:** `hru_wb`, `hru_nb`, `hru_ls`, `hru_pw` (hru grid),
+  `lsunit_wb` ... `lsunit_pw` (lsu grid: landscape units, no location),
+  `basin_wb` ... `basin_pw` (bsn grid: one object, or none without
+  landscape unit elements, since SWAT+ then makes no basin records),
+  `aquifer` (aqu) and `channel_sd` (cha): 360 columns in 62.0.1. Left out:
+  columns headed `null` (a hydrograph's temperature), printed values that
+  aren't in a record (`channel_sd`'s `wtemp`, a local; `hru_wb`'s
+  `plant_cov` and `mgt_ops`, text), and the water balances' `sw_init` and
+  `sno_init`, which the output step (`hru_output`, `basin_output`) sets
+  to the day's final values right after printing, for the next day; at the pause they no longer hold what
+  was printed (the test found it), and the day's start is the day before's
+  `sw_final` and `sno_final`. Reservoirs wait for a test project
+  with one (with settable reservoirs).
+- **When there's a value.** The value is the record for the day just done:
+  SWAT+ fills it during the day and finishes it in its output step
+  (`hru_output` averages `sw` from `sw_init` and `sw_final`, `lsu_output`
+  and `basin_output` sum the HRUs), and the pause comes after. SWAT+ runs
+  its output step only in the years it summarizes (`time%yrs >
+  pco%nyskip`), so before the first day and after a day in a skipped
+  year there's no record and a read gives NaN (not an error, so a client
+  that reads every output at the start, as BMI allows, still works). At a pause the coming day is `time%day` of year `time%yrs`, so
+  on a year's first day the day just done is in the year before
+  (`out_made`); no saved-state change is needed.
+- **Tested** by the printed files themselves: with every daily file on,
+  each read after each day equals what SWAT+ printed for that object and
+  day, to the digits printed (`tests/test_generated_reads.py`, on both
+  projects), and a skipped year gives NaN.
 
 ### Grids and IDs
 
@@ -646,7 +699,10 @@ few variants of them, and whatever is added with `$SWATPLUS_BMI_PROJECTS`
 (COMPATIBILITY.md lists the projects checked). Code those don't run (gwflow,
 salts with aquifers or point sources, which stock 62.0.1 can't run, other
 constituents, pesticide applications, most reservoir and wetland code,
-calibration) is covered by the reasoning in this note, not by tests. Of
+calibration) is covered by the reasoning in this note, not by tests. The
+generated reads are checked against every daily file that `Osu_1hru`
+prints and the HRU files of `Ames_sub1`; neither project has a reservoir,
+which is why reservoir records aren't generated yet. Of
 the chemistry variables, an aquifer's salt recharge and a point source's
 salt load have no project to run on, and SWAT+ prints no soluble P
 recharge to check against. The
@@ -789,10 +845,25 @@ These are worth reporting upstream, separately from the exchange mode:
     that column out (`UNSET` in `tests/conftest.py`). (Draft issue in
     docs/upstream-issue-bmix.md.)
 
+17. `hru_output.f90` moves `hwb_d(j)%sw_init` and `sno_init` on to the
+    day's final values only inside its daily print block (`pco%day_print
+    == "y"`). With daily printing off, or outside the print window, they
+    keep their first values, so `sw_ave` and `snopack` (the averages of
+    initial and final) and the monthly and yearly `sw_init`, `sw_ave` and
+    `snopack` built from them are off. The generated reads show SWAT+'s
+    values as they are; `soil_water__depth` reads `soil(j)%sw` directly.
+
+18. Some header labels don't match what's printed under them:
+    `aquifer_day.txt`'s `orgn` and `orgp` columns print `aqu_d%cbn` and
+    `aqu_d%orgn` (`aqu_header` has no carbon column and `aquifer_dynamic`
+    no organic P), and `hru_ls`'s `lat3no3` is `latno3`. The generated
+    reads follow the printed headers, so they match the files.
+
 Items 7–9 and 12 were found by a study's model build (Nov 6, 2026) and
 confirmed by reading the source. Items 10, 11 and 13–15 were found while
 adding chemistry to the exchange (0.5.0), and item 16 by the nightly
-comparisons (Nov 7, 2026).
+comparisons (Nov 7, 2026), and items 17 and 18 while generating the
+reads of every printed column (0.8.0).
 
 ## Limits
 

@@ -30,7 +30,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from state_inventory import DECL, logical_lines, parse_decl, rank_of  # noqa: E402
 
-SKIP_MODULES = {"bmi_exchange_module", "bmi_state_module"}
+SKIP_MODULES = {"bmi_exchange_module", "bmi_state_module", "bmi_reads_module"}
 
 
 @dataclass

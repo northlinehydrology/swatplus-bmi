@@ -3,6 +3,17 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
+## 0.8.0 (2026-11-11)
+
+- Every column of SWAT+'s daily output records, read-only, under SWAT+'s own names and units:
+  `<file>:<column>`, the column as `<file>_day.txt` heads it (`hru_wb:perc`, `aquifer:rchrg`,
+  `channel_sd:flo_out`). Covers the HRU, landscape unit and basin water, nutrient, loss and
+  plant records, aquifers and channels: 360 columns in 62.0.1, generated at build time from
+  SWAT+'s source (`tools/gen_reads.py`). Each read is the record for the day just done, checked
+  against the printed files day by day on both test projects. NaN before the first day and in
+  `print.prt`'s skipped years, when SWAT+ makes no records. New grids `lsu` (landscape
+  units) and `bsn` (the basin), neither with a location. Protocol 5.
+
 ## 0.7.0 (2026-11-09)
 
 - Groundwater into the soil, the way back from a groundwater model: set

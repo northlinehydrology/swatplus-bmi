@@ -37,7 +37,8 @@
 
       use iso_fortran_env, only : input_unit
       use, intrinsic :: iso_c_binding, only : c_int, c_char, c_null_char
-      use, intrinsic :: ieee_arithmetic, only : ieee_is_finite
+      use, intrinsic :: ieee_arithmetic, only : ieee_is_finite, ieee_value, ieee_quiet_nan
+      use bmi_reads_module, only : n_gen, gen_catalog, gen_value
 
       implicit none
 
@@ -53,7 +54,8 @@
       integer :: days_total = 0           !! days in the simulation
       integer :: run_left = 0             !! days to run before the next pause
       logical :: run_free = .false.       !! run to the end without pausing
-      integer :: protocol = 4             !! protocol version
+      integer :: protocol = 5             !! protocol version
+      logical :: ended = .false.          !! the simulation has ended (exch_end)
       integer, parameter :: unit_max = 1000000   !! highest unit number branch looks at
       character(len=80) :: paused_line = ""      !! the last @paused reply
       character(len=16), parameter :: state_magic = "SWXSTATE-5"
@@ -127,8 +129,10 @@
       real, dimension(:), allocatable :: pou_dmd_day     !! m3/day     |place of use demand
       real, dimension(:), allocatable :: pou_wdr_day     !! m3/day     |place of use withdrawal
 
-      !! the catalog: the water variables, then the chemistry variables, one per species
-      !! (exch_start). var_fam is 0 for a water variable, or the chemistry family
+      !! the catalog: the water variables, the chemistry variables, one per species, then
+      !! every column of the daily output records (exch_start). var_fam is 0 for a water
+      !! variable, the chemistry family, or gen_fam for an output column (var_sp its number)
+      integer, parameter :: gen_fam = 9
       integer, parameter :: nbase = 37
       character(len=64), dimension(nbase), parameter :: base_name = [character(len=64) ::     &
             "channel_water__volume_outflow_rate",                           &
@@ -199,7 +203,7 @@
       integer :: nvar = 0
       character(len=80), dimension(:), allocatable :: var_name
       character(len=8), dimension(:), allocatable :: var_grid
-      character(len=8), dimension(:), allocatable :: var_units
+      character(len=16), dimension(:), allocatable :: var_units
       character(len=3), dimension(:), allocatable :: var_role
       integer, dimension(:), allocatable :: var_fam
       integer, dimension(:), allocatable :: var_sp
@@ -343,7 +347,7 @@
       allocate (rcm_flo(n_sp, sp_ob%recall), source = 0.)
       allocate (rcm_on(n_sp, sp_ob%recall), source = .false.)
 
-      nvar = nbase + 4 * n_sp
+      nvar = nbase + 4 * n_sp + n_gen
       allocate (var_name(nvar), var_grid(nvar), var_units(nvar), var_role(nvar))
       allocate (var_fam(nvar), source = 0)
       allocate (var_sp(nvar), source = 0)
@@ -363,6 +367,13 @@
           var_sp(iv) = k
         end do
       end do
+      !! every column of the daily output records, read-only (bmi_reads_module)
+      call gen_catalog (var_name(iv+1:), var_grid(iv+1:), var_units(iv+1:))
+      do k = 1, n_gen
+        var_role(iv + k) = "out"
+        var_fam(iv + k) = gen_fam
+        var_sp(iv + k) = k
+      end do
 
       call reply ("@hello swatplus-exchange " // itoa(protocol))
       call reply ("@model " // trim(adjustl(prog)))
@@ -380,6 +391,8 @@
       call send_wx_grid ("slr", 4)
       call send_wx_grid ("hmd", 5)
       call send_wx_grid ("wnd", 6)
+      call send_lsu_grid
+      call send_bsn_grid
       do iv = 1, nvar
         call reply ("@var " // trim(var_name(iv)) // " " // trim(var_grid(iv)) // " " //   &
                     trim(var_role(iv)) // " " // trim(var_units(iv)))
@@ -810,6 +823,7 @@
         call reply ("@error the simulation ended before the saved day " // itoa(load_day))
         error stop 6
       end if
+      ended = .true.
       call reply ("@ended " // itoa(days_done))
       if (.not. run_free) call serve (.true.)
 
@@ -1633,6 +1647,10 @@
         end if
         if (wx_kind(name) > 0) then
           call wx_values (wx_kind(name), val)
+        else if (var_fam(iv) == gen_fam) then
+          call gen_values (var_sp(iv), var_grid(iv), val)
+          !! no record before the first day or after a day in print.prt's skipped years
+          if (.not. out_made()) val = ieee_value (0.d0, ieee_quiet_nan)
         else
           call chem_values (var_fam(iv), var_sp(iv), val)
         end if
@@ -1725,6 +1743,70 @@
       end function mass_of
 
       end subroutine chem_values
+
+!!    --------------------------------------------------------------------
+      logical function out_made ()
+
+!!    whether SWAT+ made its daily output records for the day just done:
+!!    command makes them only in the years it summarizes, after print.prt's
+!!    nyskip. At a pause the day about to run is time%day of year time%yrs,
+!!    so on a year's first day the day just done was in the year before
+
+      use time_module, only : time
+      use basin_module, only : pco
+
+      integer :: yr = 0
+
+      out_made = .false.
+      if (days_done == 0) return
+      yr = time%yrs
+      if (.not. ended .and. time%yrs > 1 .and. time%day == time%day_start) yr = time%yrs - 1
+      out_made = yr > pco%nyskip
+
+      return
+      end function out_made
+
+!!    --------------------------------------------------------------------
+      subroutine gen_values (ig, grid, val)
+
+!!    output column ig for every object on its grid: an HRU, channel or
+!!    aquifer by its object's number, a landscape unit by its number, and
+!!    the basin's one record (none without landscape unit elements, as
+!!    SWAT+ then makes no basin records)
+
+      use hydrograph_module, only : sp_ob, sp_ob1, ob
+      use maximum_data_module, only : db_mx
+
+      integer, intent(in) :: ig
+      character(len=*), intent(in) :: grid
+      real(8), dimension(:), allocatable, intent(out) :: val
+      integer :: i = 0
+      integer :: first = 0
+      integer :: n = 0
+
+      select case (trim(grid))
+      case ("hru")
+        first = sp_ob1%hru; n = sp_ob%hru
+      case ("cha")
+        first = sp_ob1%chandeg; n = sp_ob%chandeg
+      case ("aqu")
+        first = sp_ob1%aqu; n = sp_ob%aqu
+      case ("lsu")
+        first = 0; n = db_mx%lsu_out
+      case default                                        !the basin
+        first = 0; n = min (1, db_mx%lsu_elem)
+      end select
+      allocate (val(n), source = 0.d0)
+      do i = 1, n
+        if (first > 0) then
+          val(i) = gen_value (ig, ob(first + i - 1)%num)
+        else
+          val(i) = gen_value (ig, i)
+        end if
+      end do
+
+      return
+      end subroutine gen_values
 
 !!    --------------------------------------------------------------------
       integer function var_index (name)
@@ -2214,6 +2296,54 @@
 
       return
       end subroutine send_grid
+
+!!    --------------------------------------------------------------------
+      subroutine send_lsu_grid
+
+!!    landscape units (lsunit_* outputs), named as in ls_unit.def, with no
+!!    location (NaN) and their area
+
+      use calibration_data_module, only : lsu_out
+      use maximum_data_module, only : db_mx
+
+      character(len=200) :: line = ""
+      integer :: i = 0
+      real :: nan = 0.
+
+      nan = ieee_value (nan, ieee_quiet_nan)
+      call reply ("@grid lsu " // itoa(db_mx%lsu_out))
+      do i = 1, db_mx%lsu_out
+        write (line, '(a,1x,i0,1x,a,3(1x,es15.8e2))') "lsu", i, trim(adjustl(lsu_out(i)%name)),   &
+                     nan, nan, lsu_out(i)%area_ha
+        call reply ("@obj " // trim(line))
+      end do
+
+      return
+      end subroutine send_lsu_grid
+
+!!    --------------------------------------------------------------------
+      subroutine send_bsn_grid
+
+!!    the basin (basin_* outputs): one object, named as in SWAT+'s
+!!    object.cnt, with no location (NaN) and its total area; none in a
+!!    project without landscape unit elements (ls_unit.ele), where SWAT+
+!!    makes no basin records (command calls basin_output only with them)
+
+      use basin_module, only : bsn
+      use maximum_data_module, only : db_mx
+
+      character(len=200) :: line = ""
+      real :: nan = 0.
+
+      nan = ieee_value (nan, ieee_quiet_nan)
+      call reply ("@grid bsn " // itoa(min (1, db_mx%lsu_elem)))
+      if (db_mx%lsu_elem == 0) return
+      write (line, '(a,1x,i0,1x,a,3(1x,es15.8e2))') "bsn", 1, trim(adjustl(bsn%name)),   &
+                   nan, nan, bsn%area_tot_ha
+      call reply ("@obj " // trim(line))
+
+      return
+      end subroutine send_bsn_grid
 
 !!    --------------------------------------------------------------------
       subroutine send_hly_grid

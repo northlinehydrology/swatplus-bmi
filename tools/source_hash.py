@@ -17,8 +17,8 @@ import hashlib
 import sys
 from pathlib import Path
 
-PARTS = ("build.sh", "patches", "fortran", "tools/carried_locals.py", "tools/gen_serializer.py",
-         "tools/source_hash.py")
+PARTS = ("build.sh", "patches", "fortran", "tools/carried_locals.py", "tools/gen_reads.py",
+         "tools/gen_serializer.py", "tools/source_hash.py")
 
 
 def source_hash(root: str | Path) -> str:

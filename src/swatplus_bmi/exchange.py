@@ -23,7 +23,7 @@ from pathlib import Path
 
 import numpy as np
 
-PROTOCOL = 4
+PROTOCOL = 5
 
 
 def _wait_gone(pid: int, timeout: float | None) -> None:
