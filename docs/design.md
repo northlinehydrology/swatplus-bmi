@@ -459,6 +459,81 @@ written first days and set later days are byte for byte the run on files
 holding the whole series).
 
 
+### Parameters at initialize
+
+Parameters change once, before the first day, through SWAT+'s own
+`calibration.cal`: `[[parameter]]` tables in the TOML config (or
+`calibration.write_changes`) become rows after the project's own, in the run
+copy, and SWAT+ reads and makes them (`proc_cal`: `cal_parmchg_read`,
+`cal_conditions`, `cal_parm_select`). Never as a `set_value` partway
+through: SWAT+ derives values from its parameters while it starts up, and
+a later change wouldn't reach them. The wrapper writes the file and nothing
+else, so a run with changes is the run stock SWAT+ makes from the same file;
+the test runs both and compares them byte for byte.
+
+What SWAT+ does with each change isn't what its file format suggests, so
+the wrapper refuses on evidence. `tools/audit_parameters.py run` tries each
+parameter in the SWAT+ editor's `cal_parms.cal`, as 2.2.0 wrote it (in
+SWAT+'s example projects) and as 3.1.0 has it (rebuilt from the editor's
+update code; unchanged through 4.0.0), keyed by name and object type, alone,
+as an `absval` for
+every object, on both test projects with everything printed daily, and
+compares every output file with the run without it under the same list
+(two identical runs first, to leave out anything that differs between
+them; the unset
+`cons_bmix` column masked). `summary` turns that into
+`src/swatplus_bmi/calibration-62.0.1.json` and the table in
+`docs/parameters-62.0.1.md`, with SWAT+'s source read for every change
+that moved nothing:
+
+Of 274 rows:
+
+- **made** (91): moved an output on a project with its objects.
+- **skipped** (22): no case in `cal_parm_select`; refused. Editor 3.1's
+  HRU `lai_pot`, `harv_idx` and `phu_mat` are among them.
+- **refused** (50): used only while SWAT+ starts up, before `proc_cal`
+  (33, from `hrudb_init`'s copies of `nperco` and the other nutrient
+  coefficients and `aqu_initial`'s starting aquifer to the rating curves);
+  overwritten (4: a soil's pools, which `soil_nutcarb_init` sets again right
+  after `proc_cal`); never read (5); `d50`, reset to 1.0 each day;
+  `tile_latk`, which changes the tile lag; the six plant rows.
+- **not checked** (111): no test project has their objects, or their
+  process doesn't run there (Osu_1hru's one HRU is a rice paddy, whose
+  runoff doesn't use the curve number; neither project has tiles,
+  elevation bands or pesticides). Allowed, with a warning.
+
+Also refused: an `absval` outside `cal_parms.cal`'s range (SWAT+ clamps it
+without a message), a change type `chg_par` doesn't know (it has no
+default and returns whatever memory held), objects outside the project's
+count for the type, `layers` on anything but a soil parameter, and
+conditions other than `hsg`, `texture` and `landuse` with `=`, or on
+anything but HRU, soil and layer parameters (the condition code reads the
+HRU arrays at the object's number, whatever the object). The project needs
+a `cal_parms.cal`; without one SWAT+ makes no change at all. The 15 names
+SWAT+ has code for that neither editor list has (`nperco_h` and the other
+HRU-level nutrient coefficients, gwflow's `tile_K`) aren't checked, so
+they're refused.
+
+Reading the source is where errors creep in, so each reason names the
+routine and, where it matters, the line. One was caught on the second
+pass: `soil_nutcarb_init` is called from `main.f90.in` (line 126, after
+`proc_cal`, on purpose, so the carbon pools' start-up fractions take
+effect), which a search of the `.f90` files alone missed.
+
+Prior art: the SWAT+ team's
+[swatplus-calibration-test-suite](https://github.com/swat-model/swatplus-calibration-test-suite)
+(C. J. Chawanda, 0.1.0, September 2023, for 60.x executables) reports which
+parameters are sensitive, and whether a change through `calibration.cal`
+gives the same result as one in the parameter's own file. The audit here
+asks the first question of 62.0.1 and reads the source for the answers; its
+second comparison, made with its parameter tables, is the next step.
+
+Objects and conditions are tested on Ames_sub1 by the first day's curve
+number (`hru_wb:cn`): later days can't show which HRUs changed, because
+its decision tables draw from one random number generator in HRU order,
+so a change in one HRU shifts the draws of the ones after it, in stock
+SWAT+ too.
+
 ## Time
 
 BMI time is days since the start of the simulation: `get_time_units()`
@@ -859,11 +934,36 @@ These are worth reporting upstream, separately from the exchange mode:
     no organic P), and `hru_ls`'s `lat3no3` is `latno3`. The generated
     reads follow the printed headers, so they match the files.
 
+19. `calibration.cal` accepts many changes without a message that change
+    nothing (`docs/parameters-62.0.1.md`; draft issue in
+    docs/upstream-issue-calibration.md, which extends the `chn` one): 25
+    parameters are read only by start-up routines that run before
+    `proc_cal`, among them `nperco`, `pperco`, `phoskd`, `psp` and `cmn`,
+    which `hrudb_init` copies into each HRU, and the aquifer's starting
+    values, which `aqu_initial` copies; a soil's `lab_p`, `cbn`, `hum_c_n`
+    and `hum_c_p` are overwritten by `soil_nutcarb_init` right after; five
+    are never read; `sd_channel_sediment3` sets `d50` to 1.0 each day; `tile_latk` changes the tile lag, the plant `epco` changes
+    `lai_pot`, and the climate `temp` case indexes `tmp(ig)` with `ig`
+    unset; 17 names have no code; plant rows count objects in
+    plant-database rows and use them as HRU numbers; and `chg_par` has no
+    default for an unknown change type. Editor 3.x adds its own: HRU
+    `lai_pot`, `harv_idx` and `phu_mat`, `flood_sedfrac` (its new name for
+    `chseq`) and `part_size` have no code.
+
+20. `aqu_initial.f90`, line 172, computes each aquifer's starting storage
+    from `aqu_d(iaqdb)%dep_wt`, where `iaqdb` is the aquifer's row in the
+    database (`ob(iob)%props`), not the aquifer: the line before sets
+    `aqu_d(iaq)%dep_wt`. With one aquifer per database row in order the two
+    agree; otherwise an aquifer starts with storage from another
+    aquifer's water table, or from zero. (In
+    docs/upstream-issue-calibration.md.)
+
 Items 7–9 and 12 were found by a study's model build (Nov 6, 2026) and
 confirmed by reading the source. Items 10, 11 and 13–15 were found while
 adding chemistry to the exchange (0.5.0), and item 16 by the nightly
-comparisons (Nov 7, 2026), and items 17 and 18 while generating the
-reads of every printed column (0.8.0).
+comparisons (Nov 7, 2026), items 17 and 18 while generating the
+reads of every printed column (0.8.0), and items 19 and 20 while adding
+parameters at initialize (0.9.0).
 
 ## Limits
 

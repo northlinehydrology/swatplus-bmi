@@ -36,6 +36,7 @@ from pathlib import Path
 import numpy as np
 from bmipy import Bmi
 
+from .calibration import Change, check_changes, write_changes
 from .exchange import Exchange, ExchangeError
 
 __all__ = ["SwatPlusBmi"]
@@ -102,6 +103,15 @@ class SwatPlusBmi(Bmi):
             project = "path/to/TxtInOut"     # the SWAT+ project folder
             run_dir = "runs/scenario-a"      # optional: copy the project here and run the copy
             executable = "bin/swatplus-62.0.1-exchange"   # optional
+
+            [[parameter]]                    # optional, any number; needs run_dir
+            name = "cn2"
+            value = -10
+            change = "pctchg"
+
+        Parameter changes go into the run copy's calibration.cal, after the
+        project's own, and SWAT+ makes them before its first day. A change
+        SWAT+ wouldn't make as asked is refused (``swatplus_bmi.calibration``).
         """
         if config_file is None:
             raise ValueError("initialize needs a SWAT+ project folder or a TOML config file")
@@ -112,11 +122,22 @@ class SwatPlusBmi(Bmi):
         if not (project / "file.cio").exists():
             raise FileNotFoundError(f"no file.cio in {project}")
         run_dir = project
+        changes = [Change.from_dict(p) for p in cfg.get("parameter", [])]
+        if changes and not cfg.get("run_dir"):
+            raise ValueError("[[parameter]] changes are written into calibration.cal: give run_dir, "
+                             "so the project's own isn't changed")
+        if changes:
+            problems, _ = check_changes(project, changes)
+            if problems:
+                raise ValueError("parameter changes SWAT+ wouldn't make as asked:\n  "
+                                 + "\n  ".join(problems))
         if cfg.get("run_dir"):
             run_dir = (base / cfg["run_dir"]).resolve()
             if run_dir.exists():
                 shutil.rmtree(run_dir)
             shutil.copytree(project, run_dir)
+        for note in write_changes(run_dir, changes) if changes else []:
+            warnings.warn(f"parameter {note}", stacklevel=2)
         exe = find_executable(cfg.get("executable") and str((base / cfg["executable"])))
         self._x = Exchange(exe, run_dir)
         cat = self._x.catalog

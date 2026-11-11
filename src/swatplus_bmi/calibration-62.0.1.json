@@ -1,0 +1,3209 @@
+{
+ "swat": "62.0.1",
+ "about": "tools/audit_parameters.py: each parameter in the SWAT+ editor's cal_parms.cal tried alone on the test projects, and SWAT+'s source read where it moved nothing",
+ "projects": {
+  "Osu_1hru": {
+   "hru": 1,
+   "sol": 1,
+   "lyr": 1,
+   "plt": 1,
+   "hlt": 0,
+   "ru": 1,
+   "aqu": 1,
+   "cha": 0,
+   "sdc": 1,
+   "rte": 1,
+   "swq": 1,
+   "res": 0,
+   "rdt": 0,
+   "bsn": 1,
+   "pst": 0,
+   "cli": 1
+  },
+  "Ames_sub1": {
+   "hru": 12,
+   "sol": 12,
+   "lyr": 12,
+   "plt": 12,
+   "hlt": 0,
+   "ru": 0,
+   "aqu": 0,
+   "cha": 0,
+   "sdc": 0,
+   "rte": 0,
+   "swq": 0,
+   "res": 0,
+   "rdt": 0,
+   "bsn": 1,
+   "pst": 0,
+   "cli": 1
+  }
+ },
+ "params": {
+  "cn2/hru": {
+   "name": "cn2",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "cn3_swf/hru": {
+   "name": "cn3_swf",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "usle_p/hru": {
+   "name": "usle_p",
+   "obj_typ": "hru",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (hydro_init, the HRU's USLE factor), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "ovn/hru": {
+   "name": "ovn",
+   "obj_typ": "hru",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (time_conc_init and plant_init, the time of concentration), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "elev/hru": {
+   "name": "elev",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "slope/hru": {
+   "name": "slope",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "slope_len/hru": {
+   "name": "slope_len",
+   "obj_typ": "hru",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (topohyd_init and time_conc_init), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "lat_ttime/hru": {
+   "name": "lat_ttime",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "lat_sed/hru": {
+   "name": "lat_sed",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "lat_len/hru": {
+   "name": "lat_len",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "latq_co/hru": {
+   "name": "latq_co",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "canmx/hru": {
+   "name": "canmx",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "esco/hru": {
+   "name": "esco",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "epco/hru": {
+   "name": "epco",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "erorgn/hru": {
+   "name": "erorgn",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "erorgp/hru": {
+   "name": "erorgp",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "dis_stream/hru": {
+   "name": "dis_stream",
+   "obj_typ": "hru",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (topohyd_init; its use in nut_nlch is commented out), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "biomix/hru": {
+   "name": "biomix",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "perco/hru": {
+   "name": "perco",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "petco/hru": {
+   "name": "petco",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "lat_orgn/hru": {
+   "name": "lat_orgn",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "lat_orgp/hru": {
+   "name": "lat_orgp",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "field_len/hru": {
+   "name": "field_len",
+   "obj_typ": "hru",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (topohyd_init and time_conc_init), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "field_wid/hru": {
+   "name": "field_wid",
+   "obj_typ": "hru",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (no routing between HRUs); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "field_ang/hru": {
+   "name": "field_ang",
+   "obj_typ": "hru",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (topohyd_init), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "snofall_tmp/hru": {
+   "name": "snofall_tmp",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "snomelt_tmp/hru": {
+   "name": "snomelt_tmp",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "snomelt_max/hru": {
+   "name": "snomelt_max",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "snomelt_min/hru": {
+   "name": "snomelt_min",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "snomelt_lag/hru": {
+   "name": "snomelt_lag",
+   "obj_typ": "hru",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "tile_dep/hru": {
+   "name": "tile_dep",
+   "obj_typ": "hru",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (no tile drains); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "tile_dtime/hru": {
+   "name": "tile_dtime",
+   "obj_typ": "hru",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (no tile drains); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "tile_lag/hru": {
+   "name": "tile_lag",
+   "obj_typ": "hru",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (no tile drains); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "tile_rad/hru": {
+   "name": "tile_rad",
+   "obj_typ": "hru",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (no tile drains); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "tile_dist/hru": {
+   "name": "tile_dist",
+   "obj_typ": "hru",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (no tile drains); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "tile_drain/hru": {
+   "name": "tile_drain",
+   "obj_typ": "hru",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (no tile drains); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "tile_pump/hru": {
+   "name": "tile_pump",
+   "obj_typ": "hru",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (no tile drains); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "tile_latk/hru": {
+   "name": "tile_latk",
+   "obj_typ": "hru",
+   "verdict": "refused",
+   "why": "cal_parm_select changes the tile's lag (hru%sdr%lag), not its lateral conductivity",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "anion_excl/sol": {
+   "name": "anion_excl",
+   "obj_typ": "sol",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "crk/sol": {
+   "name": "crk",
+   "obj_typ": "sol",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (no crack flow); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "z/sol": {
+   "name": "z",
+   "obj_typ": "sol",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "bd/sol": {
+   "name": "bd",
+   "obj_typ": "sol",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "awc/sol": {
+   "name": "awc",
+   "obj_typ": "sol",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "k/sol": {
+   "name": "k",
+   "obj_typ": "sol",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "cbn/sol": {
+   "name": "cbn",
+   "obj_typ": "sol",
+   "verdict": "refused",
+   "why": "soil_nutcarb_init runs after calibration.cal (main.f90.in, line 126) and sets each layer's total carbon again from the soil's inputs, so the change is overwritten",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "clay/sol": {
+   "name": "clay",
+   "obj_typ": "sol",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "silt/sol": {
+   "name": "silt",
+   "obj_typ": "sol",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "sand/sol": {
+   "name": "sand",
+   "obj_typ": "sol",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "rock/sol": {
+   "name": "rock",
+   "obj_typ": "sol",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "alb/sol": {
+   "name": "alb",
+   "obj_typ": "sol",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "usle_k/sol": {
+   "name": "usle_k",
+   "obj_typ": "sol",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "ec/sol": {
+   "name": "ec",
+   "obj_typ": "sol",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "cal/sol": {
+   "name": "cal",
+   "obj_typ": "sol",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "ph/sol": {
+   "name": "ph",
+   "obj_typ": "sol",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "plaps/bsn": {
+   "name": "plaps",
+   "obj_typ": "bsn",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (no elevation bands); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "tlaps/bsn": {
+   "name": "tlaps",
+   "obj_typ": "bsn",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (no elevation bands); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "surlag/bsn": {
+   "name": "surlag",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "adj_pkr/bsn": {
+   "name": "adj_pkr",
+   "obj_typ": "bsn",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (cli_initwgn), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "prf/bsn": {
+   "name": "prf",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "spcon/bsn": {
+   "name": "spcon",
+   "obj_typ": "bsn",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0"
+   ]
+  },
+  "spexp/bsn": {
+   "name": "spexp",
+   "obj_typ": "bsn",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0"
+   ]
+  },
+  "evrch/bsn": {
+   "name": "evrch",
+   "obj_typ": "bsn",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (no old-style channels); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "evlai/bsn": {
+   "name": "evlai",
+   "obj_typ": "bsn",
+   "verdict": "refused",
+   "why": "SWAT+ 62.0.1 never reads it after setting its default (basin_prm_default)",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "ffcb/bsn": {
+   "name": "ffcb",
+   "obj_typ": "bsn",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (hydro_init, the initial soil water), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "cmn/bsn": {
+   "name": "cmn",
+   "obj_typ": "bsn",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (hrudb_init, which copies it into each HRU), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "nperco/bsn": {
+   "name": "nperco",
+   "obj_typ": "bsn",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (hrudb_init, which copies it into each HRU), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "pperco/bsn": {
+   "name": "pperco",
+   "obj_typ": "bsn",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (hrudb_init, which copies it into each HRU), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "phoskd/bsn": {
+   "name": "phoskd",
+   "obj_typ": "bsn",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (hrudb_init, which copies it into each HRU), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "psp/bsn": {
+   "name": "psp",
+   "obj_typ": "bsn",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (hrudb_init, which copies it into each HRU), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "rsdco/bsn": {
+   "name": "rsdco",
+   "obj_typ": "bsn",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (plantparm_init, which copies it into each plant), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "percop/bsn": {
+   "name": "percop",
+   "obj_typ": "bsn",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (no pesticides); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "msk_co1/bsn": {
+   "name": "msk_co1",
+   "obj_typ": "bsn",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (sd_hydsed_init, the channels' storage coefficients), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "msk_co2/bsn": {
+   "name": "msk_co2",
+   "obj_typ": "bsn",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (sd_hydsed_init, the channels' storage coefficients), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "msk_x/bsn": {
+   "name": "msk_x",
+   "obj_typ": "bsn",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (sd_hydsed_init, the channels' storage coefficients), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "cdn/bsn": {
+   "name": "cdn",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "tb_adj/bsn": {
+   "name": "tb_adj",
+   "obj_typ": "bsn",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (daily steps; the unit hydrographs are sub-daily); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "sdnco/bsn": {
+   "name": "sdnco",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "n_updis/bsn": {
+   "name": "n_updis",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "p_updis/bsn": {
+   "name": "p_updis",
+   "obj_typ": "bsn",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "dorm_hr/bsn": {
+   "name": "dorm_hr",
+   "obj_typ": "bsn",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (cli_initwgn), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "rs1/swq": {
+   "name": "rs1",
+   "obj_typ": "swq",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "rs2/swq": {
+   "name": "rs2",
+   "obj_typ": "swq",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "rs3/swq": {
+   "name": "rs3",
+   "obj_typ": "swq",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "rs4/swq": {
+   "name": "rs4",
+   "obj_typ": "swq",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "rs5/swq": {
+   "name": "rs5",
+   "obj_typ": "swq",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "rs6/swq": {
+   "name": "rs6",
+   "obj_typ": "swq",
+   "verdict": "refused",
+   "why": "nothing in SWAT+ 62.0.1 reads it after its file is read (ch_read_nut)",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "rs7/swq": {
+   "name": "rs7",
+   "obj_typ": "swq",
+   "verdict": "refused",
+   "why": "nothing in SWAT+ 62.0.1 reads it after its file is read (ch_read_nut)",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "rk1/swq": {
+   "name": "rk1",
+   "obj_typ": "swq",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "rk2/swq": {
+   "name": "rk2",
+   "obj_typ": "swq",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "rk3/swq": {
+   "name": "rk3",
+   "obj_typ": "swq",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "rk4/swq": {
+   "name": "rk4",
+   "obj_typ": "swq",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "rk5/swq": {
+   "name": "rk5",
+   "obj_typ": "swq",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "rk6/swq": {
+   "name": "rk6",
+   "obj_typ": "swq",
+   "verdict": "refused",
+   "why": "nothing in SWAT+ 62.0.1 reads it after its file is read (ch_read_nut)",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "bc1/swq": {
+   "name": "bc1",
+   "obj_typ": "swq",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "bc2/swq": {
+   "name": "bc2",
+   "obj_typ": "swq",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "bc3/swq": {
+   "name": "bc3",
+   "obj_typ": "swq",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "bc4/swq": {
+   "name": "bc4",
+   "obj_typ": "swq",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "rch_dox/swq": {
+   "name": "rch_dox",
+   "obj_typ": "swq",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0"
+   ]
+  },
+  "rch_cbod/swq": {
+   "name": "rch_cbod",
+   "obj_typ": "swq",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0"
+   ]
+  },
+  "algae/swq": {
+   "name": "algae",
+   "obj_typ": "swq",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0"
+   ]
+  },
+  "organicn/swq": {
+   "name": "organicn",
+   "obj_typ": "swq",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0"
+   ]
+  },
+  "ammonian/swq": {
+   "name": "ammonian",
+   "obj_typ": "swq",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0"
+   ]
+  },
+  "nitriten/swq": {
+   "name": "nitriten",
+   "obj_typ": "swq",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0"
+   ]
+  },
+  "organicp/swq": {
+   "name": "organicp",
+   "obj_typ": "swq",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0"
+   ]
+  },
+  "disolvp/swq": {
+   "name": "disolvp",
+   "obj_typ": "swq",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0"
+   ]
+  },
+  "chw/rte": {
+   "name": "chw",
+   "obj_typ": "rte",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "chd/rte": {
+   "name": "chd",
+   "obj_typ": "rte",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "chs/rte": {
+   "name": "chs",
+   "obj_typ": "rte",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "chl/rte": {
+   "name": "chl",
+   "obj_typ": "rte",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "chn/rte": {
+   "name": "chn",
+   "obj_typ": "rte",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (sd_hydsed_init and sd_rating_curve: the rating curves are built from it; docs/upstream-issue-calibration-chn.md), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "chk/rte": {
+   "name": "chk",
+   "obj_typ": "rte",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (sd_hydsed_init; ch_rtmusk and the other users route the old channels), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "cherod/rte": {
+   "name": "cherod",
+   "obj_typ": "rte",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "cov/rte": {
+   "name": "cov",
+   "obj_typ": "rte",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "wd_rto/rte": {
+   "name": "wd_rto",
+   "obj_typ": "rte",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0"
+   ]
+  },
+  "chseq/rte": {
+   "name": "chseq",
+   "obj_typ": "rte",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0"
+   ]
+  },
+  "d50/rte": {
+   "name": "d50",
+   "obj_typ": "rte",
+   "verdict": "refused",
+   "why": "SWAT+ sets every channel's d50 to 1.0 each day (sd_channel_sediment3.f90, line 80), so a change lasts until the first day's routing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "ch_clay/rte": {
+   "name": "ch_clay",
+   "obj_typ": "rte",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "carbon/rte": {
+   "name": "carbon",
+   "obj_typ": "rte",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (no channel carbon); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "ch_bd/rte": {
+   "name": "ch_bd",
+   "obj_typ": "rte",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "chss/rte": {
+   "name": "chss",
+   "obj_typ": "rte",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (sd_hydsed_init and sd_rating_curve, the rating curves), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "bedldcoef/rte": {
+   "name": "bedldcoef",
+   "obj_typ": "rte",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0"
+   ]
+  },
+  "fps/rte": {
+   "name": "fps",
+   "obj_typ": "rte",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (sd_hydsed_init and sd_rating_curve, the rating curves), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "fpn/rte": {
+   "name": "fpn",
+   "obj_typ": "rte",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (sd_hydsed_init and sd_rating_curve, the rating curves), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "hc_kh/rte": {
+   "name": "hc_kh",
+   "obj_typ": "rte",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (sd_hydsed_init), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "hc_hgt/rte": {
+   "name": "hc_hgt",
+   "obj_typ": "rte",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (sd_hydsed_init), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "hc_ini/rte": {
+   "name": "hc_ini",
+   "obj_typ": "rte",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (sd_hydsed_init), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "vol/res": {
+   "name": "vol",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "sed/res": {
+   "name": "sed",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "orgp/res": {
+   "name": "orgp",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "orgn/res": {
+   "name": "orgn",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "solp/res": {
+   "name": "solp",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "no3/res": {
+   "name": "no3",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "nh3/res": {
+   "name": "nh3",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "no2/res": {
+   "name": "no2",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "esa/res": {
+   "name": "esa",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "evol/res": {
+   "name": "evol",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "psa/res": {
+   "name": "psa",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "pvol/res": {
+   "name": "pvol",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "k_res/res": {
+   "name": "k_res",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "evrsv/res": {
+   "name": "evrsv",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "nsed/res": {
+   "name": "nsed",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "psetlr1/res": {
+   "name": "psetlr1",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "psetlr2/res": {
+   "name": "psetlr2",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "nsetlr1/res": {
+   "name": "nsetlr1",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "nsetlr2/res": {
+   "name": "nsetlr2",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "chlar/res": {
+   "name": "chlar",
+   "obj_typ": "res",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "seccir/res": {
+   "name": "seccir",
+   "obj_typ": "res",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "alpha/aqu": {
+   "name": "alpha",
+   "obj_typ": "aqu",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "bf_max/aqu": {
+   "name": "bf_max",
+   "obj_typ": "aqu",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a base flow that never reaches it); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "deep_seep/aqu": {
+   "name": "deep_seep",
+   "obj_typ": "aqu",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "sp_yld/aqu": {
+   "name": "sp_yld",
+   "obj_typ": "aqu",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "flo_min/aqu": {
+   "name": "flo_min",
+   "obj_typ": "aqu",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "revap_co/aqu": {
+   "name": "revap_co",
+   "obj_typ": "aqu",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "revap_min/aqu": {
+   "name": "revap_min",
+   "obj_typ": "aqu",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "cn2_lte/hlt": {
+   "name": "cn2_lte",
+   "obj_typ": "hlt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has hlt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "awc_lte/hlt": {
+   "name": "awc_lte",
+   "obj_typ": "hlt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has hlt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "etco_lte/hlt": {
+   "name": "etco_lte",
+   "obj_typ": "hlt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has hlt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "tc_lte/hlt": {
+   "name": "tc_lte",
+   "obj_typ": "hlt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has hlt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "soildep_lte/hlt": {
+   "name": "soildep_lte",
+   "obj_typ": "hlt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has hlt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "slope_lte/hlt": {
+   "name": "slope_lte",
+   "obj_typ": "hlt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has hlt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "slopelen_lte/hlt": {
+   "name": "slopelen_lte",
+   "obj_typ": "hlt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has hlt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "sy_lte/hlt": {
+   "name": "sy_lte",
+   "obj_typ": "hlt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has hlt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "abf_lte/hlt": {
+   "name": "abf_lte",
+   "obj_typ": "hlt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has hlt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "revapc_lte/hlt": {
+   "name": "revapc_lte",
+   "obj_typ": "hlt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has hlt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "percc_lte/hlt": {
+   "name": "percc_lte",
+   "obj_typ": "hlt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has hlt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "sw_lte/hlt": {
+   "name": "sw_lte",
+   "obj_typ": "hlt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has hlt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "gw_lte/hlt": {
+   "name": "gw_lte",
+   "obj_typ": "hlt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has hlt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "gwflow_lte/hlt": {
+   "name": "gwflow_lte",
+   "obj_typ": "hlt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has hlt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "gwdeep_lte/hlt": {
+   "name": "gwdeep_lte",
+   "obj_typ": "hlt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has hlt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "snow_lte/hlt": {
+   "name": "snow_lte",
+   "obj_typ": "hlt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has hlt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "uslek_lte/hlt": {
+   "name": "uslek_lte",
+   "obj_typ": "hlt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has hlt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "uslec_lte/hlt": {
+   "name": "uslec_lte",
+   "obj_typ": "hlt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has hlt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "uslep_lte/hlt": {
+   "name": "uslep_lte",
+   "obj_typ": "hlt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has hlt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "uslels_lte/hlt": {
+   "name": "uslels_lte",
+   "obj_typ": "hlt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has hlt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "pst_koc/pst": {
+   "name": "pst_koc",
+   "obj_typ": "pst",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has pst objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "pst_washoff/pst": {
+   "name": "pst_washoff",
+   "obj_typ": "pst",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has pst objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "pst_foliar_hlife/pst": {
+   "name": "pst_foliar_hlife",
+   "obj_typ": "pst",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has pst objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "pst_soil_hlife/pst": {
+   "name": "pst_soil_hlife",
+   "obj_typ": "pst",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has pst objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "pst_solub/pst": {
+   "name": "pst_solub",
+   "obj_typ": "pst",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has pst objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "pst_aq_hlife/pst": {
+   "name": "pst_aq_hlife",
+   "obj_typ": "pst",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has pst objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "pst_aq_volat/pst": {
+   "name": "pst_aq_volat",
+   "obj_typ": "pst",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has pst objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "pst_aq_settle/pst": {
+   "name": "pst_aq_settle",
+   "obj_typ": "pst",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has pst objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "pst_aq_resus/pst": {
+   "name": "pst_aq_resus",
+   "obj_typ": "pst",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has pst objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "pst_ben_hlife/pst": {
+   "name": "pst_ben_hlife",
+   "obj_typ": "pst",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has pst objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "pst_ben_bury/pst": {
+   "name": "pst_ben_bury",
+   "obj_typ": "pst",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has pst objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "pst_ben_act_dep/pst": {
+   "name": "pst_ben_act_dep",
+   "obj_typ": "pst",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has pst objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "init_seq/bsn": {
+   "name": "init_seq",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "init_microb/bsn": {
+   "name": "init_microb",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "init_slow/bsn": {
+   "name": "init_slow",
+   "obj_typ": "bsn",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (the slow humus pool it sets at start-up; nothing printed moved in three years); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "init_passive/bsn": {
+   "name": "init_passive",
+   "obj_typ": "bsn",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (the passive humus pool it sets at start-up; nothing printed moved in three years); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "koc_c/bsn": {
+   "name": "koc_c",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "solc_ratio/bsn": {
+   "name": "solc_ratio",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "manure_c_frac/bsn": {
+   "name": "manure_c_frac",
+   "obj_typ": "bsn",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (no manure); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "bio_consol/bsn": {
+   "name": "bio_consol",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "till_consol/bsn": {
+   "name": "till_consol",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "sfc_rsd_photodeg/bsn": {
+   "name": "sfc_rsd_photodeg",
+   "obj_typ": "bsn",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "n_act_frac/bsn": {
+   "name": "n_act_frac",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "cnr_cap/bsn": {
+   "name": "cnr_cap",
+   "obj_typ": "bsn",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "cnr_ref/bsn": {
+   "name": "cnr_ref",
+   "obj_typ": "bsn",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "cpr_cap/bsn": {
+   "name": "cpr_cap",
+   "obj_typ": "bsn",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "cpr_ref/bsn": {
+   "name": "cpr_ref",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "t_cbn_min/bsn": {
+   "name": "t_cbn_min",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "t_cbn_opt/bsn": {
+   "name": "t_cbn_opt",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "t_cbn_max/bsn": {
+   "name": "t_cbn_max",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "hp_rate/hru": {
+   "name": "hp_rate",
+   "obj_typ": "hru",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "hs_rate/hru": {
+   "name": "hs_rate",
+   "obj_typ": "hru",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "microb_rate/hru": {
+   "name": "microb_rate",
+   "obj_typ": "hru",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "meta_rate/hru": {
+   "name": "meta_rate",
+   "obj_typ": "hru",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "str_rate/hru": {
+   "name": "str_rate",
+   "obj_typ": "hru",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "microb_top_rate/hru": {
+   "name": "microb_top_rate",
+   "obj_typ": "hru",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "hs_hp/hru": {
+   "name": "hs_hp",
+   "obj_typ": "hru",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "a1co2/hru": {
+   "name": "a1co2",
+   "obj_typ": "hru",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "asco2/hru": {
+   "name": "asco2",
+   "obj_typ": "hru",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "apco2/hru": {
+   "name": "apco2",
+   "obj_typ": "hru",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "abco2/hru": {
+   "name": "abco2",
+   "obj_typ": "hru",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "bmix_a/bsn": {
+   "name": "bmix_a",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "bmix_b/bsn": {
+   "name": "bmix_b",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "bmix_c/bsn": {
+   "name": "bmix_c",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "tillmix_a/bsn": {
+   "name": "tillmix_a",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "tillmix_b/bsn": {
+   "name": "tillmix_b",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "tillmix_c/bsn": {
+   "name": "tillmix_c",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1"
+   ],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "bio_e/plt": {
+   "name": "bio_e",
+   "obj_typ": "plt",
+   "verdict": "refused",
+   "why": "a plant (plt) parameter: cal_conditions changes plants only for phu_mat, lai_pot, harv_idx and epco (epco changes lai_pot), through the HRUs, counting objects in plant-database rows; it has no code for bio_e",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "hvsti/plt": {
+   "name": "hvsti",
+   "obj_typ": "plt",
+   "verdict": "refused",
+   "why": "a plant (plt) parameter: cal_conditions changes plants only for phu_mat, lai_pot, harv_idx and epco (epco changes lai_pot), through the HRUs, counting objects in plant-database rows; it has no code for hvsti",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "rdmx/plt": {
+   "name": "rdmx",
+   "obj_typ": "plt",
+   "verdict": "refused",
+   "why": "a plant (plt) parameter: cal_conditions changes plants only for phu_mat, lai_pot, harv_idx and epco (epco changes lai_pot), through the HRUs, counting objects in plant-database rows; it has no code for rdmx",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "t_opt/plt": {
+   "name": "t_opt",
+   "obj_typ": "plt",
+   "verdict": "refused",
+   "why": "a plant (plt) parameter: cal_conditions changes plants only for phu_mat, lai_pot, harv_idx and epco (epco changes lai_pot), through the HRUs, counting objects in plant-database rows; it has no code for t_opt",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "t_base/plt": {
+   "name": "t_base",
+   "obj_typ": "plt",
+   "verdict": "refused",
+   "why": "a plant (plt) parameter: cal_conditions changes plants only for phu_mat, lai_pot, harv_idx and epco (epco changes lai_pot), through the HRUs, counting objects in plant-database rows; it has no code for t_base",
+   "moved_output_on": [],
+   "in_lists": [
+    "2.2.0",
+    "3.1.0"
+   ]
+  },
+  "cbn_init/aqu": {
+   "name": "cbn_init",
+   "obj_typ": "aqu",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (aqu_initial, which sets the aquifer's starting state from it), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "dep_bot/aqu": {
+   "name": "dep_bot",
+   "obj_typ": "aqu",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "dep_wt_init/aqu": {
+   "name": "dep_wt_init",
+   "obj_typ": "aqu",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (aqu_initial, which sets the aquifer's starting state from it), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "flo_dist/aqu": {
+   "name": "flo_dist",
+   "obj_typ": "aqu",
+   "verdict": "refused",
+   "why": "nothing in SWAT+ 62.0.1 reads it after its file is read (aqu_read)",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "flo_init_mm/aqu": {
+   "name": "flo_init_mm",
+   "obj_typ": "aqu",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (aqu_initial, which sets the aquifer's starting state from it), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "hlife_n/aqu": {
+   "name": "hlife_n",
+   "obj_typ": "aqu",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "minp_init/aqu": {
+   "name": "minp_init",
+   "obj_typ": "aqu",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "no3_init/aqu": {
+   "name": "no3_init",
+   "obj_typ": "aqu",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "phu_mat/hru": {
+   "name": "phu_mat",
+   "obj_typ": "hru",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "lai_pot/hru": {
+   "name": "lai_pot",
+   "obj_typ": "hru",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "harv_idx/hru": {
+   "name": "harv_idx",
+   "obj_typ": "hru",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "drawdown_days/rdt": {
+   "name": "drawdown_days",
+   "obj_typ": "rdt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has rdt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "nperco_lchtile/bsn": {
+   "name": "nperco_lchtile",
+   "obj_typ": "bsn",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (hrudb_init, which copies it into each HRU), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "bankfull_flo/rte": {
+   "name": "bankfull_flo",
+   "obj_typ": "rte",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "flood_sedfrac/rte": {
+   "name": "flood_sedfrac",
+   "obj_typ": "rte",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "withdraw_rate/rdt": {
+   "name": "withdraw_rate",
+   "obj_typ": "rdt",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has rdt objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "arc_len_fr/rte": {
+   "name": "arc_len_fr",
+   "obj_typ": "rte",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "ch_n_conc/rte": {
+   "name": "ch_n_conc",
+   "obj_typ": "rte",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "ch_p_bio/rte": {
+   "name": "ch_p_bio",
+   "obj_typ": "rte",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "ch_p_conc/rte": {
+   "name": "ch_p_conc",
+   "obj_typ": "rte",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "fp_inun_days/rte": {
+   "name": "fp_inun_days",
+   "obj_typ": "rte",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "hum_c_n/sol": {
+   "name": "hum_c_n",
+   "obj_typ": "sol",
+   "verdict": "refused",
+   "why": "soil_nutcarb_init runs after calibration.cal (main.f90.in, line 126) and sets each layer's active humus N again from the soil's inputs, so the change is overwritten",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "hum_c_p/sol": {
+   "name": "hum_c_p",
+   "obj_typ": "sol",
+   "verdict": "refused",
+   "why": "soil_nutcarb_init runs after calibration.cal (main.f90.in, line 126) and sets each layer's active humus P again from the soil's inputs, so the change is overwritten",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "lab_p/sol": {
+   "name": "lab_p",
+   "obj_typ": "sol",
+   "verdict": "refused",
+   "why": "soil_nutcarb_init runs after calibration.cal (main.f90.in, line 126) and sets each layer's labile P again from the soil's inputs, so the change is overwritten",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "n_dep_enr/rte": {
+   "name": "n_dep_enr",
+   "obj_typ": "rte",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "n_setl/rte": {
+   "name": "n_setl",
+   "obj_typ": "rte",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (sd_hydsed_init), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "n_sol_part/rte": {
+   "name": "n_sol_part",
+   "obj_typ": "rte",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "p_dep_enr/rte": {
+   "name": "p_dep_enr",
+   "obj_typ": "rte",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "p_setl/rte": {
+   "name": "p_setl",
+   "obj_typ": "rte",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (sd_hydsed_init), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "p_sol_part/rte": {
+   "name": "p_sol_part",
+   "obj_typ": "rte",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "part_size/rte": {
+   "name": "part_size",
+   "obj_typ": "rte",
+   "verdict": "skipped",
+   "why": "SWAT+ 62.0.1 reads it and has no code for it (no case in cal_parm_select), so nothing changes",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "pk_rto/rte": {
+   "name": "pk_rto",
+   "obj_typ": "rte",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "sed_stlr/res": {
+   "name": "sed_stlr",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "velsetlr/res": {
+   "name": "velsetlr",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "wash_bed_fr/rte": {
+   "name": "wash_bed_fr",
+   "obj_typ": "rte",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "aquifer_K/gwf": {
+   "name": "aquifer_K",
+   "obj_typ": "gwf",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has gwf objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "aquifer_Sy/gwf": {
+   "name": "aquifer_Sy",
+   "obj_typ": "gwf",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has gwf objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "aquifer_delay/hru": {
+   "name": "aquifer_delay",
+   "obj_typ": "hru",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (SWAT+'s gwflow, the only thing that uses it); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "aquifer_exdp/gwf": {
+   "name": "aquifer_exdp",
+   "obj_typ": "gwf",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has gwf objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "stream_K/gwf_riv": {
+   "name": "stream_K",
+   "obj_typ": "gwf_riv",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has gwf_riv objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "stream_thk/gwf_riv": {
+   "name": "stream_thk",
+   "obj_typ": "gwf_riv",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has gwf_riv objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "stream_bed/gwf_sgl": {
+   "name": "stream_bed",
+   "obj_typ": "gwf_sgl",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has gwf_sgl objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "bank_exp/rte": {
+   "name": "bank_exp",
+   "obj_typ": "rte",
+   "verdict": "refused",
+   "why": "SWAT+ uses it only while starting up (sd_hydsed_init), before it applies calibration.cal, so the change reaches nothing",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "mumax/swq": {
+   "name": "mumax",
+   "obj_typ": "swq",
+   "verdict": "not checked",
+   "why": "not checked: it moved no output on Osu_1hru or Ames_sub1, whose runs don't use it (a process they don't run); SWAT+ applies it where they would",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "res_d50/res": {
+   "name": "res_d50",
+   "obj_typ": "res",
+   "verdict": "not checked",
+   "why": "not checked: neither test project has res objects",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "rsd_covco/bsn": {
+   "name": "rsd_covco",
+   "obj_typ": "bsn",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Ames_sub1",
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "usle_c/plt": {
+   "name": "usle_c",
+   "obj_typ": "plt",
+   "verdict": "refused",
+   "why": "a plant (plt) parameter: cal_conditions changes plants only for phu_mat, lai_pot, harv_idx and epco (epco changes lai_pot), through the HRUs, counting objects in plant-database rows; it has no code for usle_c",
+   "moved_output_on": [],
+   "in_lists": [
+    "3.1.0"
+   ]
+  },
+  "vcr_coef/rte": {
+   "name": "vcr_coef",
+   "obj_typ": "rte",
+   "verdict": "made",
+   "why": "",
+   "moved_output_on": [
+    "Osu_1hru"
+   ],
+   "in_lists": [
+    "3.1.0"
+   ]
+  }
+ }
+}
