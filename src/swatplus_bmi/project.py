@@ -24,6 +24,8 @@ from pathlib import Path
 
 import numpy as np
 
+from .calibration import REFUSED, evidence
+
 INTERVALS = ("daily", "monthly", "yearly", "avann")
 
 
@@ -123,7 +125,9 @@ def check_calibration(project: str | Path) -> list[str]:
     SWAT+ makes a change only if its name is a row of cal_parms.cal, and
     skips any other. It also builds the channel rating curves before it
     applies calibration.cal, so a change to channel n (``chn``) never reaches
-    the routing.
+    the routing; the rest of what SWAT+ 62.0.1 won't make as asked is in
+    ``swatplus_bmi.calibration`` (names with no code, values used only while
+    SWAT+ starts up, d50 reset daily, plant rows).
     """
     project = Path(project)
     chg = _cio(project, "chg")
@@ -150,6 +154,8 @@ def check_calibration(project: str | Path) -> list[str]:
         elif name == "chn":
             out.append(f"{upd.name}: chn has no effect on routing; SWAT+ builds the channel rating "
                        "curves before it applies calibration.cal")
+        elif evidence().get(name, {}).get("verdict") in REFUSED:
+            out.append(f"{upd.name}: {name}: {evidence()[name]['why']}")
         i += 1 + conds                                    # condition lines follow the change
     return out
 

@@ -3,6 +3,17 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
+## Unreleased
+
+- Parameters at initialize, through SWAT+'s own `calibration.cal`: `[[parameter]]` tables in
+  the TOML config (name, value, change type, objects, soil layers, conditions), written into the
+  run copy after the project's own rows (`swatplus_bmi.calibration`). A run is the one stock
+  SWAT+ makes from the same file, byte for byte. Changes SWAT+ 62.0.1 reads but doesn't make as
+  asked are refused, on evidence from `tools/audit_parameters.py`: every parameter in the
+  editor's `cal_parms.cal` tried alone on both test projects, and the source read where nothing
+  moved (`docs/parameters-62.0.1.md`: 81 made, 93 not checked, 35 refused, 17 with no code).
+  `check_calibration` now lists every refused change in a project's own `calibration.cal`.
+
 ## 0.8.0 (2026-11-11)
 
 - Every column of SWAT+'s daily output records, read-only, under SWAT+'s own names and units:

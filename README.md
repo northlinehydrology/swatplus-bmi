@@ -320,6 +320,64 @@ are per file, not per HRU: a set changes a gage's values, not which gage a stati
 finer weather needs a gage for each cell in the project's files. SWAT+ 62.0.1's monthly
 climate-change adjustments are never read from any input, so they stay zero.
 
+### Parameters
+
+Parameters change once, at initialize, through SWAT+'s own `calibration.cal`: SWAT+ reads it
+before its first day and changes each named parameter for the objects listed. A TOML config
+lists the changes (it needs `run_dir`, so the project's own file isn't touched):
+
+```toml
+project = "path/to/TxtInOut"
+run_dir = "runs/scenario-a"
+
+[[parameter]]
+name = "cn2"
+value = -10                  # percent
+change = "pctchg"            # absval, abschg, pctchg (percent) or relchg (a fraction)
+objects = [1, 2, 3]          # SWAT+'s object numbers; all when left out
+conditions = {landuse = "cosy_lum"}   # or hsg (soil group) or texture; HRU parameters only
+
+[[parameter]]
+name = "awc"
+value = 0.15
+change = "absval"
+layers = [1, 2]              # soil parameters: first and last layer, 0 for all
+```
+
+The rows go after the project's own, in order, and SWAT+ makes them; the wrapper writes the file
+and nothing else, so a run is the one stock SWAT+ makes from the same `calibration.cal` (the
+tests check it byte for byte). `swatplus_bmi.calibration.Change` and `write_changes` do the same
+from Python.
+
+Not every change SWAT+ reads is one it makes. `tools/audit_parameters.py` tried each of the 226
+parameters in the SWAT+ editor's `cal_parms.cal` alone on the test projects and read SWAT+'s
+source where a change moved nothing ([docs/parameters-62.0.1.md](docs/parameters-62.0.1.md)).
+In 62.0.1:
+
+- **81 made:** they moved the output of a test project with their objects.
+- **17 skipped:** SWAT+ reads the name and has no code for it (`spcon`, `cherod`, the channel
+  water quality `algae`, `organicn` and others). Refused.
+- **35 refused** for what the code does:
+  - 25 are used only while SWAT+ starts up, before it applies `calibration.cal`, so the change
+    reaches nothing: `chn`, `fps`, `fpn` and `chk` (the rating curves and storage
+    coefficients), `usle_p`, `ovn`, `slope_len`, and `nperco`, `pperco`, `phoskd`, `psp` and
+    `cmn`, which SWAT+ copies into each HRU when it starts. Three more are never used:
+    `evlai`, and `init_slow` and `init_passive`, read only by a routine nothing calls.
+  - Channel `d50` is set to 1.0 every day, and `tile_latk` changes the tile lag.
+  - The five plant (`plt`) rows have no plant code: SWAT+ changes plants only for `phu_mat`,
+    `lai_pot`, `harv_idx` and `epco`, and those by plant-database number.
+- **93 not checked:** neither project has their objects (reservoirs, HRU-lte, pesticides), or
+  their process doesn't run there (tiles, cracks, lapse rates, sub-daily unit hydrographs, the carbon rates). Allowed, with
+  a warning.
+
+An `absval` outside `cal_parms.cal`'s range is refused (SWAT+ would quietly use the nearer end),
+as are an unknown change type (SWAT+ would leave whatever memory held), objects that aren't in
+the project, layers on a parameter that isn't a soil's, and conditions on anything but an HRU's
+soil group, texture or land use (SWAT+ would read them for another object's number). A
+relative change is clamped to the range by SWAT+ object by object, which the wrapper can't see
+ahead. Names SWAT+ 62.0.1 has code for but the editor's list doesn't carry (`nperco_h`,
+`usle_c` and 56 others) aren't checked yet, so they're refused.
+
 ### Objects and grids
 
 Each SWAT+ object type is a BMI grid of type `points`: one point per object, longitude as x and
@@ -469,8 +527,9 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   is refused with sub-daily routing.
 - **Only fluxes and listed states can be set:** point source flow and load, water allocation
   demand, a channel's groundwater exchange and the mass it carries, and soil layer temperature,
-  for the next day, and weather records ahead (Weather). Not storage,
-  land use, soils or parameters; those are scenario inputs. Each settable state needs its own
+  for the next day, and weather records ahead (Weather). Parameters change once, at
+  initialize (Parameters). Not storage, land use or soils; those are scenario inputs. Each
+  settable state needs its own
   hook in the patch, at the point where SWAT+ has computed it and before anything uses it
   (docs/design.md, Setting states), so states are added one at a time, each with the same tests.
 - **Curated names for a handful of variables.** Every printed daily column of the HRU, landscape
@@ -563,7 +622,8 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
 - **SWAT+ 62.0.1 ignores or misreads some inputs without a message**, and the wrapper keeps that
   behavior. Two read-only checks find the ones met so far:
   `swatplus_bmi.project.check_calibration(project)` lists `calibration.cal` changes SWAT+ won't
-  make (a name missing from `cal_parms.cal`; `chn`, which never reaches the routing), and
+  make (a name missing from `cal_parms.cal`; `chn`, which never reaches the routing; every other
+  change the parameter audit refuses, Parameters), and
   `check_soils(run_dir)`, after a run, compares each soil as SWAT+ read it (`checker.out`) with
   `soils.sol`, where a blank field shifts every soil after it.
 - **Reservoirs in SWAT+ 62.0.1.** The `weir` release reads the crest height of a wetland, not the
@@ -662,6 +722,7 @@ folders once it passes (set `SWATPLUS_BMI_KEEP_RUNS=1` to keep them).
 | Stepping changes nothing | the same, stepped one day at a time and in chunks, 14 and 46 years |
 | Values read are SWAT+'s | every variable, every day, against SWAT+'s daily output files |
 | Every printed daily column | each generated read, every object, every day, against the printed file; NaN in skipped years |
+| Parameters at initialize | changes through the config against stock SWAT+ given the same `calibration.cal`, byte for byte; objects and conditions by the first day's curve number; every refusal |
 | Set values take effect exactly | a set withdrawal leaves the channel short by exactly that water; balances close |
 | Setting SWAT+'s own value back | point source flow and loads, demand and soil layer temperature set every day to SWAT+'s own: stock output, byte for byte |
 | Chemistry | reads against SWAT+'s salt and nutrient outputs; a gain's mass arrives exactly; a loss takes the outflow's concentration; the channel's salt balance closes |

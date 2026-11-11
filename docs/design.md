@@ -459,6 +459,57 @@ written first days and set later days are byte for byte the run on files
 holding the whole series).
 
 
+### Parameters at initialize
+
+Parameters change once, before the first day, through SWAT+'s own
+`calibration.cal`: `[[parameter]]` tables in the TOML config (or
+`calibration.write_changes`) become rows after the project's own, in the run
+copy, and SWAT+ reads and makes them (`proc_cal`: `cal_parmchg_read`,
+`cal_conditions`, `cal_parm_select`). Never as a `set_value` partway
+through: SWAT+ derives values from its parameters while it starts up, and
+a later change wouldn't reach them. The wrapper writes the file and nothing
+else, so a run with changes is the run stock SWAT+ makes from the same file;
+the test runs both and compares them byte for byte.
+
+What SWAT+ does with each change isn't what its file format suggests, so
+the wrapper refuses on evidence. `tools/audit_parameters.py run` tries each
+parameter in the SWAT+ editor's `cal_parms.cal` alone, as an `absval` for
+every object, on both test projects with everything printed daily, and
+compares every output file with the run without it (two identical runs
+first, to leave out anything that differs between them; the unset
+`cons_bmix` column masked). `summary` turns that into
+`src/swatplus_bmi/calibration-62.0.1.json` and the table in
+`docs/parameters-62.0.1.md`, with SWAT+'s source read for every change
+that moved nothing:
+
+- **made** (81): moved an output on a project with its objects.
+- **skipped** (17): no case in `cal_parm_select`; refused.
+- **refused** (35): used only while SWAT+ starts up, before `proc_cal`
+  (25, from `hrudb_init`'s copies of `nperco` and the other nutrient
+  coefficients to the rating curves); never used (3); `d50`, reset to 1.0
+  each day; `tile_latk`, which changes the tile lag; the five plant rows.
+- **not checked** (93): no test project has their objects, or their
+  process doesn't run there (Osu_1hru's one HRU is a rice paddy, whose
+  runoff doesn't use the curve number; neither project has tiles,
+  elevation bands or pesticides). Allowed, with a warning.
+
+Also refused: an `absval` outside `cal_parms.cal`'s range (SWAT+ clamps it
+without a message), a change type `chg_par` doesn't know (it has no
+default and returns whatever memory held), objects outside the project's
+count for the type, `layers` on anything but a soil parameter, and
+conditions other than `hsg`, `texture` and `landuse` with `=`, or on
+anything but HRU, soil and layer parameters (the condition code reads the
+HRU arrays at the object's number, whatever the object). The project needs
+a `cal_parms.cal`; without one SWAT+ makes no change at all. Names
+SWAT+ has code for but the editor's list lacks (`nperco_h`, `usle_c` and
+56 others) aren't checked yet, so they're refused.
+
+Objects and conditions are tested on Ames_sub1 by the first day's curve
+number (`hru_wb:cn`): later days can't show which HRUs changed, because
+its decision tables draw from one random number generator in HRU order,
+so a change in one HRU shifts the draws of the ones after it, in stock
+SWAT+ too.
+
 ## Time
 
 BMI time is days since the start of the simulation: `get_time_units()`
