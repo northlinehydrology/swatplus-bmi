@@ -3,7 +3,7 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
-## Unreleased
+## 0.10.0 (2026-11-14)
 
 - Arrays cross the exchange as raw 8-byte reals instead of text (protocol 6): `get` answers
   `@bin n` and the values; `setv`, `seti` and `setr` give their count, SWAT+ answers `@send`
