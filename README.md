@@ -62,7 +62,7 @@ flowchart LR
     C --> R["exch_record: keep the day's totals"] --> O["outputs written"] --> W
   end
   B -- "commands on standard input:<br/>run, get, set, save, load, branch, finish" --> P
-  P -- "replies on standard output:<br/>@paused, @value, @ok" --> B
+  P -- "replies on standard output:<br/>@paused, @bin and the values, @ok" --> B
 ```
 
 - **SWAT+'s side.** The patch adds ten calls to five SWAT+ files (`time_control.f90`,
@@ -72,9 +72,10 @@ flowchart LR
 - **The pause point.** Values read at a pause are those at the end of the previous day. Values
   set apply to the coming day only. A flux is put in place after SWAT+ sets its own demands for
   the day, so it isn't overwritten; a state, right after SWAT+ computes it that day.
-- **The connection.** The two sides talk in text lines over SWAT+'s standard input and output:
-  nothing linked, no sockets, nothing platform-specific for stepping. Any language that can
-  write and read lines could drive SWAT+ the same way.
+- **The connection.** The two sides talk in text lines over SWAT+'s standard input and output,
+  and an array follows its line as raw 8-byte reals, so a whole array is one write and one read
+  however long it is, and every value crosses exactly as it is held. Nothing linked, no
+  sockets. Any language that can write and read lines and bytes could drive SWAT+ the same way.
 - **Python's side.** `SwatPlusBmi` is a BMI 2.0 model: `initialize`, `update`, `update_until`,
   `get_value`, `set_value`, grids and time functions. Each SWAT+ object type (channels,
   aquifers, point sources, water users) is a BMI grid of points.
@@ -87,7 +88,7 @@ flowchart LR
   N -- "branch() (fork; Mac, Linux)" --> A["scenario A"]
   N -- "branch()" --> B["scenario B"]
   N -- "save_state(folder)" --> F[("state.bin and<br/>run folder copy")]
-  F -- "load_state(folder),<br/>any platform, any time later" --> C["scenario C"]
+  F -- "load_state(folder),<br/>any time later" --> C["scenario C"]
 ```
 
 Every scenario is bit-for-bit identical to the same scenario run from the start.
@@ -216,7 +217,7 @@ base.initialize("runs/warmup.toml")
 base.update_until(3 * 365)                  # the warm-up
 
 a = base.branch("runs/scenario-a")          # Mac and Linux: a copy of the paused process
-base.save_state("states/warm")              # any platform: a folder with the state
+base.save_state("states/warm")              # a folder with the state
 
 n = SwatPlusBmi()
 n.initialize("runs/scenario-c.toml")
@@ -515,9 +516,9 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   unpatched SWAT+, including 46 years of Ames_sub1, and CI checks that every SWAT+ file the
   patch doesn't touch compiles to the same object as in the stock build.
 - **Small and off by default.** Ten calls in five SWAT+ files, one Fortran module, and a C file
-  of four functions for `fork`. With the mode off, SWAT+ behaves exactly as it does without the
+  of nine short functions, for `fork` and for whole reads and writes of arrays. With the mode off, SWAT+ behaves exactly as it does without the
   patch. It's meant to be proposed to the SWAT+ team (`docs/upstream-issue.md`).
-- **No linking, any platform for stepping.** Text over standard input and output. The Python
+- **No linking.** Text lines and raw arrays over standard input and output. The Python
   wrapper is a separate program, which keeps the licenses apart.
 - **Standard interface.** BMI 2.0 with CSDMS names and time in days since the start date, as
   eWaterCycle expects.
@@ -542,10 +543,14 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   unit, basin, aquifer and channel records can be read under its SWAT+ name (Every printed
   daily column), but CSDMS-named variables in SI units are added one at a time, each with a
   test against SWAT+'s output. Reservoir, wetland and other records aren't generated yet.
-- **One process per model, one message per day per value.** On a tiny project the messages cost
-  more than SWAT+'s computing. On a real project computing dominates.
-- **Branching needs fork:** Mac and Linux. Saving and loading work everywhere, but the Windows
-  build hasn't been tried.
+- **One process per model, one message per variable per day.** An array is one message, raw
+  8-byte reals, whatever its length (0.10.0; until then a value cost a system call, and reading
+  12,000 soil layer temperatures a day took longer than SWAT+'s day). On a tiny project the
+  messages still cost more than SWAT+'s computing. On a real project computing dominates:
+  reading and setting 39,000 values a day over 16 years of a basin build with 12,000 soil layers
+  takes 47 s, against 44 s stepping alone (`tools/bench_exchange.py`).
+- **Mac and Linux.** Branching needs fork, and arrays cross through POSIX reads and writes
+  (0.10.0). The Windows build, never tried, stops at startup in exchange mode.
 - **Saved states depend on the code a project runs.** The list of saved locals that carry state
   is complete for the code the test projects run: about half of SWAT+'s procedures. That
   excludes gwflow, salts with aquifers or point sources, other constituents, reservoirs,
@@ -695,11 +700,13 @@ lines, then `@ready`), then `@paused <days done> <year> <day of year>`, and wait
 
 ```
 run [n]                    run n days (default 1)          -> @paused ... or @ended <days>
-get <variable>             one value per object             -> @value <n> <v1> ... <vn>
+get <variable>             one value per object             -> @bin <n>, then n values
+geti <variable> <n>        -> @send, then n indices         -> @bin <n>, then those values
 set <variable> <i> <v>     object i (1-based), next day     -> @ok
-setv <variable> <n>        then n lines: every object       -> @ok
-seti <variable> <n>        then n lines "<i> <v>"           -> @ok
-setr <variable> <yr> <day> <n>  then n lines, every gage    -> @ok   (weather records)
+setv <variable> <n>        -> @send, then every object's    -> @ok
+seti <variable> <n>        -> @send, then n indices, n values -> @ok
+setr <variable> <yr> <day> <n> <gages>  -> @send, then n days x every gage -> @ok   (weather records)
+echo <n>                   -> @send, then n values          -> @bin <n>, the same values
 save "<file>" "<run dir>"  the state at this pause          -> @ok
 load "<file>"              right after startup              -> @restore ... then @paused
 branch "<new>" "<old>" "<in>" "<out>"   fork (Mac, Linux)   -> @branched <pid>
@@ -708,7 +715,10 @@ finish                     run to the end, complete outputs
 stop                       stop now                         -> @bye
 ```
 
-Errors come back as `@error <message>` and SWAT+ keeps waiting. Details:
+Values after `@bin` and `@send` are raw 8-byte reals in the machine's byte order, indices
+4-byte 1-based integers; nothing else is on the line. A command that carries an array gives its
+length, and SWAT+ checks it before answering `@send`; refused, it answers `@error` and nothing
+is sent. Errors come back as `@error <message>` and SWAT+ keeps waiting. Details:
 [docs/design.md](docs/design.md).
 
 ## Tests
@@ -729,6 +739,7 @@ folders once it passes (set `SWATPLUS_BMI_KEEP_RUNS=1` to keep them).
 | Values read are SWAT+'s | every variable, every day, against SWAT+'s daily output files |
 | Every printed daily column | each generated read, every object, every day, against the printed file; NaN in skipped years |
 | Parameters at initialize | changes through the config against stock SWAT+ given the same `calibration.cal`, byte for byte; objects and conditions by the first day's curve number; every refusal |
+| Arrays cross exactly | any 8-byte bit pattern (zeros of both signs, subnormals, the largest reals, infinities, NaN payloads, 300,000 random patterns) sent to SWAT+ and back unchanged; 4-byte values set read back to the bit; a refused command leaves both ends in step, on a branch too |
 | Set values take effect exactly | a set withdrawal leaves the channel short by exactly that water; balances close |
 | Setting SWAT+'s own value back | point source flow and loads, demand and soil layer temperature set every day to SWAT+'s own: stock output, byte for byte |
 | Chemistry | reads against SWAT+'s salt and nutrient outputs; a gain's mass arrives exactly; a loss takes the outflow's concentration; the channel's salt balance closes |
