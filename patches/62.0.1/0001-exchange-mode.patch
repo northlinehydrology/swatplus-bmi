@@ -6,7 +6,7 @@ index efa4e69..33f8c1e 100644
  
  
  file(GLOB sources src/*.f90)
-+# exchange mode: fork, chdir and stream rewiring for branching (Mac and Linux)
++# exchange mode: the POSIX calls for branching and for arrays as raw bytes (Mac and Linux)
 +if(NOT WIN32)
 +    enable_language(C)
 +    list(APPEND sources src/bmi_fork.c)

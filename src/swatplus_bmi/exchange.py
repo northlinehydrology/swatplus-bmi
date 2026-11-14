@@ -1,10 +1,17 @@
-"""The line protocol between Python and a SWAT+ process in exchange mode.
+"""The protocol between Python and a SWAT+ process in exchange mode.
 
 SWAT+ is started with ``--exchange`` in its project folder. It sends a
 catalog, then pauses before each day and answers commands on standard input.
 Every reply line starts with ``@``. Lines that don't are SWAT+ console
 messages (only seen where SWAT+ can't move them to ``exchange.log``) and are
 appended to that log here.
+
+Arrays cross as raw 8-byte reals in this machine's byte order, right after
+the line that gives their length: SWAT+ sends ``@bin n`` and the values; for
+an array going to SWAT+, the command gives the count, SWAT+ answers ``@send``
+(or refuses with ``@error``, and then nothing is sent) and the bytes follow.
+So a value crosses exactly as it is held, and an array costs a few system
+calls whatever its length.
 
 This module knows nothing about BMI; ``swatplus_bmi.bmi`` builds on it.
 """
@@ -23,7 +30,7 @@ from pathlib import Path
 
 import numpy as np
 
-PROTOCOL = 5
+PROTOCOL = 6
 
 
 def _wait_gone(pid: int, timeout: float | None) -> None:
@@ -53,6 +60,19 @@ def _wait_gone(pid: int, timeout: float | None) -> None:
 
 class ExchangeError(RuntimeError):
     """SWAT+ refused a command or stopped unexpectedly."""
+
+
+def _indices(name: str, indices) -> np.ndarray:
+    """0-based indices as SWAT+ takes them: 1-based 4-byte integers."""
+    i = np.asarray(indices).ravel()
+    if not np.issubdtype(i.dtype, np.integer):
+        whole = i.astype(np.int64)
+        if (whole != i).any():
+            raise TypeError(f"{name}: indices must be whole numbers")
+        i = whole
+    if i.size and (i.min() < 0 or i.max() >= 2**31 - 1):
+        raise IndexError(f"{name}: indices must be 0 or more")
+    return (i + 1).astype(np.int32)
 
 
 @dataclasses.dataclass
@@ -118,11 +138,30 @@ class Exchange:
     # -- low level ------------------------------------------------------
 
     def _send(self, line: str) -> None:
+        self._write((line + "\n").encode())
+
+    def _write(self, data: bytes) -> None:
         try:
-            self._in.write((line + "\n").encode())
+            self._in.write(data)
             self._in.flush()
         except BrokenPipeError:
             raise ExchangeError(self._died("SWAT+ closed its input")) from None
+
+    def _send_arrays(self, line: str, *arrays: np.ndarray) -> None:
+        """A command with arrays to follow: the line, then, once SWAT+ answers @send,
+        the arrays' bytes. A command SWAT+ refuses raises before any are sent."""
+        self._send(line)
+        self._expect("@send")
+        self._write(b"".join(a.tobytes() for a in arrays))
+
+    def _array(self) -> np.ndarray:
+        """An array SWAT+ sends: @bin n, then n 8-byte reals."""
+        rest = self._expect("@bin")
+        n = int(rest[0])
+        data = self._out.read(8 * n) if n else b""
+        if len(data) != 8 * n:
+            raise ExchangeError(self._died(f"SWAT+ stopped partway through {n} values"))
+        return np.frombuffer(data, dtype=np.float64).copy()
 
     def _line(self) -> str:
         while True:
@@ -208,12 +247,22 @@ class Exchange:
         self._paused()
 
     def get(self, name: str) -> np.ndarray:
+        """Every object's value on the variable's grid, in grid order."""
         self._send(f"get {name}")
-        rest = self._expect("@value")
-        n, vals = int(rest[0]), rest[1:]
-        if len(vals) != n:
-            raise ExchangeError(f"{name}: expected {n} values, got {len(vals)}")
-        return np.array(vals, dtype=np.float64)
+        return self._array()
+
+    def get_at(self, name: str, indices) -> np.ndarray:
+        """The values at ``indices`` (0-based), in the order given; only those cross."""
+        i = _indices(name, indices)
+        self._send_arrays(f"geti {name} {len(i)}", i)
+        return self._array()
+
+    def echo(self, values) -> np.ndarray:
+        """``values`` sent to SWAT+ and back as they are, NaN included: a check of the
+        channel itself."""
+        v = np.ascontiguousarray(values, dtype=np.float64).ravel()
+        self._send_arrays(f"echo {len(v)}", v)
+        return self._array()
 
     def set(self, name: str, index: int, value: float) -> None:
         """Set one value (0-based index) for the next day only. SWAT+ refuses, with an
@@ -227,36 +276,34 @@ class Exchange:
     def set_all(self, name: str, values) -> None:
         """Set every object on the variable's grid for the next day, in one command.
         All or nothing: if SWAT+ refuses any value, it keeps none."""
-        v = np.asarray(values, dtype=np.float64).ravel()
+        v = np.ascontiguousarray(values, dtype=np.float64).ravel()
         if not np.isfinite(v).all():
             raise ExchangeError(f"{name}: values must be finite numbers")
-        self._send(f"setv {name} {len(v)}\n" + "\n".join(repr(float(x)) for x in v))
+        self._send_arrays(f"setv {name} {len(v)}", v)
         self._expect("@ok")
 
     def set_records(self, name: str, year: int, day: int, values) -> None:
         """Write weather records (SWAT+'s units converted from the variable's) for
         ``len(values)`` days from day ``day`` of ``year``, one row per day with a value
         for every gage in grid order. All or nothing, as for ``set_all``."""
-        v = np.asarray(values, dtype=np.float64)
+        v = np.ascontiguousarray(values, dtype=np.float64)
         if v.ndim != 2:
             raise ValueError(f"{name}: values must be one row per day, one column per gage")
         if not np.isfinite(v).all():
             raise ExchangeError(f"{name}: values must be finite numbers")
-        self._send(f"setr {name} {int(year)} {int(day)} {len(v)}\n"
-                   + "\n".join(" ".join(repr(float(x)) for x in row) for row in v))
+        self._send_arrays(f"setr {name} {int(year)} {int(day)} {v.shape[0]} {v.shape[1]}", v)
         self._expect("@ok")
 
     def set_at(self, name: str, indices, values) -> None:
         """Set the objects at ``indices`` (0-based) for the next day, in one command;
         all or nothing, as for ``set_all``."""
-        i = np.asarray(indices).ravel()
-        v = np.asarray(values, dtype=np.float64).ravel()
+        i = _indices(name, indices)
+        v = np.ascontiguousarray(values, dtype=np.float64).ravel()
         if len(i) != len(v):
             raise ValueError(f"{name}: {len(i)} indices and {len(v)} values")
         if not np.isfinite(v).all():
             raise ExchangeError(f"{name}: values must be finite numbers")
-        self._send(f"seti {name} {len(v)}\n"
-                   + "\n".join(f"{int(a) + 1} {float(b)!r}" for a, b in zip(i, v)))
+        self._send_arrays(f"seti {name} {len(v)}", i, v)
         self._expect("@ok")
 
     def branch(self, run_dir: str | os.PathLike) -> "Exchange":

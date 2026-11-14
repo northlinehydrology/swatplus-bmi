@@ -188,9 +188,8 @@ def test_refusals_keep_nothing():
         m.set_value_at_indices(GW, np.array([n]), np.array([1e-8]))
     with pytest.raises(ValueError, match="output only"):
         m.set_value(GWH, np.zeros(1))
-    m._x._send(f"setv {GW} 2\n1e-8\n2e-8")                 # SWAT+ itself wants every layer
     with pytest.raises(ExchangeError, match=f"setv needs all {n} values"):
-        m._x._expect("@ok")
+        m._x.set_all(GW, [1e-8, 2e-8])                   # SWAT+ itself wants every layer
     m.update()                                           # nothing kept
     assert (values(m, GW) == 0).all() and values(m, GWH)[0] == 0
     m.finalize()
