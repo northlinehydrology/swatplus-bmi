@@ -29,12 +29,13 @@ Decisions behind the design:
 ```
 SWAT+ 62.0.1 (tag)  + patches/62.0.1/*.patch     five edited files and CMakeLists.txt, 20 lines
                     + fortran/bmi_exchange_module.f90   the exchange mode
-                    + fortran/bmi_fork.c                fork for branching (Mac, Linux)
+                    + fortran/bmi_fork.c                fork for branching, whole reads and
+                                                        writes for arrays (Mac, Linux)
                     + bmi_state_module.f90              state serializer, generated per release
                                                         (tools/gen_serializer.py)
                     = bin/swatplus-62.0.1-exchange     (build.sh, CMake)
 
-src/swatplus_bmi/exchange.py    the line protocol: one SWAT+ process
+src/swatplus_bmi/exchange.py    the protocol: one SWAT+ process
 src/swatplus_bmi/bmi.py         BMI 2.0 (bmipy) on top of it
 ```
 
@@ -90,18 +91,40 @@ prove, below, says on which projects).
 
 ## Protocol
 
-Text lines in both directions. Commands go to SWAT+'s standard input, one
-per line. Replies come on standard output, one per line, each starting
-with `@`. On Mac and Linux, SWAT+'s own console messages go to
-`exchange.log`, so standard output carries only replies. Where SWAT+ can't
-open `/dev/stdout` (Windows), replies and console messages share standard
+Text lines in both directions, and arrays as raw bytes. Commands go to
+SWAT+'s standard input, one per line. Replies come on standard output, one
+per line, each starting with `@`. SWAT+'s own console messages go to
+`exchange.log`, so standard output carries only replies. (Where SWAT+ can't
+open `/dev/stdout`, replies and console messages would share standard
 output, and the `@` keeps them apart; the Python side writes any other line
-to `exchange.log`. No sockets and no C are needed for stepping.
+to `exchange.log`.) No sockets.
+
+An array crosses right after the line that gives its length, as raw 8-byte
+reals in the machine's byte order (both ends are on the same machine):
+SWAT+ sends `@bin n` and then the n values. A command that sends an array
+gives its length; SWAT+ checks the command, answers `@send` (or `@error`,
+and then nothing is sent), and reads exactly that many bytes. Indices go as
+4-byte 1-based integers. So a value crosses exactly as it is held, NaN
+included, and a whole array costs a few system calls.
+
+Until protocol 6 (0.10.0) arrays went as text: seventeen significant digits
+per value, exact too, but gfortran wrote the record to the pipe one value at
+a time, a system call each, and parsing them cost as much again. A sample of
+a SWAT+ process in a coupled run (the Clam basin build, reading 12,000 soil
+layer temperatures a day) found 61% of its time in those writes, and with
+eight runs at once two thirds of the machine was kernel time. The bytes are
+written and read by `bmi_fork.c` (`swx_write`, `swx_read`) on its own copies
+of the two channels, not through Fortran units: gfortran reads an
+unformatted stream from a pipe in one read call and takes a short read for
+the end of the file. SWAT+ reads a command line through a Fortran unit,
+which can read ahead of the line; the caller sends nothing after a command
+until SWAT+ answers it, and `@send` is that answer, so the bytes are always
+still in the pipe for `swx_read`.
 
 Startup (SWAT+ to caller):
 
 ```
-@hello swatplus-exchange 5
+@hello swatplus-exchange 6
 @model SWAT+ 2026-10-16        MODULAR Rev 2026.62.0.1
 @build 3f9c0e...                  hash of the swatplus-bmi sources it was built from
 @start 2010 1                    first year, first day of year
@@ -134,11 +157,13 @@ Commands, while paused:
 | Command | Reply | Meaning |
 |---|---|---|
 | `run [n]` | `@paused d y j` or `@ended d` | run *n* days (default 1) without pausing in between |
-| `get <var>` | `@value n v1 ... vn` | one value per object on the variable's grid, seventeen significant digits (an 8-byte real exactly) |
-| `set <var> <i> <v>` | `@ok` | object *i* (1-based) gets *v* for the next day; refused (`@error`) when SWAT+ would not use it as given (Setting fluxes) |
-| `setv <var> <n>`, then *n* lines `<v>` | `@ok` | every object on the grid, in grid order, in one command |
-| `seti <var> <n>`, then *n* lines `<i> <v>` | `@ok` | the objects given; for both, all or nothing: one refused value refuses them all, and the reply names it |
-| `setr <var> <yr> <day> <n>`, then *n* lines of one value per gage | `@ok` | weather records for *n* days from day *day* of *yr*, written now (Setting weather records); all or nothing |
+| `get <var>` | `@bin n`, then *n* values | one value per object on the variable's grid, in grid order |
+| `geti <var> <n>`; after `@send`, *n* indices | `@bin n`, then *n* values | the values at those indices (1-based, any order, repeats allowed); refused, after the indices, if one is out of range |
+| `set <var> <i> <v>` | `@ok` | object *i* (1-based) gets *v* (text, read as an 8-byte real) for the next day; refused (`@error`) when SWAT+ would not use it as given (Setting fluxes) |
+| `setv <var> <n>`; after `@send`, *n* values | `@ok` | every object on the grid, in grid order, in one command; refused before `@send` unless *n* is the grid's size |
+| `seti <var> <n>`; after `@send`, *n* indices, then *n* values | `@ok` | the objects given; for both, all or nothing: one refused value refuses them all, and the reply names it |
+| `setr <var> <yr> <day> <n> <g>`; after `@send`, *n* x *g* values, day by day | `@ok` | weather records for *n* days from day *day* of *yr*, a value for each of the *g* gages each day, written now (Setting weather records); refused before `@send` unless *g* is the grid's size; all or nothing |
+| `echo <n>`; after `@send`, *n* values | `@bin n`, then the same values | a check of the channel itself |
 | `flush` | `@ok` | write out every open file's buffer |
 | `branch "<new>" "<old>" "<in>" "<out>"` | `@branched pid` | fork; see Snapshots |
 | `save "<file>" "<run dir>"` | `@ok` | write SWAT+'s module state at this pause, and the values set for the next day, to the file (see Snapshots); refused when an open file couldn't be carried |
@@ -580,9 +605,12 @@ folder is fine.
 
 SIGCHLD is ignored in the parent, so finished branches are reaped and leave
 no zombies. A branch outlives its parent. The C helper (`bmi_fork.c`) is
-four functions: `fork`, `chdir`, rewiring the standard streams, and
-`getpid`. It isn't compiled on Windows, where `branch` replies with an
-error.
+four functions for branching: `fork`, `chdir`, rewiring the standard
+streams, and `getpid`; and five that move arrays (Protocol): a copy of a
+standard stream's descriptor, open, close, and whole reads and writes. A
+branch closes its copies of the parent's channels, so the parent's caller
+still sees the end of the parent's replies, and opens its own on the named
+pipes. It isn't compiled on Windows, where exchange mode stops at startup.
 
 Tests: branch at day 0, 365, 1000 and the last day, with parent and child
 stepped in turn; a branch of a branch; and three water allocation scenarios
@@ -757,7 +785,11 @@ The claim is three sentences, and each has its own tests:
    groundwater exchange every day. A set on one day changes only that day
    (`test_setting.py`, `test_groundwater.py`, `test_gw_soil.py`), by
    exactly the water set (balances close). Every kind of set runs on a build with array bounds
-   checked (`build.sh --check`).
+   checked (`build.sh --check`). The channel itself is checked apart from SWAT+
+   (`test_transport.py`): any 8-byte bit pattern, NaN payloads and
+   signaling NaNs among them, goes to SWAT+ and back unchanged (`echo`), in
+   arrays larger than a pipe holds, on a branch too; a 4-byte value set reads
+   back to the bit; and a refused command leaves both ends in step.
 3. **Anything that can't be carried out faithfully is refused.** Each
    refusal above has a test that it raises an error and leaves the run
    able to go on.
@@ -980,8 +1012,9 @@ parameters at initialize (0.9.0).
 - A gwflow project that reads `chan_depth.gw` or `pond_div.gw` can't be
   branched or saved, and nor can a project whose `out_path` leads out of
   the run folder.
-- Branching needs fork: Mac and Linux. Saving to a file and loading work
-  everywhere, but the Windows build hasn't been tried.
+- Mac and Linux only: branching needs fork, and arrays cross through POSIX
+  reads and writes (protocol 6). The Windows build, never tried, stops at
+  startup in exchange mode.
 - Loading a saved state starts a new process and runs forward through the
   saved days without computing them, so it takes a little time on long
   warm-ups; branching is instant.

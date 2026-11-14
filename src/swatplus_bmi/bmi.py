@@ -371,7 +371,11 @@ class SwatPlusBmi(Bmi):
 
     def get_value_at_indices(self, name: str, dest: np.ndarray, inds: np.ndarray) -> np.ndarray:
         self._var(name)
-        dest[:] = self._x.get(name)[np.asarray(inds)]
+        # numpy's indexing rules (a negative index counts from the end), as before; then
+        # only those values cross
+        inds = np.arange(self.get_grid_size(self.get_var_grid(name)))[np.asarray(inds)]
+        if inds.size:
+            dest[:] = self._x.get_at(name, inds)
         return dest
 
     def set_value(self, name: str, src: np.ndarray) -> None:

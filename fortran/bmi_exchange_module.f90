@@ -13,6 +13,9 @@
 !!    place after the start-of-day water allocation and before the command
 !!    (routing) loop, so SWAT+'s own daily inputs don't overwrite them.
 !!    Replies go to standard output, one per line, each starting with "@".
+!!    Arrays cross as raw 8-byte reals after a line that gives their length
+!!    (@bin n out, @send in), written and read whole by the C helpers in
+!!    bmi_fork.c, so an array costs a few system calls, not one per value.
 !!    SWAT+'s own console messages go to exchange.log in the run folder.
 !!    The protocol is described in docs/design.md of swatplus-bmi.
 !!
@@ -36,7 +39,7 @@
 !!    salt and nutrients with its water (exch_channel, exch_channel_cs).
 
       use iso_fortran_env, only : input_unit
-      use, intrinsic :: iso_c_binding, only : c_int, c_char, c_null_char
+      use, intrinsic :: iso_c_binding, only : c_int, c_char, c_null_char, c_size_t, c_int32_t
       use, intrinsic :: ieee_arithmetic, only : ieee_is_finite, ieee_value, ieee_quiet_nan
       use bmi_reads_module, only : n_gen, gen_catalog, gen_value
 
@@ -54,7 +57,9 @@
       integer :: days_total = 0           !! days in the simulation
       integer :: run_left = 0             !! days to run before the next pause
       logical :: run_free = .false.       !! run to the end without pausing
-      integer :: protocol = 5             !! protocol version
+      integer :: protocol = 6             !! protocol version
+      integer(c_int) :: bin_in = -1       !! the command channel's file descriptor, for arrays in
+      integer(c_int) :: bin_out = -1      !! the reply channel's, for arrays out
       logical :: ended = .false.          !! the simulation has ended (exch_end)
       integer, parameter :: unit_max = 1000000   !! highest unit number branch looks at
       character(len=80) :: paused_line = ""      !! the last @paused reply
@@ -208,6 +213,44 @@
       integer, dimension(:), allocatable :: var_fam
       integer, dimension(:), allocatable :: var_sp
 
+#if !defined(_WIN32)
+      !! bmi_fork.c: whole reads and writes of raw bytes on a file descriptor. gfortran
+      !! reads an unformatted stream from a pipe in one read call and takes a short read
+      !! for the end of the file, and writes a formatted record a value at a time with a
+      !! system call each, so arrays go through these instead
+      interface
+        function swx_dup (fd) bind(c, name="swx_dup")
+          import :: c_int
+          integer(c_int), value :: fd
+          integer(c_int) :: swx_dup
+        end function swx_dup
+        function swx_open (path, for_write) bind(c, name="swx_open")
+          import :: c_int, c_char
+          character(kind=c_char), dimension(*), intent(in) :: path
+          integer(c_int), value :: for_write
+          integer(c_int) :: swx_open
+        end function swx_open
+        subroutine swx_close (fd) bind(c, name="swx_close")
+          import :: c_int
+          integer(c_int), value :: fd
+        end subroutine swx_close
+        function swx_read (fd, buf, n) bind(c, name="swx_read")
+          import :: c_int, c_size_t
+          integer(c_int), value :: fd
+          type(*), dimension(*) :: buf
+          integer(c_size_t), value :: n
+          integer(c_int) :: swx_read
+        end function swx_read
+        function swx_write (fd, buf, n) bind(c, name="swx_write")
+          import :: c_int, c_size_t
+          integer(c_int), value :: fd
+          type(*), dimension(*), intent(in) :: buf
+          integer(c_size_t), value :: n
+          integer(c_int) :: swx_write
+        end function swx_write
+      end interface
+#endif
+
       contains
 
 !!    --------------------------------------------------------------------
@@ -227,6 +270,19 @@
         if (trim(arg) == "--exchange") exch_on = .true.
       end do
       if (.not. exch_on) return
+
+#if defined(_WIN32)
+      write (0, '(a)') "exchange mode needs Mac or Linux: arrays cross as raw bytes through POSIX calls"
+      error stop 5
+#else
+      !! the same two channels for arrays as raw bytes (bmi_fork.c)
+      bin_in = swx_dup (0_c_int)
+      bin_out = swx_dup (1_c_int)
+      if (bin_in < 0 .or. bin_out < 0) then
+        write (0, '(a)') "exchange mode: can't duplicate standard input and output"
+        error stop 5
+      end if
+#endif
 
       !! on Mac and Linux, replies get standard output to themselves and unit 6
       !! (the console) goes to a file; elsewhere they share standard output and
@@ -846,6 +902,7 @@
       integer :: j = 0
       integer :: k = 0
       real(8) :: v = 0.d0
+      real(8), dimension(:), allocatable :: val
 
       do
         read (cmd_unit, '(a)', iostat=ios) line
@@ -884,6 +941,14 @@
             call send_values (trim(name))
           end if
 
+        case ("geti")
+          read (line, *, iostat=ios) word, name, n
+          if (ios /= 0 .or. n < 0) then
+            call reply ("@error geti needs a variable name and an index count")
+          else
+            call send_at (trim(name), n)
+          end if
+
         case ("set")
           read (line, *, iostat=ios) word, name, i, v
           if (ios /= 0) then
@@ -894,35 +959,44 @@
             call set_value (trim(name), i, v)
           end if
 
+        !! a command with an array to follow is refused before @send, so the caller
+        !! sends no bytes; after @send it sends exactly the count given
         case ("setv", "seti")
           read (line, *, iostat=ios) word, name, n
           if (ios /= 0 .or. n < 0) then
             call reply ("@error " // trim(word) // " needs a variable name and a value count")
           else if (at_end) then
-            !! read the values anyway, so the next command isn't one of them
-            do i = 1, n
-              read (cmd_unit, '(a)', iostat=ios) line
-            end do
             call reply ("@error the simulation has ended; nothing left to set")
           else
             call set_values (trim(name), n, trim(word) == "seti")
           end if
 
         case ("setr")
-          read (line, *, iostat=ios) word, name, i, n, k
-          if (ios /= 0 .or. k < 0) then
-            call reply ("@error setr needs a variable name, a year, a day of the year and a day count")
+          read (line, *, iostat=ios) word, name, i, n, k, j
+          if (ios /= 0 .or. k < 0 .or. j < 0) then
+            call reply ("@error setr needs a variable name, a year, a day of the year, a day count " // &
+                        "and a gage count")
           else if (at_end) then
-            do j = 1, k
-              read (cmd_unit, '(a)', iostat=ios) line
-            end do
             call reply ("@error the simulation has ended; nothing left to set")
           else
-            call set_records (trim(name), i, n, k)
+            call set_records (trim(name), i, n, k, j)
           end if
 
         case ("ping")
           call reply ("@ok")
+
+        case ("echo")
+          !! the array sent, sent back: a check of the channel itself
+          read (line, *, iostat=ios) word, n
+          if (ios /= 0 .or. n < 0) then
+            call reply ("@error echo needs a value count")
+          else
+            allocate (val(n))
+            call reply ("@send")
+            call get_bytes (val, 8 * size(val, kind=c_size_t))
+            call send_array (val)
+            deallocate (val)
+          end if
 
         case ("flush")
           call flush_units
@@ -1048,8 +1122,12 @@
         return
       end if
 
-      !! the child: leave the parent's channels and folder
+      !! the child: leave the parent's channels and folder. Its copies of the
+      !! array channels go too, or the parent's caller would never see the end
+      !! of the parent's replies
       close (rep_unit)
+      call swx_close (bin_in)
+      call swx_close (bin_out)
       if (swx_chdir (trim(new_dir) // c_null_char) /= 0) error stop 4
       ios = swx_detach ("exchange.err" // c_null_char)
       open (6, file="exchange.log", action="write", position="append")
@@ -1058,6 +1136,10 @@
       call reopen_closed
       open (newunit=cmd_unit, file=trim(fifo_in), action="read", status="old")
       open (newunit=rep_unit, file=trim(fifo_out), action="write", status="old")
+      !! the caller has both pipes open by now, so these opens don't wait
+      bin_in = swx_open (trim(fifo_in) // c_null_char, 0_c_int)
+      bin_out = swx_open (trim(fifo_out) // c_null_char, 1_c_int)
+      if (bin_in < 0 .or. bin_out < 0) error stop 4
       call reply (paused_line)
 #endif
 
@@ -1438,6 +1520,54 @@
 !!    --------------------------------------------------------------------
       subroutine send_values (name)
 
+!!    get <var>: @bin n, then the n values
+
+      character(len=*), intent(in) :: name
+      real(8), dimension(:), allocatable :: val
+
+      if (values_of (name, val)) call send_array (val)
+
+      return
+      end subroutine send_values
+
+!!    --------------------------------------------------------------------
+      subroutine send_at (name, n)
+
+!!    geti <var> <n>: @send, then n 4-byte 1-based indices; @bin n, then the
+!!    values at those indices, in the order given
+
+      character(len=*), intent(in) :: name
+      integer, intent(in) :: n
+      real(8), dimension(:), allocatable :: val
+      integer(c_int32_t), dimension(:), allocatable :: idx
+      integer :: k = 0
+
+      if (var_index(name) == 0) then
+        call reply ("@error unknown variable: " // name)
+        return
+      end if
+      allocate (idx(n))
+      call reply ("@send")
+      call get_bytes (idx, 4 * size(idx, kind=c_size_t))
+      if (.not. values_of (name, val)) return
+      do k = 1, n
+        if (idx(k) < 1 .or. idx(k) > size(val)) then
+          call reply ("@error index " // itoa(k) // " is " // itoa(int(idx(k))) // ", not 1 to " // &
+                      itoa(size(val)))
+          return
+        end if
+      end do
+      call send_array (val(idx))
+
+      return
+      end subroutine send_at
+
+!!    --------------------------------------------------------------------
+      logical function values_of (name, val)
+
+!!    a variable's values, one per object on its grid; false, after an
+!!    @error, for an unknown variable
+
       use hydrograph_module, only : sp_ob, sp_ob1, ob, ch_in_d, ch_out_d, ch_stor
       use aquifer_module, only : aqu_d
       use maximum_data_module, only : db_mx
@@ -1446,7 +1576,7 @@
       use output_landscape_module, only : hwb_d, hnb_d
 
       character(len=*), intent(in) :: name
-      real(8), dimension(:), allocatable :: val
+      real(8), dimension(:), allocatable, intent(out) :: val
       integer :: i = 0
       integer :: iob = 0
       integer :: iv = 0
@@ -1643,6 +1773,7 @@
         iv = var_index(name)
         if (iv == 0) then
           call reply ("@error unknown variable: " // name)
+          values_of = .false.
           return
         end if
         if (wx_kind(name) > 0) then
@@ -1655,11 +1786,10 @@
           call chem_values (var_fam(iv), var_sp(iv), val)
         end if
       end select
-
-      call send_array (val)
+      values_of = .true.
 
       return
-      end subroutine send_values
+      end function values_of
 
 !!    --------------------------------------------------------------------
       subroutine chem_values (fam, k, val)
@@ -2164,46 +2294,38 @@
 !!    --------------------------------------------------------------------
       subroutine set_values (name, n, indexed)
 
-!!    setv <var> <n>, then n lines <v>: every object on the variable's grid,
-!!    in grid order; seti <var> <n>, then n lines <i> <v>: the objects given.
-!!    All or nothing: if any value is refused, none is kept, and the reply
-!!    names the first one refused.
+!!    setv <var> <n>: every object on the variable's grid, in grid order;
+!!    seti <var> <n>: the objects given. After @send come the n values as
+!!    8-byte reals, for seti after n 4-byte 1-based indices. All or nothing:
+!!    if any value is refused, none is kept, and the reply names the first
+!!    one refused.
 
       character(len=*), intent(in) :: name
       integer, intent(in) :: n
       logical, intent(in) :: indexed
       character(len=400) :: msg = ""
-      character(len=128) :: line = ""
-      integer, dimension(:), allocatable :: idx
+      integer(c_int32_t), dimension(:), allocatable :: idx
       real(8), dimension(:), allocatable :: val
       integer :: k = 0
-      integer :: ios = 0
       integer :: bad = 0
 
-      allocate (idx(max(n, 0)), source = 0)
-      allocate (val(max(n, 0)), source = 0.d0)
-      bad = 0
-      do k = 1, n
-        read (cmd_unit, '(a)', iostat=ios) line
-        if (ios /= 0) error stop 3
-        if (indexed) then
-          read (line, *, iostat=ios) idx(k), val(k)
-        else
-          idx(k) = k
-          read (line, *, iostat=ios) val(k)
-        end if
-        if (ios /= 0 .and. bad == 0) then
-          bad = k
-          msg = "can't read the value"
-        end if
-      end do
-      if (bad == 0 .and. .not. indexed .and. n /= var_size(name)) then
+      if (.not. indexed .and. n /= var_size(name)) then
         call reply ("@error setv needs all " // itoa(var_size(name)) // " values of " // name)
         return
       end if
+      allocate (idx(n), source = 0_c_int32_t)
+      allocate (val(n), source = 0.d0)
+      call reply ("@send")
+      if (indexed) then
+        call get_bytes (idx, 4 * size(idx, kind=c_size_t))
+      else
+        idx = [(int(k, c_int32_t), k = 1, n)]
+      end if
+      call get_bytes (val, 8 * size(val, kind=c_size_t))
+      bad = 0
       do k = 1, n
         if (bad /= 0) exit
-        call take_value (name, idx(k), val(k), .false., msg)
+        call take_value (name, int(idx(k)), val(k), .false., msg)
         if (msg /= "") bad = k
       end do
       if (bad /= 0) then
@@ -2211,7 +2333,7 @@
         return
       end if
       do k = 1, n
-        call take_value (name, idx(k), val(k), .true., msg)
+        call take_value (name, int(idx(k)), val(k), .true., msg)
       end do
       call reply ("@ok")
 
@@ -2405,21 +2527,49 @@
 !!    --------------------------------------------------------------------
       subroutine send_array (val)
 
-!!    one line: @value n v1 ... vn, seventeen significant digits so an
-!!    8-byte real goes out and comes back unchanged
+!!    the line @bin n, then the n values as 8-byte reals in this machine's
+!!    byte order, so a value goes out exactly as SWAT+ holds it
 
       real(8), dimension(:), intent(in) :: val
-      integer :: i = 0
 
-      write (rep_unit, '(a,i0)', advance="no") "@value ", size(val)
-      do i = 1, size(val)
-        write (rep_unit, '(1x,es24.16e3)', advance="no") val(i)
-      end do
-      write (rep_unit, '(a)') ""
-      flush (rep_unit)
+      call reply ("@bin " // itoa(size(val)))
+      call put_bytes (val, 8 * size(val, kind=c_size_t))
 
       return
       end subroutine send_array
+
+!!    --------------------------------------------------------------------
+      subroutine put_bytes (buf, nbytes)
+
+!!    writes nbytes of buf to the reply channel, after the line before it
+
+      type(*), dimension(*), intent(in) :: buf
+      integer(c_size_t), intent(in) :: nbytes
+
+#if !defined(_WIN32)
+      if (nbytes == 0) return
+      if (swx_write (bin_out, buf, nbytes) /= 0) error stop 3
+#endif
+
+      return
+      end subroutine put_bytes
+
+!!    --------------------------------------------------------------------
+      subroutine get_bytes (buf, nbytes)
+
+!!    reads nbytes from the command channel into buf, the bytes the caller
+!!    sends after @send. If the channel closes first, the caller is gone
+
+      type(*), dimension(*) :: buf
+      integer(c_size_t), intent(in) :: nbytes
+
+#if !defined(_WIN32)
+      if (nbytes == 0) return
+      if (swx_read (bin_in, buf, nbytes) /= 0) error stop 3
+#endif
+
+      return
+      end subroutine get_bytes
 
 !!    --------------------------------------------------------------------
       subroutine reply (line)
@@ -2794,18 +2944,18 @@
       end subroutine wx_values
 
 !!    --------------------------------------------------------------------
-      subroutine set_records (name, yr, iday, nd)
+      subroutine set_records (name, yr, iday, nd, ngiven)
 
-!!    setr <var> <year> <day> <nd>, then nd lines, each with a value for every
-!!    gage in grid order: the records for nd days from that date. All or
-!!    nothing: if any value is refused, none is kept, and the reply names the
-!!    first one refused.
+!!    setr <var> <year> <day> <nd> <ng>: the records for nd days from that
+!!    date. After @send come nd x ng 8-byte reals, day by day, each day a
+!!    value for every gage in grid order. All or nothing: if any value is
+!!    refused, none is kept, and the reply names the first one refused.
 
       character(len=*), intent(in) :: name
       integer, intent(in) :: yr
       integer, intent(in) :: iday
       integer, intent(in) :: nd
-      character(len=:), allocatable :: line
+      integer, intent(in) :: ngiven
       character(len=400) :: msg = ""
       real(8), dimension(:,:), allocatable :: val
       integer :: kind = 0
@@ -2814,32 +2964,27 @@
       integer :: ig = 0
       integer :: y = 0
       integer :: d = 0
-      integer :: ios = 0
       integer :: bad = 0
 
       kind = wx_kind(name)
-      ng = max(wx_count(kind), 0)
-      allocate (character(len=32 * ng + 64) :: line)
-      allocate (val(ng, max(nd, 0)), source = 0.d0)
-      bad = 0
-      msg = ""
-      do k = 1, nd
-        read (cmd_unit, '(a)', iostat=ios) line
-        if (ios /= 0) error stop 3
-        if (ng > 0) read (line, *, iostat=ios) val(:,k)
-        if (ios /= 0 .and. bad == 0) then
-          bad = k
-          msg = "can't read " // itoa(ng) // " values"
-        end if
-      end do
       if (kind == 0) then
         call reply ("@error not a weather record variable: " // name)
+        return
+      end if
+      ng = max(wx_count(kind), 0)
+      if (ngiven /= ng) then
+        call reply ("@error setr needs a value for each of the " // itoa(ng) // " gages of " // name)
         return
       end if
       if (iday < 1 .or. iday > ylen(yr)) then
         call reply ("@error day " // itoa(iday) // " isn't a day of " // itoa(yr))
         return
       end if
+      allocate (val(ng, nd), source = 0.d0)
+      call reply ("@send")
+      call get_bytes (val, 8 * size(val, kind=c_size_t))
+      bad = 0
+      msg = ""
       y = yr
       d = iday
       do k = 1, nd

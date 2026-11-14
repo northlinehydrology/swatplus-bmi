@@ -3,6 +3,29 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
+## 0.10.0 (2026-11-14)
+
+- Arrays cross the exchange as raw 8-byte reals instead of text (protocol 6): `get` answers
+  `@bin n` and the values; `setv`, `seti` and `setr` give their count, SWAT+ answers `@send`
+  and the bytes follow. gfortran had written a text array to the pipe a value at a time, with a
+  system call each, and in a coupled run that was most of SWAT+'s time (the Clam basin build:
+  61% of a sample in `write`, two thirds of the machine in the kernel with eight runs at once).
+  Measured back to back under the same load (`tools/bench_exchange.py`): the Clam build's
+  16 years, reading soil layer temperatures, snow, percolation and channel flow and setting the
+  temperatures back every day (39,000 values a day), 5.7 times faster (SWAT+'s kernel time 57 s
+  to 0.9 s); the study's own forward run, 1.75 times; Ames_sub1, 2.3 times. Values are bit for
+  bit what they were: the same 8-byte reals, and every output file still matches stock SWAT+
+  (the study's run gave the same 366 files as with 0.9.0, clock stamps aside).
+- `get_value_at_indices` asks SWAT+ for only those values (`geti`).
+- `setr` gives the gage count, and SWAT+ refuses a command whose count is wrong before any
+  values are sent, so the two ends can't fall out of step.
+- `echo`, a check of the channel itself: an array sent and sent back as it was.
+- `tools/bench_exchange.py` times a run that reads and sets arrays every day, with any release.
+- Exchange mode needs Mac or Linux: arrays go through POSIX reads and writes in `bmi_fork.c`.
+  The Windows build, never tried, now stops at startup with a message.
+- An executable and a wrapper from either side of this change refuse each other (the build hash
+  and the protocol number).
+
 ## 0.9.0 (2026-11-11)
 
 - Parameters at initialize, through SWAT+'s own `calibration.cal`: `[[parameter]]` tables in

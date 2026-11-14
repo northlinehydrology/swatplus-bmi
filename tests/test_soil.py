@@ -134,9 +134,10 @@ def test_refusals_keep_nothing():
     before = values(m, TS).copy()
     with pytest.raises(ExchangeError, match="value 2: a temperature can't be below absolute zero"):
         m.set_value_at_indices(TS, np.array([0, 1]), np.array([5.0, -300.0]))
-    m._x._send(f"setv {TS} 2\n1.0\n2.0")
     with pytest.raises(ExchangeError, match=f"setv needs all {n} values"):
-        m._x._expect("@ok")
+        m._x.set_all(TS, [1.0, 2.0])                     # refused before the values are sent
+    m._x._send("ping")                                   # and the channel is still in step
+    m._x._expect("@ok")
     m.update()                                           # neither set kept: layer 1 isn't 5
     assert values(m, TS)[0] != 5.0
     assert before[0] != 5.0
