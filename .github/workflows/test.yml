@@ -5,6 +5,8 @@
 # canary: SWAT+ main with the newest supported patch, nightly and on demand,
 #   as an early warning that the next SWAT+ release may need a new patch.
 #   Main is not supported; a failure here doesn't fail the run.
+# windows: the supported SWAT+ releases on Windows (MSYS2's gfortran), on every
+#   push, pull request and night.
 # latest: the supported SWAT+ release against the newest release of every Python
 #   dependency, on the oldest and newest supported Python, nightly and on demand,
 #   so an upstream release that breaks the package shows up before users hit it.
@@ -48,6 +50,56 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: failed-runs-${{ matrix.os }}-${{ matrix.swatplus }}
+          path: |
+            tests/runs/
+            !tests/runs/Ames*/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Windows: gfortran, CMake and Ninja from MSYS2 (UCRT64), Python and the package from uv.
+  # Every build, stock included, takes patches/<tag>/windows/ (SWAT+'s Linux and macOS
+  # release flags for gfortran), and a branch is a save and a load (no fork)
+  windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        swatplus: ["62.0.1"]
+    runs-on: windows-latest
+    name: SWAT+ ${{ matrix.swatplus }} on windows-latest
+    env:
+      SWATPLUS_TAG: ${{ matrix.swatplus }}
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Check out with the files' own line endings
+        shell: pwsh
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          path-type: inherit
+          install: >-
+            git
+            patch
+            mingw-w64-ucrt-x86_64-gcc-fortran
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+      - run: uv sync --locked
+      - run: CMAKE=/ucrt64/bin/cmake uv run ./build.sh --stock --nosave --check --jobs 4 --tag "$SWATPLUS_TAG"
+      - name: Every SWAT+ file the patch doesn't touch compiles to the same object
+        run: |
+          uv run python tools/build_parity.py "build/$SWATPLUS_TAG" \
+            --expect "$(uv run python tools/build_parity.py --expected "$SWATPLUS_TAG")"
+      - run: uv run pytest -q
+      - if: failure()
+        run: tail -50 build/*/*.log || true
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failed-runs-windows-${{ matrix.swatplus }}
           path: |
             tests/runs/
             !tests/runs/Ames*/
