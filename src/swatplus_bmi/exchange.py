@@ -312,11 +312,15 @@ class Exchange:
         SWAT+ writes out its buffers, the run folder is copied to
         ``run_dir``, and the process is duplicated with fork. Both copies
         are paused at the same point with the same state; each continues on
-        its own and writes its own outputs. Mac and Linux only. Refused, as
-        for ``save_state``, when a file SWAT+ has open couldn't be carried.
+        its own and writes its own outputs. Refused, as for ``save_state``,
+        when a file SWAT+ has open couldn't be carried.
+
+        Windows has no fork, so there the state is saved and loaded in
+        ``run_dir`` by a new process instead (``save_state``, ``load_state``):
+        the same branch, slower to make.
         """
         if sys.platform == "win32":
-            raise ExchangeError("branch needs fork, which Windows doesn't have")
+            return self._branch_by_loading(run_dir)
         if self.ended:
             raise ExchangeError("the simulation has ended; nothing left to branch")
         new = Path(run_dir).resolve()
@@ -346,6 +350,14 @@ class Exchange:
         b._out = open(f_out, "rb")
         b._paused()
         return b
+
+    def _branch_by_loading(self, run_dir: str | os.PathLike) -> "Exchange":
+        new = Path(run_dir).resolve()
+        if new.exists():
+            raise FileExistsError(f"{new} already exists")
+        with tempfile.TemporaryDirectory(prefix="swatplus-branch-") as tmp:
+            saved = self.save_state(Path(tmp) / "state")
+            return Exchange.load_state(self.executable, saved, new)
 
     def save_state(self, path: str | os.PathLike) -> Path:
         """Save SWAT+'s state at this pause to the folder ``path``.

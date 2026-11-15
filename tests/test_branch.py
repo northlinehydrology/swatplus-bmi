@@ -1,4 +1,5 @@
-"""Milestone 4a: branching a paused run in memory (fork), Mac and Linux.
+"""Milestone 4a: branching a paused run in memory (fork on Mac and Linux; on Windows,
+which has no fork, a save and a load by a new process).
 
 The snapshot test: branch at day N, continue every copy to the end, and
 match an unbroken stock run bit for bit, every output file. Run on Osu_1hru
@@ -16,8 +17,6 @@ import pytest
 from conftest import EXCHANGE, RUNS, STOCK, differences, fresh, need, project, run_stock
 from swatplus_bmi import SwatPlusBmi
 from test_allocation import DMD, osu_with_allocation
-
-pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="branching needs fork")
 
 
 
@@ -44,6 +43,7 @@ def test_branch_then_both_continue_is_stock(day):
 
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="a forked branch only; on Windows a branch is a child process")
 def test_a_finished_branch_has_exited():
     """finalize returns once the branch's process has gone, not when its replies close:
     SWAT+ writes the last of its outputs after that (aquifer_aa.txt and the other

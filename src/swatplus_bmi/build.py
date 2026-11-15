@@ -8,7 +8,9 @@ The patch, the exchange module, the C helper and the generators ship inside
 the package; the build goes to a folder of your own (``SWATPLUS_BMI_HOME``,
 or by default ``~/Library/Application Support/swatplus-bmi`` on macOS and
 ``~/.local/share/swatplus-bmi`` elsewhere). Needs git, make and gfortran;
-CMake comes with the package.
+CMake comes with the package. On Windows, run it from an MSYS2 UCRT64 shell
+with gfortran, ninja, git and patch installed (pacman); the executable is
+``swatplus-<tag>-exchange.exe``.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ import sys
 from pathlib import Path
 
 DEFAULT_TAG = "62.0.1"
+EXE = ".exe" if sys.platform == "win32" else ""
 
 
 def assets() -> Path:
@@ -64,9 +67,20 @@ def cmake() -> str:
 def build(tag: str = DEFAULT_TAG, jobs: int = 2, stock: bool = False, nosave: bool = False,
           patch: str | None = None) -> Path:
     """Build SWAT+ ``tag`` with the exchange mode; returns the executable's path."""
-    for tool in ("git", "make", "gfortran"):
-        if shutil.which(tool) is None and not (tool == "gfortran" and os.environ.get("FC")):
-            raise FileNotFoundError(f"{tool} not found; swatplus-bmi build needs git, make and gfortran")
+    if sys.platform == "win32":
+        need = {"bash": "bash", "git": "git", "patch": "patch", "gfortran": "gfortran",
+                "ninja or make": ("ninja", "make")}
+        hint = ("; on Windows, run it from an MSYS2 UCRT64 shell with pacman's "
+                "mingw-w64-ucrt-x86_64-gcc-fortran, mingw-w64-ucrt-x86_64-ninja, git and patch")
+    else:
+        need = {"git": "git", "make": "make", "gfortran": "gfortran"}
+        hint = "; swatplus-bmi build needs git, make and gfortran"
+    for name, tools in need.items():
+        tools = (tools,) if isinstance(tools, str) else tools
+        if name == "gfortran" and os.environ.get("FC"):
+            continue
+        if all(shutil.which(t) is None for t in tools):
+            raise FileNotFoundError(f"{name} not found" + hint)
     out = home()
     env = dict(os.environ, SWATPLUS_BMI_WORK=str(out / "build"), SWATPLUS_BMI_BIN=str(out / "bin"),
                PYTHON=sys.executable, CMAKE=cmake())
@@ -78,7 +92,7 @@ def build(tag: str = DEFAULT_TAG, jobs: int = 2, stock: bool = False, nosave: bo
     if patch:
         args += ["--patch", patch]
     subprocess.run(args, env=env, check=True)
-    return out / "bin" / f"swatplus-{tag}-exchange"
+    return out / "bin" / f"swatplus-{tag}-exchange{EXE}"
 
 
 def main(argv=None):
