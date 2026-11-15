@@ -48,7 +48,7 @@
       private
       public :: exch_on, exch_open, exch_start, exch_pause, exch_apply, exch_record, exch_end,     &
                 exch_channel, exch_channel_in, exch_channel_cs, exch_hru_soil, exch_hru_gwsoil,   &
-                exch_hru_gwsoil_mass
+                exch_hru_gwsoil_mass, exch_res_in, exch_res
 
       logical :: exch_on = .false.        !! exchange mode is on
       integer :: cmd_unit = input_unit    !! commands in
@@ -63,7 +63,7 @@
       logical :: ended = .false.          !! the simulation has ended (exch_end)
       integer, parameter :: unit_max = 1000000   !! highest unit number branch looks at
       character(len=80) :: paused_line = ""      !! the last @paused reply
-      character(len=16), parameter :: state_magic = "SWXSTATE-5"
+      character(len=16), parameter :: state_magic = "SWXSTATE-6"
 
       !! loading a saved state: run forward to the saved day, then load
       logical :: loading = .false.
@@ -99,6 +99,16 @@
       real, dimension(:), allocatable :: chx_rto         !! the fraction of the day's outflow a loss took
       integer, dimension(:), allocatable :: cha_bmi      !! SWAT-deg channel number -> grid index
 
+      !! groundwater exchange with reservoirs, m3/day, positive into the reservoir
+      real, dimension(:), allocatable :: rsx_flo         !! set for the next day
+      logical, dimension(:), allocatable :: rsx_on
+      real, dimension(:), allocatable :: rsx_gain        !! the day's gain, added to the inflow
+      real, dimension(:), allocatable :: rsx_loss        !! the day's loss, taken after SWAT+'s seepage
+      !! the day just done, m3: 1 exchanged, 2 inflow, 3 outflow, 4 precipitation,
+      !! 5 evaporation, 6 SWAT+'s own seepage (exch_res)
+      real, dimension(:,:), allocatable :: rsv_day
+      integer, dimension(:), allocatable :: res_bmi      !! reservoir number -> grid index
+
       !! species carried with the water: the salt ions, in constituents.cs order, then
       !! nitrate (no3, as N) and soluble phosphorus (solp, as P)
       integer :: n_salt = 0
@@ -133,12 +143,13 @@
       !! the day's values SWAT+ zeroes when it prints them, kept at the end of the day
       real, dimension(:), allocatable :: pou_dmd_day     !! m3/day     |place of use demand
       real, dimension(:), allocatable :: pou_wdr_day     !! m3/day     |place of use withdrawal
+      real, dimension(:), allocatable :: hru_irr_day     !! mm         |irrigation on the HRU (to the soil and its runoff), by HRU number
 
       !! the catalog: the water variables, the chemistry variables, one per species, then
       !! every column of the daily output records (exch_start). var_fam is 0 for a water
       !! variable, the chemistry family, or gen_fam for an output column (var_sp its number)
       integer, parameter :: gen_fam = 9
-      integer, parameter :: nbase = 37
+      integer, parameter :: nbase = 46
       character(len=64), dimension(nbase), parameter :: base_name = [character(len=64) ::     &
             "channel_water__volume_outflow_rate",                           &
             "channel_water__volume",                                        &
@@ -176,22 +187,34 @@
             "soil_layer_water_no3__groundwater_inflow_mass_rate",          &
             "soil_layer_water_solp__groundwater_inflow_mass_rate",         &
             "soil_water_no3__groundwater_inflow_mass_rate",                &
-            "soil_water_solp__groundwater_inflow_mass_rate"]
+            "soil_water_solp__groundwater_inflow_mass_rate",              &
+            "land_irrigation_water__volume_flow_rate",                    &
+            "reservoir_water__volume",                                     &
+            "reservoir_water_surface__area",                               &
+            "reservoir_water__volume_inflow_rate",                         &
+            "reservoir_water__volume_outflow_rate",                        &
+            "reservoir_water__precipitation_volume_flow_rate",             &
+            "reservoir_water__evaporation_volume_flow_rate",               &
+            "reservoir_water__seepage_volume_flow_rate",                   &
+            "reservoir_water__groundwater_volume_exchange_rate"]
       character(len=8), dimension(nbase), parameter :: base_grid = [character(len=8) ::      &
             "cha", "cha", "cha", "aqu", "aqu", "aqu", "aqu", "rec", "pou", "pou",    &
             "cha", "cha", "hly", "hru", "hru", "hru", "hru", "hru",                  &
             "pcp", "tmp", "tmp", "slr", "hmd", "wnd", "hly", "hru",                  &
-            "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hru", "hru"]
+            "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hru", "hru", "hru", &
+            "res", "res", "res", "res", "res", "res", "res", "res"]
       character(len=8), dimension(nbase), parameter :: base_units = [character(len=8) ::     &
             "m3 s-1", "m3", "m3 s-1", "m3", "m", "m3 s-1", "m s-1", "m3 s-1", "m3 s-1", "m3 s-1", &
             "m", "m3 s-1", "degC", "m", "m s-1", "m s-1", "m s-1", "m",                  &
             "m s-1", "degC", "degC", "W m-2", "1", "m s-1", "m s-1", "m s-1",        &
-            "m", "m", "m", "m", "m", "m", "m s-1", "kg s-1", "kg s-1", "kg s-1", "kg s-1"]
+            "m", "m", "m", "m", "m", "m", "m s-1", "kg s-1", "kg s-1", "kg s-1", "kg s-1",      &
+            "m3 s-1", "m3", "m2", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1"]
       character(len=3), dimension(nbase), parameter :: base_role = [character(len=3) ::      &
             "out", "out", "out", "out", "out", "out", "out", "in", "in", "out",  &
             "out", "in", "in", "out", "out", "out", "out", "out",                    &
             "in", "in", "in", "in", "in", "in", "in", "out",                         &
-            "out", "out", "out", "out", "out", "out", "out", "in", "in", "out", "out"]
+            "out", "out", "out", "out", "out", "out", "out", "in", "in", "out", "out", "out",   &
+            "out", "out", "out", "out", "out", "out", "out", "in"]
       !! chemistry families: <prefix><species><suffix>
       integer, parameter :: fam_conc = 1, fam_exch = 2, fam_rchg = 3, fam_load = 4
       character(len=24), dimension(4), parameter :: fam_prefix = [character(len=24) ::      &
@@ -348,6 +371,7 @@
       allocate (dmd_flo_on(db_mx%wallo_pou), source = .false.)
       allocate (pou_dmd_day(db_mx%wallo_pou), source = 0.)
       allocate (pou_wdr_day(db_mx%wallo_pou), source = 0.)
+      allocate (hru_irr_day(sp_ob%hru), source = 0.)
       allocate (chx_flo(sp_ob%chandeg), source = 0.)
       allocate (chx_on(sp_ob%chandeg), source = .false.)
       allocate (chx_gain(sp_ob%chandeg), source = 0.)
@@ -355,6 +379,15 @@
       allocate (chx_day(sp_ob%chandeg), source = 0.)
       allocate (chx_rto(sp_ob%chandeg), source = 0.)
       allocate (cha_bmi(0:max(1, maxval([0, (ob(sp_ob1%chandeg + iv - 1)%num, iv = 1, sp_ob%chandeg)]))), source = 0)
+      allocate (rsx_flo(sp_ob%res), source = 0.)
+      allocate (rsx_on(sp_ob%res), source = .false.)
+      allocate (rsx_gain(sp_ob%res), source = 0.)
+      allocate (rsx_loss(sp_ob%res), source = 0.)
+      allocate (rsv_day(6,sp_ob%res), source = 0.)
+      allocate (res_bmi(0:max(1, maxval([0, (ob(sp_ob1%res + iv - 1)%num, iv = 1, sp_ob%res)]))), source = 0)
+      do iv = 1, sp_ob%res
+        res_bmi(ob(sp_ob1%res + iv - 1)%num) = iv
+      end do
       do iv = 1, sp_ob%chandeg
         cha_bmi(ob(sp_ob1%chandeg + iv - 1)%num) = iv
       end do
@@ -439,6 +472,7 @@
       call send_grid ("cha", sp_ob1%chandeg, sp_ob%chandeg)
       call send_grid ("aqu", sp_ob1%aqu, sp_ob%aqu)
       call send_grid ("rec", sp_ob1%recall, sp_ob%recall)
+      call send_grid ("res", sp_ob1%res, sp_ob%res)
       call send_pou_grid
       call send_grid ("hru", sp_ob1%hru, sp_ob%hru)
       call send_hly_grid
@@ -557,6 +591,22 @@
         chm_on(:,i) = .false.
       end do
 
+      !! a reservoir's gain joins its inflow (exch_res_in), its loss goes after SWAT+'s
+      !! own seepage (exch_res); a reservoir not yet built that day takes neither
+      rsv_day = 0.
+      do i = 1, size(rsx_flo)
+        rsx_gain(i) = 0.
+        rsx_loss(i) = 0.
+        if (rsx_on(i)) then
+          if (rsx_flo(i) > 0.) then
+            rsx_gain(i) = rsx_flo(i)
+          else
+            rsx_loss(i) = - rsx_flo(i)
+          end if
+        end if
+        rsx_on(i) = .false.
+      end do
+
       do i = 1, size(dmd_flo)
         if (.not. dmd_flo_on(i)) cycle
         call set_demand (i, dmd_flo(i))
@@ -641,6 +691,71 @@
 
       return
       end subroutine exch_channel
+
+!!    --------------------------------------------------------------------
+      subroutine exch_res_in (jres)
+
+!!    called in res_control right after the day's inflow is added to the
+!!    reservoir: a set groundwater gain joins the inflow (res and ht1, so the
+!!    printed inflow shows it and SWAT+'s release rules see it, as a channel's
+!!    gain joins its inflow). Groundwater carries no sediment or nutrients.
+
+      use hydrograph_module, only : ht1, res
+
+      integer, intent(in) :: jres                         !reservoir number
+      integer :: i = 0
+
+      if (.not. exch_on) return
+      if (jres < lbound(res_bmi,1) .or. jres > ubound(res_bmi,1)) return
+      i = res_bmi(jres)
+      if (i == 0) return
+
+      if (rsx_gain(i) > 0.) then
+        res(jres)%flo = res(jres)%flo + rsx_gain(i)
+        ht1%flo = ht1%flo + rsx_gain(i)
+      end if
+
+      return
+      end subroutine exch_res_in
+
+!!    --------------------------------------------------------------------
+      subroutine exch_res (jres)
+
+!!    called in res_control after SWAT+ takes the day's outflow, evaporation
+!!    and seepage from the reservoir, before its area is updated: takes a set
+!!    groundwater loss, no more than the reservoir holds, and counts it as
+!!    seepage so SWAT+'s printed reservoir balance still closes. As SWAT+'s own
+!!    seepage, the loss takes water only. Keeps the day's water for reading.
+
+      use water_body_module, only : res_wat_d
+      use hydrograph_module, only : ht1, ht2, res
+
+      integer, intent(in) :: jres                         !reservoir number
+      integer :: i = 0
+      real :: taken = 0.
+
+      if (.not. exch_on) return
+      if (jres < lbound(res_bmi,1) .or. jres > ubound(res_bmi,1)) return
+      i = res_bmi(jres)
+      if (i == 0) return
+
+      rsv_day(6,i) = res_wat_d(jres)%seep
+      taken = 0.
+      if (rsx_loss(i) > 0.) then
+        taken = Min(rsx_loss(i), Max(0., res(jres)%flo))
+        res(jres)%flo = res(jres)%flo - taken
+        res_wat_d(jres)%seep = res_wat_d(jres)%seep + taken
+      end if
+      rsv_day(1,i) = rsx_gain(i) - taken
+      rsv_day(2,i) = ht1%flo
+      rsv_day(3,i) = ht2%flo
+      rsv_day(4,i) = res_wat_d(jres)%precip
+      rsv_day(5,i) = res_wat_d(jres)%evap
+      rsx_gain(i) = 0.
+      rsx_loss(i) = 0.
+
+      return
+      end subroutine exch_res
 
 !!    --------------------------------------------------------------------
       subroutine exch_channel_in (ich)
@@ -849,6 +964,7 @@
 !!    printed: keeps the day's values that printing zeroes
 
       use water_allocation_module, only : poud_met
+      use hydrograph_module, only : irrig
 
       integer :: i = 0
 
@@ -857,6 +973,11 @@
       do i = 1, size(pou_wdr_day)
         pou_dmd_day(i) = poud_met(i)%duty_tot%duty
         pou_wdr_day(i) = poud_met(i)%duty_tot%deliv
+      end do
+      !! the day's irrigation, zeroed at the start of the next day before the pause:
+      !! what reached the soil and what ran off, as SWAT+'s water balance takes it
+      do i = 1, size(hru_irr_day)
+        hru_irr_day(i) = irrig(i)%applied + irrig(i)%runoff
       end do
       !! a state or flux set for the day applies that day only, even for an
       !! HRU the day's commands didn't run
@@ -1300,7 +1421,9 @@
       end if
       write (u) state_magic, swx_state_digest, days_done, paused_line
       write (u) size(pou_dmd_day), pou_dmd_day, pou_wdr_day
+      write (u) size(hru_irr_day), hru_irr_day
       write (u) size(chx_day), chx_day
+      write (u) size(rsx_flo), rsx_flo, rsx_on, rsv_day
       write (u) size(rec_flo), rec_flo, rec_flo_on, dmd_flo, dmd_flo_on, chx_flo, chx_on
       write (u) n_hly, hly_tmp, hly_on, hly_gw, hly_gw_on, hly_gw_day, hly_gwm, hly_gwm_on, hly_gwm_day
       write (u) n_sp, chm_flo, chm_on, chm_day, chm_wait, rcm_flo, rcm_on
@@ -1471,11 +1594,23 @@
       end if
       read (u) pou_dmd_day, pou_wdr_day
       read (u) n
+      if (n /= size(hru_irr_day)) then
+        call reply ("@error the saved state has a different number of HRUs")
+        error stop 7
+      end if
+      read (u) hru_irr_day
+      read (u) n
       if (n /= size(chx_day)) then
         call reply ("@error the saved state has a different number of channels")
         error stop 7
       end if
       read (u) chx_day
+      read (u) n
+      if (n /= size(rsx_flo)) then
+        call reply ("@error the saved state has a different number of reservoirs")
+        error stop 7
+      end if
+      read (u) rsx_flo, rsx_on, rsv_day
       read (u) n
       if (n /= size(rec_flo)) then
         call reply ("@error the saved state has a different number of point sources")
@@ -1568,12 +1703,13 @@
 !!    a variable's values, one per object on its grid; false, after an
 !!    @error, for an unknown variable
 
-      use hydrograph_module, only : sp_ob, sp_ob1, ob, ch_in_d, ch_out_d, ch_stor
+      use hydrograph_module, only : sp_ob, sp_ob1, ob, ch_in_d, ch_out_d, ch_stor, res
       use aquifer_module, only : aqu_d
       use maximum_data_module, only : db_mx
       use soil_module, only : soil
       use hru_module, only : hru
       use output_landscape_module, only : hwb_d, hnb_d
+      use water_body_module, only : res_wat_d
 
       character(len=*), intent(in) :: name
       real(8), dimension(:), allocatable, intent(out) :: val
@@ -1767,6 +1903,48 @@
         allocate (val(db_mx%wallo_pou), source = 0.d0)
         do i = 1, db_mx%wallo_pou
           val(i) = pou_wdr_day(i) / 86400.d0               !m3 -> m3/s
+        end do
+
+      case ("reservoir_water__volume")
+        !! at the end of the day just done
+        allocate (val(sp_ob%res), source = 0.d0)
+        do i = 1, sp_ob%res
+          val(i) = res(ob(sp_ob1%res + i - 1)%num)%flo                !m3
+        end do
+
+      case ("reservoir_water_surface__area")
+        !! on SWAT+'s volume-area curve at the end of the day just done
+        allocate (val(sp_ob%res), source = 0.d0)
+        do i = 1, sp_ob%res
+          val(i) = res_wat_d(ob(sp_ob1%res + i - 1)%num)%area_ha * 10000.d0   !ha -> m2
+        end do
+
+      case ("reservoir_water__volume_inflow_rate", "reservoir_water__volume_outflow_rate",       &
+            "reservoir_water__precipitation_volume_flow_rate",                                    &
+            "reservoir_water__evaporation_volume_flow_rate",                                      &
+            "reservoir_water__seepage_volume_flow_rate",                                          &
+            "reservoir_water__groundwater_volume_exchange_rate")
+        !! the day just done, kept in exch_res; 0 on a day the reservoir wasn't built
+        select case (name)
+        case ("reservoir_water__groundwater_volume_exchange_rate"); k = 1
+        case ("reservoir_water__volume_inflow_rate"); k = 2
+        case ("reservoir_water__volume_outflow_rate"); k = 3
+        case ("reservoir_water__precipitation_volume_flow_rate"); k = 4
+        case ("reservoir_water__evaporation_volume_flow_rate"); k = 5
+        case default; k = 6
+        end select
+        allocate (val(sp_ob%res), source = 0.d0)
+        do i = 1, sp_ob%res
+          val(i) = rsv_day(k,i) / 86400.d0                             !m3 -> m3/s
+        end do
+
+      case ("land_irrigation_water__volume_flow_rate")
+        !! the day's irrigation on the HRU, from any source: what reached the soil and
+        !! what ran off (irrig applied and runoff, mm), not what an application lost
+        allocate (val(sp_ob%hru), source = 0.d0)
+        do i = 1, sp_ob%hru
+          iob = sp_ob1%hru + i - 1
+          val(i) = hru_irr_day(ob(iob)%num) * hru(ob(iob)%num)%area_ha * 10.d0 / 86400.d0   !mm*ha -> m3/s
         end do
 
       case default
@@ -2020,6 +2198,26 @@
         if (keep) then
           chx_flo(i) = real(v * 86400.d0)                   !m3/s -> m3/day
           chx_on(i) = .true.
+        end if
+
+      case ("reservoir_water__groundwater_volume_exchange_rate")
+        if (i < 1 .or. i > sp_ob%res) then
+          msg = "index out of range"
+          return
+        end if
+        if (time%step > 1) then
+          msg = "the groundwater exchange works with daily routing only; this "  //  &
+                "project routes " // itoa(time%step) // " steps a day (time.sim)"
+          return
+        end if
+        if (bsn_cc%gwflow == 1) then
+          msg = "gwflow computes reservoir " // trim(ob(sp_ob1%res + i - 1)%name) // "'s seepage " //  &
+                "itself (gwflow_reservoir); a groundwater exchange set as well would count it twice"
+          return
+        end if
+        if (keep) then
+          rsx_flo(i) = real(v * 86400.d0)                   !m3/s -> m3/day
+          rsx_on(i) = .true.
         end if
 
       case ("place_of_use_water__volume_demand_rate")
@@ -2358,6 +2556,7 @@
         case ("cha"); var_size = sp_ob%chandeg
         case ("aqu"); var_size = sp_ob%aqu
         case ("rec"); var_size = sp_ob%recall
+        case ("res"); var_size = sp_ob%res
         case ("pou"); var_size = db_mx%wallo_pou
         case ("hru"); var_size = sp_ob%hru
         case ("hly"); var_size = n_hly

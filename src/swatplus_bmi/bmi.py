@@ -42,7 +42,7 @@ from .exchange import Exchange, ExchangeError
 __all__ = ["SwatPlusBmi"]
 
 GRID_ORDER = ["cha", "aqu", "rec", "pou", "hru", "hly", "pcp", "tmp", "slr", "hmd", "wnd",
-              "lsu", "bsn"]
+              "lsu", "bsn", "res"]           # reservoirs last (0.11.0), so earlier grids keep their ids
 
 # weather record variables, and the days from the coming day to the first record
 # SWAT+ hasn't read (precipitation is read a day ahead)
