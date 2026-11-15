@@ -2,15 +2,13 @@ diff --git a/CMakeLists.txt b/CMakeLists.txt
 index efa4e69..33f8c1e 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -160,6 +160,11 @@ endif()
+@@ -160,6 +160,9 @@ endif()
  
  
  file(GLOB sources src/*.f90)
-+# exchange mode: the POSIX calls for branching and for arrays as raw bytes (Mac and Linux)
-+if(NOT WIN32)
-+    enable_language(C)
-+    list(APPEND sources src/bmi_fork.c)
-+endif()
++# exchange mode: the C helper for branching and for replies and arrays as raw bytes
++enable_language(C)
++list(APPEND sources src/bmi_fork.c)
  add_executable(${SWATPLUS_EXE} ${sources})
  
  #############################################################################
