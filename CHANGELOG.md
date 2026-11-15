@@ -3,6 +3,27 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
+## Unreleased
+
+- Reservoirs, on a new `res` grid: their volume and area at the end of the day, and the day's
+  inflow, outflow, precipitation, evaporation and SWAT+'s own seepage, read-only
+  (`reservoir_water__volume`, `reservoir_water_surface__area`,
+  `reservoir_water__volume_inflow_rate`, `__volume_outflow_rate`,
+  `__precipitation_volume_flow_rate`, `__evaporation_volume_flow_rate`,
+  `__seepage_volume_flow_rate`); and `reservoir_water__groundwater_volume_exchange_rate`, set for
+  the next day, positive into the reservoir, for a groundwater model's lake: a gain joins the
+  day's inflow, a loss leaves after SWAT+'s seepage, no more than the reservoir holds, and is
+  counted as seepage. Two hooks in `res_control.f90`. Refused with gwflow on, which computes
+  reservoir seepage itself. SWAT+ keeps no stage; a coupled model turns the volume into its
+  lake's stage.
+- HRU irrigation, read-only on the `hru` grid, the day just done:
+  `land_irrigation_water__volume_flow_rate` (m3 s-1), the water the day's irrigation put on each
+  HRU from any source, what reached the soil and what ran off, as SWAT+'s water balance takes it
+  in (`irr` in `hru_wb_day.txt` times the area, plus the runoff). For a coupled groundwater
+  model that pumps irrigation from its wells. SWAT+ zeroes it before the pause, so the wrapper
+  keeps it at the end of the day; saved states carry it, and a state saved by 0.10.0 is refused
+  (`SWXSTATE-6`).
+
 ## 0.10.0 (2026-11-14)
 
 - Arrays cross the exchange as raw 8-byte reals instead of text (protocol 6): `get` answers
