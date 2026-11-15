@@ -3,7 +3,7 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
-## Unreleased
+## 0.11.0 (2026-11-15)
 
 - Reservoirs, on a new `res` grid: their volume and area at the end of the day, and the day's
   inflow, outflow, precipitation, evaporation and SWAT+'s own seepage, read-only
