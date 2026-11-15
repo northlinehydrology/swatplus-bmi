@@ -116,6 +116,34 @@ index 76271c1..d6d3a28 100644
        
        hls_d(j)%surqsolp = 0.
        hls_d(j)%lchlabp = 0.
+diff --git a/src/res_control.f90 b/src/res_control.f90
+--- a/src/res_control.f90
++++ b/src/res_control.f90
+@@ -9,6 +9,7 @@
+       use conditional_module
+       use water_body_module
+       use constituent_mass_module  !! added nbs
++      use bmi_exchange_module, only : exch_res_in, exch_res
+       
+       implicit none
+ 
+@@ -57,6 +58,7 @@
+       
+         !! add incoming flow to reservoir
+         res(jres) = res(jres) + ht1
++        call exch_res_in (jres)   !! exchange mode: a set groundwater gain joins the inflow
+ 
+         !! if channel is a POD, allocate water for users and adjust flow in channel accordingly
+         if (res_ob(jres)%wallo_pod > 0) then
+@@ -189,6 +191,8 @@
+           res(jres)%flo = 0.
+         end if
+ 
++        call exch_res (jres)      !! exchange mode: a set groundwater loss leaves after the seepage
++
+         !! update surface area
+         if (res(jres)%flo > 0.) then
+           res_wat_d(jres)%area_ha = res_ob(jres)%br1 * res(jres)%flo ** res_ob(jres)%br2
 diff --git a/src/sd_channel_control3.f90 b/src/sd_channel_control3.f90
 index 9c5c38d..7ce62f5 100644
 --- a/src/sd_channel_control3.f90

@@ -48,8 +48,8 @@ The daily loop is in `time_control.f90`. The patch adds four calls there,
 three in `sd_channel_control3.f90` (the channel hooks), one in
 `hru_control.f90` (the soil temperature hook), one in `swr_percmain.f90`
 (groundwater into the soil), one each in `nut_nlch.f90` and `nut_solp.f90`
-(its nitrate and phosphorus), one in `main.f90.in` and one in `command.f90`. Each returns at once when
-exchange mode is off.
+(its nitrate and phosphorus), two in `res_control.f90` (the reservoir hooks), one in
+`main.f90.in` and one in `command.f90`. Each returns at once when exchange mode is off.
 
 | Call | Where | What it does in exchange mode |
 |---|---|---|
@@ -57,10 +57,12 @@ exchange mode is off.
 | `exch_start` | `time_control`, before the year loop | sends the catalog (grids, objects, variables, dates) |
 | `exch_pause` | each day, after the weather, the land use decision tables and the manure allocation, **before** `wallo_start_day`, as `if (exch_pause()) cycle` | sends `@paused`, then answers commands until told to run; while a saved state is loading, skips the days before the saved one |
 | `exch_apply` | each day, **after** `wallo_start_day`, before `call command` | puts values set while paused in place for this day |
-| `exch_record` | `command.f90`, after the command loop, before outputs are printed | keeps the day's water allocation demand and withdrawal, which printing zeroes |
+| `exch_record` | `command.f90`, after the command loop, before outputs are printed | keeps the day's water allocation demand and withdrawal, which printing zeroes, and the day's irrigation |
 | `exch_channel_in` | `sd_channel_control3.f90`, right after the channel's incoming salt load (`hcs1`) is set | adds the salt set with the day's groundwater gain |
 | `exch_channel` | `sd_channel_control3.f90`, after routing and water allocation, before the outflow is set | takes a set groundwater loss from the day's outflow, with its sediment and nutrients, and records the day's exchange |
 | `exch_channel_cs` | `sd_channel_control3.f90`, after SWAT+ splits salt and constituents between outflow and storage | takes the loss's share of the outflow's salt and constituents, as seepage |
+| `exch_res_in` | `res_control.f90`, right after the day's inflow is added to the reservoir | adds a set groundwater gain to the reservoir and its inflow |
+| `exch_res` | `res_control.f90`, after the day's outflow, evaporation and seepage are taken, before the area is updated | takes a set groundwater loss, no more than the reservoir holds, as seepage, and keeps the day's water |
 | `exch_hru_soil` | `hru_control.f90`, right after `stmp_solt` | replaces the day's soil layer temperatures that were set |
 | `exch_hru_gwsoil` | `swr_percmain.f90`, right after gwflow's `gwflow_soil` call, before the day's infiltration and percolation | adds the groundwater set for the day to the HRU's soil layers, counted in `gwsoilq` as gwflow's is |
 | `exch_hru_gwsoil_mass` | `nut_nlch.f90` and `nut_solp.f90`, right after gwflow adds its groundwater's nitrate and P | adds the nitrate and labile P set with the day's groundwater, counted in `gwsoiln`, `gwsoilp` |
@@ -209,6 +211,7 @@ names follow the channel ones. CSDMS lists no aquifer or withdrawal names.
 | `land_surface__evapotranspiration_rate` | hru | out | m s-1 | `hwb_d(j)%et` (mm/day) | actual ET, `et`, with ponded water's evaporation |
 | `land_surface__potential_evapotranspiration_rate` | hru | out | m s-1 | `hwb_d(j)%pet` (mm/day) | `pet` |
 | `soil_water__depth` | hru | out | m | `soil(j)%sw` (mm) | the profile's water above the wilting point at the end of the day, `sw_final` |
+| `land_irrigation_water__volume_flow_rate` | hru | out | m3 s-1 | `irrig(j)%applied + irrig(j)%runoff` (mm) x 10 x area (ha), kept at the end of the day (`exch_record`) | the day's irrigation from any source, as SWAT+'s water balance takes it in (HRU irrigation) |
 | `soil_layer_water__groundwater_inflow_rate` | hly | in and out | m s-1 | added to `soil(j)%phys(k)%st` (mm) and `gwsoilq(j)` | a flux for the next day (Groundwater into the soil); reading gives what went in on the day just done |
 | `soil_water__groundwater_inflow_rate` | hru | out | m s-1 | `hwb_d(j)%gwsoil` (`gwsoilq`, mm/day) | `gwsoilq` in `hru_wb_day.txt`: gwflow's and what was set |
 | `soil_layer_bottom__depth`, `soil_layer__thickness` | hly | out | m | `soil(j)%phys(k)%d`, `%thick` (mm) | SWAT+'s layers: a 10 mm top layer, then the file's, or the depths in `soil_lyr_depths.sol` with the file's properties averaged mm by mm (`soils_init`) |
@@ -226,6 +229,13 @@ names follow the channel ones. CSDMS lists no aquifer or withdrawal names.
 | `point_source_water__volume_flow_rate` | rec | in and out | m3 s-1 | `recall(i)%hd(day,yr)%flo` | settable on daily recall objects inside their records only; negative is a withdrawal |
 | `place_of_use_water__volume_demand_rate` | pou | in and out | m3 s-1 | `pou(i)%demand` | reading gives the day's demand; setting replaces SWAT+'s for the next day |
 | `place_of_use_water__volume_withdrawal_rate` | pou | out | m3 s-1 | `poud_met(i)%duty_tot%deliv` | what was actually taken |
+| `reservoir_water__volume` | res | out | m3 | `res(i)%flo` | at the end of the day; `stor` in `reservoir_day.txt` |
+| `reservoir_water_surface__area` | res | out | m2 | `res_wat_d(i)%area_ha` | on SWAT+'s volume-area curve (`br1`, `br2`) at the end of the day |
+| `reservoir_water__volume_inflow_rate` | res | out | m3 s-1 | `ht1%flo` in `res_control` | the day's inflow, with a set gain; `flo_in` |
+| `reservoir_water__volume_outflow_rate` | res | out | m3 s-1 | `ht2%flo` in `res_control` | the day's release; `flo_out` |
+| `reservoir_water__precipitation_volume_flow_rate`, `__evaporation_volume_flow_rate` | res | out | m3 s-1 | `res_wat_d(i)%precip`, `%evap` | `precip`, `evap` |
+| `reservoir_water__seepage_volume_flow_rate` | res | out | m3 s-1 | `res_wat_d(i)%seep` before a set loss | SWAT+'s own seepage, from the bottom's conductivity `k` in `hydrology.res` (or gwflow's); `seep` prints it with a set loss |
+| `reservoir_water__groundwater_volume_exchange_rate` | res | in and out | m3 s-1 | gains into `res(i)%flo` and `ht1`; losses from `res(i)%flo` after SWAT+'s seepage, counted in `res_wat_d(i)%seep` | positive into the reservoir; reading gives what was exchanged on the day just done (The groundwater exchange with reservoirs) |
 | `channel_water_<sp>__mass_concentration` | cha | out | kg m-3 | `obcs(iob)%hd(1)%salt(k)`, `ob(iob)%hd(1)%no3`, `%solp`, over `ob(iob)%hd(1)%flo` | the day's outflow concentration; 0 with no outflow |
 | `channel_water_<sp>__groundwater_mass_exchange_rate` | cha | in and out | kg s-1 | gains: salt into `hcs1` (`exch_channel_in`), nitrate and P into `ob(iob)%trans`; losses: the loss's share of `ht2` and `hcs2` | positive into the channel; set only with a gain; reading gives what was exchanged on the day just done |
 | `aquifer_water_<sp>__recharge_mass_rate` | aqu | out | kg s-1 | `obcs(iob)%hin(1)%salt(k)`, `ob(iob)%hin%no3`, `%solp` | what reaches the aquifer, as `aqu_1d_control` takes it; nitrate is `no3_rchg` × area in `aquifer_day.txt` |
@@ -272,8 +282,8 @@ the output files, and the curated CSDMS names stay the ones to couple with.
   `sno_init`, which the output step (`hru_output`, `basin_output`) sets
   to the day's final values right after printing, for the next day; at the pause they no longer hold what
   was printed (the test found it), and the day's start is the day before's
-  `sw_final` and `sno_final`. Reservoirs wait for a test project
-  with one (with settable reservoirs).
+  `sw_final` and `sno_final`. Reservoirs' printed columns aren't generated yet; the curated
+  reservoir variables (0.11.0) cover their water.
 - **When there's a value.** The value is the record for the day just done:
   SWAT+ fills it during the day and finishes it in its output step
   (`hru_output` averages `sw` from `sw_init` and `sw_final`, `lsu_output`
@@ -336,6 +346,47 @@ The tests check that a gain raises the inflow by exactly that water, that a loss
 than the outflow and the balance closes, that a set value lasts one day, and that the day's
 exchange survives saving and loading.
 
+### The groundwater exchange with reservoirs
+
+This is for coupling a groundwater model's lake, such as MODFLOW 6's lake package, to the SWAT+
+reservoir that holds the lake's water. Each day the coupled model reads the reservoir's volume
+(and its area), gives its lake that water, computes the lake's exchange with the aquifer, and
+sets it on the reservoir for the next day.
+
+- **No stage.** SWAT+ 62.0.1 keeps a reservoir's volume and its area (from the volume, on the
+  curve `br1`, `br2` that `res_initial` fits through the principal and emergency spillways'),
+  not its water level. A coupled model turns the volume into its lake's stage on its own
+  bathymetry.
+- **Gains** (positive) are added in a hook in `res_control.f90`, `exch_res_in`, right after the
+  day's inflow joins the reservoir: to its water (`res(i)%flo`) and to the day's inflow
+  (`ht1`), so the release rules that look at inflow see it and `flo_in` shows it, as a
+  channel's gain shows in its inflow. Groundwater carries no sediment or nutrients in.
+- **Losses** (negative) are taken in a second hook, `exch_res`, after SWAT+ takes the day's
+  outflow, evaporation and its own seepage, before the area is updated: no more than the
+  reservoir holds, added to its seepage (`res_wat_d(i)%seep`), so SWAT+'s printed balance still
+  closes. As SWAT+'s own seepage does, a loss takes water only; the reservoir's sediment and
+  nutrients stay.
+- **SWAT+'s own seepage** (`240 k area` a day, `k` the bottom's conductivity in
+  `hydrology.res`) still happens and is read on its own
+  (`reservoir_water__seepage_volume_flow_rate`). A coupled model that computes the lake's
+  exchange itself sets `k` to 0, or the lake leaks twice. With gwflow on, gwflow computes the
+  seepage (`gwflow_reservoir`), so a set exchange is refused.
+- **Reading** after the day gives what was exchanged: the gain, less what was taken; and the
+  day's inflow, outflow, precipitation, evaporation and SWAT+'s seepage, kept in `exch_res`.
+  So the day's balance closes on the values read: the change in volume is inflow (with the
+  gain) + precipitation − outflow − evaporation − seepage − the loss taken.
+- **Before it's built** (`yr_op`, `mon_op` in `hydrology.res`, a calendar year and month)
+  SWAT+ passes a reservoir's inflow straight on and never reaches the hooks: a set exchange
+  isn't used, and every read is 0.
+- **Daily routing only,** as for channels.
+
+The tests (`tests/test_reservoir.py`, on Osu_1hru with a reservoir below its channel,
+`tests/reservoir.py`) check that the reads are what `reservoir_day.txt` prints, that the
+reservoir's inflow is the channel's outflow, that the balance closes every day with no exchange,
+with a gain, with a loss and with SWAT+'s own seepage, that a gain joins the inflow exactly,
+that a loss takes no more than the reservoir holds (and empties it when it's short), and that a
+reservoir not yet built exchanges nothing.
+
 ### Groundwater into the soil
 
 The way back from a groundwater model to the land. SWAT+ has it already, for
@@ -380,6 +431,25 @@ over the run, the water added, less the irrigation the wetter soil no longer
 needed, leaves as more runoff, lateral flow, percolation and ET, within
 0.5 mm of 2,632 mm. On a 12-HRU basin, water set into one layer of one HRU
 changes that HRU's output only.
+
+### HRU irrigation
+
+`land_irrigation_water__volume_flow_rate` is the water the day's irrigation put on each HRU: what
+reached the soil (`irrig(j)%applied`, the `irr` column of `hru_wb_day.txt`) and what ran off
+(`irrig(j)%runoff`, added to the day's surface runoff), times the HRU's area. Every way SWAT+
+62.0.1 irrigates sets these: a decision table's `irrigate` (from an aquifer, a channel, a
+reservoir, or anything else, which SWAT+ takes as an outside source), `irr_demand` with an
+unlimited source, water allocation's deliveries to an HRU, and a scheduled `irrm`. So the read
+is what SWAT+'s water balance took in, whatever the source; a coupled model that knows the
+sources (the decision tables and the water allocation file) picks the HRUs it pumps for.
+
+What an application loses (the efficiency in `irr.ops`) is subtracted before either value and
+never enters SWAT+'s balance, so it isn't in the read. `irrig(j)%demand` isn't exposed: each
+action sets it on its own terms (`irr_demand` from the table's amount while it applies
+`irr.ops`' amount, `res_irr_dmd` without applying anything, a scheduled `irrm` not at all).
+
+SWAT+ zeroes the day's irrigation at the start of the next day, before the pause, so
+`exch_record` keeps it at the end of the day, and saved states carry it (`SWXSTATE-6`).
 
 ### Setting fluxes
 

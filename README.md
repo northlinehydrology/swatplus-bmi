@@ -22,7 +22,7 @@ against unpatched SWAT+ on the projects listed in [COMPATIBILITY.md](COMPATIBILI
 paused run can also be saved and loaded, or branched in memory, so a warm-up is run once and
 every scenario starts from the same state.
 
-**Status:** working for SWAT+ 62.0.1; release 0.10.0 ([PyPI](https://pypi.org/project/swatplus-bmi/), [Zenodo](https://doi.org/10.5281/zenodo.23963201)). Tested on the two example projects that
+**Status:** working for SWAT+ 62.0.1; release 0.11.0 ([PyPI](https://pypi.org/project/swatplus-bmi/), [Zenodo](https://doi.org/10.5281/zenodo.23963201)). Tested on the two example projects that
 ship with SWAT+ (below) and a 2,371-HRU study build. See [COMPATIBILITY.md](COMPATIBILITY.md) and the design note,
 [docs/design.md](docs/design.md).
 
@@ -409,12 +409,19 @@ objects in a project are left out. Landscape units and the basin (for the
 | `point_source_water__volume_flow_rate` | recall objects | daily ones, inside their records | m3 s-1 | the recall file's flow |
 | `place_of_use_water__volume_demand_rate` | water allocation places of use | yes | m3 s-1 | the day's demand |
 | `place_of_use_water__volume_withdrawal_rate` | water allocation places of use | no | m3 s-1 | what was actually taken |
+| `reservoir_water__volume` | reservoirs | no | m3 | `stor` in `reservoir_day.txt` |
+| `reservoir_water_surface__area` | reservoirs | no | m2 | the area on SWAT+'s volume-area curve |
+| `reservoir_water__volume_inflow_rate`, `__volume_outflow_rate` | reservoirs | no | m3 s-1 | `flo_in` (with a set gain), `flo_out` |
+| `reservoir_water__precipitation_volume_flow_rate`, `__evaporation_volume_flow_rate` | reservoirs | no | m3 s-1 | `precip`, `evap` |
+| `reservoir_water__seepage_volume_flow_rate` | reservoirs | no | m3 s-1 | SWAT+'s own seepage (`k` in `hydrology.res`) |
+| `reservoir_water__groundwater_volume_exchange_rate` | reservoirs | yes | m3 s-1 | groundwater exchange, positive into the reservoir; a loss is counted in `seep` and takes no more than the reservoir holds |
 | `soil_layer__temperature` | HRU soil layers | yes (a state) | degC | each layer's temperature; layer 2 is `sol_tmp` in `hru_pw_day.txt` |
 | `snowpack__liquid-equivalent_depth` | HRUs | no | m | `sno_final` in `hru_wb_day.txt` |
 | `soil_water__percolation_rate` | HRUs | no | m s-1 | `perc` in `hru_wb_day.txt`: water leaving the bottom of the soil profile, recharge HRU by HRU |
 | `land_surface__evapotranspiration_rate` | HRUs | no | m s-1 | `et` |
 | `land_surface__potential_evapotranspiration_rate` | HRUs | no | m s-1 | `pet` |
 | `soil_water__depth` | HRUs | no | m | `sw_final`: the profile's water above the wilting point |
+| `land_irrigation_water__volume_flow_rate` | HRUs | no | m3 s-1 | the day's irrigation on the HRU, from any source: `irr` in `hru_wb_day.txt` (what reached the soil) and its runoff, times the area |
 | `soil_layer_water__groundwater_inflow_rate` | HRU soil layers | yes (the next day) | m s-1 | groundwater into the layer, where gwflow puts its own; read after the day, what went in |
 | `soil_water__groundwater_inflow_rate` | HRUs | no | m s-1 | `gwsoilq` in `hru_wb_day.txt`: groundwater into the soil profile, gwflow's or set |
 | `soil_layer_bottom__depth` | HRU soil layers | no | m | the layer's bottom below the surface (`d`) |
