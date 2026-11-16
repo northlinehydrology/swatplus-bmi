@@ -31,7 +31,7 @@ def toml(v):
 
 def config(tmp, run, changes, tag="copy"):
     """A TOML config running a copy of ``run`` with ``changes``."""
-    rows = [f'project = "{run}"', f'run_dir = "{made(RUNS / f"{run.name}-{tag}")}"']
+    rows = [f"project = '{run}'", f"run_dir = '{made(RUNS / f'{run.name}-{tag}')}'"]   # literal: D:\\ on Windows
     for c in changes:
         rows += ["[[parameter]]"] + [f"{k} = {toml(v)}" for k, v in c.items()]
     path = tmp / f"{tag}.toml"
@@ -138,7 +138,7 @@ def test_changes_swatplus_wouldnt_make_as_asked_are_refused(tmp_path, change, sa
 def test_a_change_needs_a_run_dir_and_a_cal_parms_cal(tmp_path):
     run = project("Osu_1hru", "cal-no-run-dir", years=(2010, 2010))
     cfg = tmp_path / "run.toml"
-    cfg.write_text(f'project = "{run}"\n[[parameter]]\nname = "esco"\nvalue = 10\n')
+    cfg.write_text(f"project = '{run}'\n[[parameter]]\nname = \"esco\"\nvalue = 10\n")
     with pytest.raises(ValueError, match="give run_dir"):
         SwatPlusBmi().initialize(str(cfg))
     ames = project("Ames_sub1", "cal-no-parms", years=(1975, 1975))
