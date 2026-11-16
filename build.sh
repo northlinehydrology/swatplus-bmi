@@ -22,6 +22,11 @@
 #
 # Needs git, cmake (3.22 or later), make, gfortran (or ifx) and Python 3.11 or
 # later. With uv, `uv sync` then `uv run ./build.sh` provides cmake and Python.
+#
+# On Windows, run it in an MSYS2 UCRT64 shell with gfortran, cmake, ninja, git
+# and patch from pacman (docs/design.md, Windows): the executables get .exe,
+# and every build, stock included, takes patches/<tag>/windows/, which gives
+# gfortran SWAT+'s Linux and macOS release flags.
 
 set -euo pipefail
 
@@ -50,6 +55,23 @@ PATCHES="$HERE/patches/${PATCH:-$TAG}"
 WORK="${SWATPLUS_BMI_WORK:-$HERE/build}/$TAG"
 BIN="${SWATPLUS_BMI_BIN:-$HERE/bin}"
 CMAKE="${CMAKE:-cmake}"
+PYTHON="${PYTHON:-$(command -v python3 || command -v python)}"
+# the generators read and write SWAT+'s sources as UTF-8 on every platform (Windows' default is cp1252)
+export PYTHONUTF8=1
+
+EXE=""
+WINDOWS=0
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    WINDOWS=1
+    EXE=".exe"
+    # Ninja when it's there, else MSYS make; a generator set in the environment wins
+    if [ -z "${CMAKE_GENERATOR:-}" ]; then
+      if command -v ninja > /dev/null; then export CMAKE_GENERATOR=Ninja
+      else export CMAKE_GENERATOR="MSYS Makefiles"; fi
+    fi
+    ;;
+esac
 
 [ -d "$PATCHES" ] || { echo "SWAT+ ${PATCH:-$TAG} is not supported: no patch in patches/ (see COMPATIBILITY.md)" >&2; exit 1; }
 [ -z "$PATCH" ] || echo "building SWAT+ $TAG with the patch for $PATCH: not a supported combination"
@@ -76,6 +98,11 @@ build () {   # build <source dir> <build dir> <name in bin/> [extra Fortran flag
   local src="$1" bld="$2" name="$3" extra="${4:-}"
   rm -rf "$WORK/compile" "$bld"
   cp -R "$src" "$WORK/compile"
+  if [ "$WINDOWS" = 1 ]; then
+    for p in "$PATCHES"/windows/*.patch; do
+      [ -e "$p" ] && patch --quiet -p1 -d "$WORK/compile" < "$p"
+    done
+  fi
   "$CMAKE" -S "$WORK/compile" -B "$bld" -DCMAKE_BUILD_TYPE=Release -DTAG="$TAG" \
     ${extra:+-DCMAKE_Fortran_FLAGS="$extra"} > "$bld.configure.log" 2>&1 \
     || { cat "$bld.configure.log" >&2; exit 1; }
@@ -83,8 +110,8 @@ build () {   # build <source dir> <build dir> <name in bin/> [extra Fortran flag
     || { tail -40 "$bld.build.log" >&2; exit 1; }
   local exe
   exe="$(find "$bld" -maxdepth 1 -type f -perm -u+x -name 'swatplus-*' | head -1)"
-  cp "$exe" "$BIN/$name"
-  echo "built $BIN/$name"
+  cp "$exe" "$BIN/$name$EXE"
+  echo "built $BIN/$name$EXE"
 }
 
 # 2. the unpatched release, from a clean copy
@@ -100,7 +127,7 @@ if [ "$NOSAVE" = 1 ]; then
   rm -rf "$WORK/nosave-src"
   mkdir -p "$WORK/nosave-src"
   cp -R "$SRC/." "$WORK/nosave-src/"
-  "${PYTHON:-python3}" "$HERE/tools/reset_saved_locals.py" "$SRC/src" "$WORK/nosave-src/src" \
+  "$PYTHON" "$HERE/tools/reset_saved_locals.py" "$SRC/src" "$WORK/nosave-src/src" \
     "$PATCHES/carried-locals.toml"
   build "$WORK/nosave-src" "$WORK/nosave-build" "swatplus-$TAG-nosave"
 fi
@@ -113,10 +140,10 @@ cp "$HERE"/fortran/*.f90 "$HERE"/fortran/*.c "$WORK/exchange-src/src/"
 # the hash of these build files, which the wrapper checks; the saved locals that carry
 # state, moved into a module; then the output reads and the state serializer, generated
 # from this release's declarations
-"${PYTHON:-python3}" "$HERE/tools/source_hash.py" "$HERE" --fortran "$WORK/exchange-src/src/bmi_build_module.f90"
-"${PYTHON:-python3}" "$HERE/tools/carried_locals.py" "$PATCHES/carried-locals.toml" "$WORK/exchange-src/src"
-"${PYTHON:-python3}" "$HERE/tools/gen_reads.py" "$WORK/exchange-src/src" "$WORK/exchange-src/src/bmi_reads_module.f90"
-"${PYTHON:-python3}" "$HERE/tools/gen_serializer.py" "$WORK/exchange-src/src" "$WORK/exchange-src/src/bmi_state_module.f90"
+"$PYTHON" "$HERE/tools/source_hash.py" "$HERE" --fortran "$WORK/exchange-src/src/bmi_build_module.f90"
+"$PYTHON" "$HERE/tools/carried_locals.py" "$PATCHES/carried-locals.toml" "$WORK/exchange-src/src"
+"$PYTHON" "$HERE/tools/gen_reads.py" "$WORK/exchange-src/src" "$WORK/exchange-src/src/bmi_reads_module.f90"
+"$PYTHON" "$HERE/tools/gen_serializer.py" "$WORK/exchange-src/src" "$WORK/exchange-src/src/bmi_state_module.f90"
 for p in "$PATCHES"/*.patch; do
   patch --quiet -p1 -d "$WORK/exchange-src" < "$p"
 done

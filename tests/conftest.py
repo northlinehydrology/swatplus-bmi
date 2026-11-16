@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -20,9 +21,10 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 TAG = os.environ.get("SWATPLUS_TAG", "62.0.1")
 BIN = ROOT / "bin"
-STOCK = BIN / f"swatplus-{TAG}-stock"
-EXCHANGE = BIN / f"swatplus-{TAG}-exchange"
-CHECK = BIN / f"swatplus-{TAG}-check"          # exchange with array bounds checked
+EXE = ".exe" if sys.platform == "win32" else ""
+STOCK = BIN / f"swatplus-{TAG}-stock{EXE}"
+EXCHANGE = BIN / f"swatplus-{TAG}-exchange{EXE}"
+CHECK = BIN / f"swatplus-{TAG}-check{EXE}"          # exchange with array bounds checked
 IN_CI = bool(os.environ.get("CI"))
 RUNS = ROOT / "tests" / "runs"
 

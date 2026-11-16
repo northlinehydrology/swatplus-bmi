@@ -96,10 +96,12 @@ prove, below, says on which projects).
 Text lines in both directions, and arrays as raw bytes. Commands go to
 SWAT+'s standard input, one per line. Replies come on standard output, one
 per line, each starting with `@`. SWAT+'s own console messages go to
-`exchange.log`, so standard output carries only replies. (Where SWAT+ can't
-open `/dev/stdout`, replies and console messages would share standard
-output, and the `@` keeps them apart; the Python side writes any other line
-to `exchange.log`.) No sockets.
+`exchange.log`, so standard output carries only replies: each is written
+whole by `bmi_fork.c` (`swx_write_line`) on SWAT+'s own copy of standard
+output, binary on Windows, where standard streams start as text (0.12.0;
+until then replies went through a Fortran unit on `/dev/stdout`, which
+Windows doesn't have). The Python side still writes any line without an
+`@` to `exchange.log`. No sockets.
 
 An array crosses right after the line that gives its length, as raw 8-byte
 reals in the machine's byte order (both ends are on the same machine):
@@ -646,7 +648,7 @@ the same reason.
 The required test for any snapshot method: snapshot at day N, restore or
 branch, continue, and match an unbroken run bit for bit, every output file.
 
-### Branching in memory (done; Mac and Linux)
+### Branching in memory (done; on Windows, a save and a load)
 
 `branch(run_dir)` duplicates the paused SWAT+ process with `fork`. Both
 copies have the same state down to every saved local and the random number
@@ -680,7 +682,15 @@ streams, and `getpid`; and five that move arrays (Protocol): a copy of a
 standard stream's descriptor, open, close, and whole reads and writes. A
 branch closes its copies of the parent's channels, so the parent's caller
 still sees the end of the parent's replies, and opens its own on the named
-pipes. It isn't compiled on Windows, where exchange mode stops at startup.
+pipes.
+
+Windows has no fork. There the C helper's stream, open, close, read and
+write functions are the C runtime's, with every descriptor binary, and
+`fork` fails, so SWAT+ refuses `branch`. The Python side branches instead by
+saving the paused state to a temporary folder and loading it in the
+branch's folder with a new process (`Exchange._branch_by_loading`): the same
+state, and the same tests pass, but making it takes a load's time, and it's
+refused where a save is (0.12.0).
 
 Tests: branch at day 0, 365, 1000 and the last day, with parent and child
 stepped in turn; a branch of a branch; and three water allocation scenarios
@@ -1082,9 +1092,11 @@ parameters at initialize (0.9.0).
 - A gwflow project that reads `chan_depth.gw` or `pond_div.gw` can't be
   branched or saved, and nor can a project whose `out_path` leads out of
   the run folder.
-- Mac and Linux only: branching needs fork, and arrays cross through POSIX
-  reads and writes (protocol 6). The Windows build, never tried, stops at
-  startup in exchange mode.
+- On Windows a branch is a save and a load (no fork), so it takes a load's
+  time. Windows is built with MSYS2's gfortran and tested in CI; Intel ifx
+  there isn't tried. SWAT+'s CMake gives gfortran on Windows its debug
+  checks in release builds, so every Windows build, stock included, takes
+  `patches/<tag>/windows/`: the Linux and macOS release flags.
 - Loading a saved state starts a new process and runs forward through the
   saved days without computing them, so it takes a little time on long
   warm-ups; branching is instant.

@@ -14,8 +14,9 @@
 !!    (routing) loop, so SWAT+'s own daily inputs don't overwrite them.
 !!    Replies go to standard output, one per line, each starting with "@".
 !!    Arrays cross as raw 8-byte reals after a line that gives their length
-!!    (@bin n out, @send in), written and read whole by the C helpers in
-!!    bmi_fork.c, so an array costs a few system calls, not one per value.
+!!    (@bin n out, @send in). Replies and arrays are written and read whole by
+!!    the C helpers in bmi_fork.c, so an array costs a few system calls, not
+!!    one per value, and no byte is translated on Windows.
 !!    SWAT+'s own console messages go to exchange.log in the run folder.
 !!    The protocol is described in docs/design.md of swatplus-bmi.
 !!
@@ -52,14 +53,13 @@
 
       logical :: exch_on = .false.        !! exchange mode is on
       integer :: cmd_unit = input_unit    !! commands in
-      integer :: rep_unit = 6             !! replies out
       integer :: days_done = 0            !! days completed
       integer :: days_total = 0           !! days in the simulation
       integer :: run_left = 0             !! days to run before the next pause
       logical :: run_free = .false.       !! run to the end without pausing
       integer :: protocol = 6             !! protocol version
       integer(c_int) :: bin_in = -1       !! the command channel's file descriptor, for arrays in
-      integer(c_int) :: bin_out = -1      !! the reply channel's, for arrays out
+      integer(c_int) :: bin_out = -1      !! the reply channel's, for replies and arrays out
       logical :: ended = .false.          !! the simulation has ended (exch_end)
       integer, parameter :: unit_max = 1000000   !! highest unit number branch looks at
       character(len=80) :: paused_line = ""      !! the last @paused reply
@@ -236,11 +236,11 @@
       integer, dimension(:), allocatable :: var_fam
       integer, dimension(:), allocatable :: var_sp
 
-#if !defined(_WIN32)
       !! bmi_fork.c: whole reads and writes of raw bytes on a file descriptor. gfortran
       !! reads an unformatted stream from a pipe in one read call and takes a short read
       !! for the end of the file, and writes a formatted record a value at a time with a
-      !! system call each, so arrays go through these instead
+      !! system call each, so arrays go through these instead; and replies, so they have
+      !! standard output to themselves on every platform (on Windows, a binary one)
       interface
         function swx_dup (fd) bind(c, name="swx_dup")
           import :: c_int
@@ -271,8 +271,14 @@
           integer(c_size_t), value :: n
           integer(c_int) :: swx_write
         end function swx_write
+        function swx_write_line (fd, line, n) bind(c, name="swx_write_line")
+          import :: c_int, c_char, c_size_t
+          integer(c_int), value :: fd
+          character(kind=c_char), dimension(*), intent(in) :: line
+          integer(c_size_t), value :: n
+          integer(c_int) :: swx_write_line
+        end function swx_write_line
       end interface
-#endif
 
       contains
 
@@ -280,13 +286,11 @@
       subroutine exch_open
 
 !!    called first in main: turns exchange mode on when SWAT+ is started
-!!    with --exchange, moves console messages to exchange.log and opens
-!!    the reply channel on standard output
+!!    with --exchange, opens the command and reply channels on standard
+!!    input and output and moves console messages to exchange.log
 
       character(len=64) :: arg = ""
       integer :: i = 0
-      integer :: ios = 0
-      integer :: u = 0
 
       do i = 1, command_argument_count()
         call get_command_argument (i, arg)
@@ -294,27 +298,17 @@
       end do
       if (.not. exch_on) return
 
-#if defined(_WIN32)
-      write (0, '(a)') "exchange mode needs Mac or Linux: arrays cross as raw bytes through POSIX calls"
-      error stop 5
-#else
-      !! the same two channels for arrays as raw bytes (bmi_fork.c)
+      !! the channels for replies and arrays as raw bytes (bmi_fork.c); commands
+      !! are read as lines on unit 5
       bin_in = swx_dup (0_c_int)
       bin_out = swx_dup (1_c_int)
       if (bin_in < 0 .or. bin_out < 0) then
         write (0, '(a)') "exchange mode: can't duplicate standard input and output"
         error stop 5
       end if
-#endif
 
-      !! on Mac and Linux, replies get standard output to themselves and unit 6
-      !! (the console) goes to a file; elsewhere they share standard output and
-      !! the "@" at the start of each reply line keeps them apart
-      open (newunit=u, file="/dev/stdout", action="write", status="old", iostat=ios)
-      if (ios == 0) then
-        rep_unit = u
-        open (6, file="exchange.log", action="write", status="replace")
-      end if
+      !! replies have standard output to themselves; unit 6 (the console) goes to a file
+      open (6, file="exchange.log", action="write", status="replace")
 
       return
       end subroutine exch_open
@@ -1189,7 +1183,7 @@
 !!    @branched <pid> and goes on as before. The child moves to <new dir>,
 !!    reopens its open files there at the same place, talks over the two
 !!    named pipes, and replies there with the same @paused line. Mac and
-!!    Linux only.
+!!    Linux only; on Windows the wrapper branches by saving and loading.
 
       character(len=*), intent(in) :: line
 #if defined(_WIN32)
@@ -1246,7 +1240,6 @@
       !! the child: leave the parent's channels and folder. Its copies of the
       !! array channels go too, or the parent's caller would never see the end
       !! of the parent's replies
-      close (rep_unit)
       call swx_close (bin_in)
       call swx_close (bin_out)
       if (swx_chdir (trim(new_dir) // c_null_char) /= 0) error stop 4
@@ -1255,9 +1248,8 @@
       write (6,*) "branched from ", trim(old_dir), " after day ", days_done
       call close_units (trim(old_dir))
       call reopen_closed
+      !! in the order the caller opens them: commands, then replies
       open (newunit=cmd_unit, file=trim(fifo_in), action="read", status="old")
-      open (newunit=rep_unit, file=trim(fifo_out), action="write", status="old")
-      !! the caller has both pipes open by now, so these opens don't wait
       bin_in = swx_open (trim(fifo_in) // c_null_char, 0_c_int)
       bin_out = swx_open (trim(fifo_out) // c_null_char, 1_c_int)
       if (bin_in < 0 .or. bin_out < 0) error stop 4
@@ -1296,12 +1288,14 @@
         if (.not. op) cycle
         inquire (unit=u, named=nd, name=nm, access=acc, position=pos, size=sz)
         if (.not. nd) cycle
-        if (nm(1:1) == "/") then
-          if (.not. (len_trim(nm) > n + 1 .and. nm(1:n) == run_dir(1:n) .and. nm(n+1:n+1) == "/")) then
+        !! a path from the root or a drive (SWAT+ writes out_path with \ on Windows)
+        if (nm(1:1) == "/" .or. nm(1:1) == "\" .or. nm(2:2) == ":") then
+          if (.not. (len_trim(nm) > n + 1 .and. slashed(nm(1:n)) == slashed(run_dir(1:n)) .and. &
+                     slashed(nm(n+1:n+1)) == "/")) then
             msg = trim(nm) // " is outside the run folder (out_path in file.cio?)"
             return
           end if
-        else if (nm(1:3) == "../") then
+        else if (slashed(nm(1:3)) == "../") then
           msg = trim(nm) // " is outside the run folder (out_path in file.cio?)"
           return
         end if
@@ -1351,7 +1345,7 @@
         !! a file opened but not yet written is at its start, which is also its end
         if (pos == "ASIS" .and. sz == 0) pos = "APPEND"
         if (n > 0 .and. len_trim(nm) > n + 1) then
-          if (nm(1:n) == old_dir(1:n) .and. nm(n+1:n+1) == "/") nm = nm(n+2:)
+          if (slashed(nm(1:n)) == slashed(old_dir(1:n)) .and. slashed(nm(n+1:n+1)) == "/") nm = nm(n+2:)
         end if
         if (acc /= "DIRECT" .and. pos /= "APPEND" .and. pos /= "REWIND") then
           write (6,*) "unit ", u, " (", trim(nm), ") is partway through; left open"
@@ -1462,7 +1456,7 @@
         if (m == 2) write (u) n
         n = 0
         do k = 1, unit_max
-          if (k == 5 .or. k == 6 .or. k == u .or. k == cmd_unit .or. k == rep_unit) cycle
+          if (k == 5 .or. k == 6 .or. k == u .or. k == cmd_unit) cycle
           inquire (unit=k, opened=op)
           if (.not. op) cycle
           inquire (unit=k, named=nd, name=nm, access=acc, form=frm, action=act, recl=rl)
@@ -2745,10 +2739,8 @@
       type(*), dimension(*), intent(in) :: buf
       integer(c_size_t), intent(in) :: nbytes
 
-#if !defined(_WIN32)
       if (nbytes == 0) return
       if (swx_write (bin_out, buf, nbytes) /= 0) error stop 3
-#endif
 
       return
       end subroutine put_bytes
@@ -2762,10 +2754,8 @@
       type(*), dimension(*) :: buf
       integer(c_size_t), intent(in) :: nbytes
 
-#if !defined(_WIN32)
       if (nbytes == 0) return
       if (swx_read (bin_in, buf, nbytes) /= 0) error stop 3
-#endif
 
       return
       end subroutine get_bytes
@@ -2775,11 +2765,28 @@
 
       character(len=*), intent(in) :: line
 
-      write (rep_unit, '(a)') trim(line)
-      flush (rep_unit)
+      !! one write of the line and its newline: the caller is gone if it fails
+      if (swx_write_line (bin_out, line, len_trim(line, kind=c_size_t)) /= 0) error stop 3
 
       return
       end subroutine reply
+
+!!    --------------------------------------------------------------------
+      function slashed (path) result (s)
+
+!!    path with each \ made /, so a Windows path compares with either
+
+      character(len=*), intent(in) :: path
+      character(len=len(path)) :: s
+      integer :: i
+
+      s = path
+      do i = 1, len(s)
+        if (s(i:i) == "\") s(i:i) = "/"
+      end do
+
+      return
+      end function slashed
 
 !!    --------------------------------------------------------------------
       function itoa (i) result (s)

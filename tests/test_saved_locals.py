@@ -9,12 +9,12 @@ run, and a serializer for save_state can leave them out (docs/design.md,
 
 import pytest
 
-from conftest import BIN, STOCK, TAG, ames_light, differences, need, project, run_stock
+from conftest import BIN, EXE, STOCK, TAG, ames_light, differences, need, project, run_stock
 from test_allocation import add_allocation
 from test_setting import add_point_source
 from salts import with_salts_channel
 
-NOSAVE = BIN / f"swatplus-{TAG}-nosave"
+NOSAVE = BIN / f"swatplus-{TAG}-nosave{EXE}"
 CASES = {"plain": {}, "daily": {"daily": True},
          "point-source": {"daily": True, "edit": add_point_source},
          "allocation": {"daily": True, "edit": add_allocation},

@@ -22,7 +22,7 @@ against unpatched SWAT+ on the projects listed in [COMPATIBILITY.md](COMPATIBILI
 paused run can also be saved and loaded, or branched in memory, so a warm-up is run once and
 every scenario starts from the same state.
 
-**Status:** working for SWAT+ 62.0.1; release 0.11.0 ([PyPI](https://pypi.org/project/swatplus-bmi/), [Zenodo](https://doi.org/10.5281/zenodo.23963201)). Tested on the two example projects that
+**Status:** working for SWAT+ 62.0.1; release 0.12.0 ([PyPI](https://pypi.org/project/swatplus-bmi/), [Zenodo](https://doi.org/10.5281/zenodo.23963201)). Tested on the two example projects that
 ship with SWAT+ (below) and a 2,371-HRU study build. See [COMPATIBILITY.md](COMPATIBILITY.md) and the design note,
 [docs/design.md](docs/design.md).
 
@@ -143,6 +143,26 @@ its path. Steps:
 
 On macOS, gfortran comes with Homebrew's `gcc`; on Debian and Ubuntu, `apt install gfortran`.
 
+On Windows, the tools come from [MSYS2](https://www.msys2.org). In its UCRT64 shell:
+
+```bash
+pacman -S git patch mingw-w64-ucrt-x86_64-gcc-fortran mingw-w64-ucrt-x86_64-ninja
+```
+
+Then, from PowerShell with the Python you use, MSYS2's folders first on PATH:
+
+```powershell
+$env:PATH = "C:\msys64\ucrt64\bin;C:\msys64\usr\bin;" + $env:PATH
+pip install swatplus-bmi
+swatplus-bmi build
+```
+
+The executable, `swatplus-62.0.1-exchange.exe`, goes to `%LOCALAPPDATA%\swatplus-bmi\bin`.
+It's linked statically, so it runs without MSYS2 on PATH. `swatplus-bmi build` runs `build.sh`
+in MSYS2's bash, passing over WSL's (`SWATPLUS_BMI_BASH` names another). In a TOML config on
+Windows, write paths as literal strings, `project = 'D:\models\clam'`: in double quotes a
+backslash starts an escape.
+
 ### From a source checkout
 
 For development and the tests, with [uv](https://docs.astral.sh/uv/):
@@ -216,7 +236,7 @@ base = SwatPlusBmi()
 base.initialize("runs/warmup.toml")
 base.update_until(3 * 365)                  # the warm-up
 
-a = base.branch("runs/scenario-a")          # Mac and Linux: a copy of the paused process
+a = base.branch("runs/scenario-a")          # a copy of the paused process (Windows: saved and loaded)
 base.save_state("states/warm")              # a folder with the state
 
 n = SwatPlusBmi()
@@ -556,8 +576,9 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   messages still cost more than SWAT+'s computing. On a real project computing dominates:
   reading and setting 39,000 values a day over 16 years of a basin build with 12,000 soil layers
   takes 47 s, against 44 s stepping alone (`tools/bench_exchange.py`).
-- **Mac and Linux.** Branching needs fork, and arrays cross through POSIX reads and writes
-  (0.10.0). The Windows build, never tried, stops at startup in exchange mode.
+- **Windows branches by saving and loading.** Windows has no fork, so a branch there is the
+  paused state saved and loaded by a new process: the same branch, slower to make (0.12.0).
+  Windows is built with MSYS2's gfortran; Intel ifx there isn't tried.
 - **Saved states depend on the code a project runs.** The list of saved locals that carry state
   is complete for the code the test projects run: about half of SWAT+'s procedures. That
   excludes gwflow, salts with aquifers or point sources, other constituents, reservoirs,

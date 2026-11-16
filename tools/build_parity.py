@@ -39,8 +39,8 @@ def expected(patch: str) -> list[str]:
 
 def objects(build: Path) -> dict[str, Path]:
     found = {}
-    for o in build.glob("CMakeFiles/*.dir/src/*.f90.o"):
-        found[o.name[:-2]] = o
+    for o in [*build.glob("CMakeFiles/*.dir/src/*.f90.o"), *build.glob("CMakeFiles/*.dir/src/*.f90.obj")]:
+        found[o.name.rsplit(".", 1)[0]] = o     # .obj on Windows
     return found
 
 

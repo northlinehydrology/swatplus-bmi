@@ -69,11 +69,11 @@ def find_executable(given: str | None = None) -> Path:
     for cand in (given, os.environ.get("SWATPLUS_EXCHANGE")):
         if cand:
             return Path(cand).expanduser()
-    from .build import DEFAULT_TAG, home
+    from .build import DEFAULT_TAG, EXE, home
     for folder in (Path(__file__).resolve().parents[2] / "bin", home() / "bin"):
-        if (folder / f"swatplus-{DEFAULT_TAG}-exchange").exists():
-            return folder / f"swatplus-{DEFAULT_TAG}-exchange"
-        found = sorted(folder.glob("swatplus-*-exchange"))
+        if (folder / f"swatplus-{DEFAULT_TAG}-exchange{EXE}").exists():
+            return folder / f"swatplus-{DEFAULT_TAG}-exchange{EXE}"
+        found = sorted(folder.glob(f"swatplus-*-exchange{EXE}"))
         if len(found) == 1:
             return found[0]
         if found:
@@ -197,8 +197,9 @@ class SwatPlusBmi(Bmi):
         The paused SWAT+ process is duplicated (fork), so a warm-up can be
         run once and every scenario started from it. The new model runs and
         writes its outputs in ``run_dir``, a copy of this model's run
-        folder made now; both models carry on independently. Mac and Linux
-        only. Not part of BMI 2.0.
+        folder made now; both models carry on independently. On Windows,
+        which has no fork, the state is saved and loaded by a new process
+        instead. Not part of BMI 2.0.
         """
         other = copy.copy(self)
         other._x = self._x.branch(run_dir)
