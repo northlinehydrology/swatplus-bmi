@@ -3,9 +3,10 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
-## Unreleased
+## 0.13.0 (2026-11-16)
 
-- `pip install swatplus-bmi` is all it takes on Windows x86-64, macOS 14 or later on Apple silicon and Linux x86-64:
+- `pip install swatplus-bmi` is all it takes on Windows x86-64 (an ARM PC with an x86-64 Python too), macOS 14 or
+  later on Apple silicon and Linux x86-64:
   each has a wheel with SWAT+ 62.0.1's exchange-mode executable inside, built from the release's sources on that
   platform and run installed alone before it's published (`hatch_build.py`, `tools/wheel_tag.py`,
   `tools/check_wheel.py`). The wrapper finds it in the package (`_bin/`) after `$SWATPLUS_EXCHANGE` and a source

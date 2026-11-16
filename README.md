@@ -22,7 +22,7 @@ against unpatched SWAT+ on the projects listed in [COMPATIBILITY.md](COMPATIBILI
 paused run can also be saved and loaded, or branched in memory, so a warm-up is run once and
 every scenario starts from the same state.
 
-**Status:** working for SWAT+ 62.0.1; release 0.12.0 ([PyPI](https://pypi.org/project/swatplus-bmi/), [Zenodo](https://doi.org/10.5281/zenodo.23963201)). Tested on the two example projects that
+**Status:** working for SWAT+ 62.0.1; release 0.13.0 ([PyPI](https://pypi.org/project/swatplus-bmi/), [Zenodo](https://doi.org/10.5281/zenodo.23963201)). Tested on the two example projects that
 ship with SWAT+ (below) and a 2,371-HRU study build. See [COMPATIBILITY.md](COMPATIBILITY.md) and the design note,
 [docs/design.md](docs/design.md).
 
@@ -128,8 +128,8 @@ it from the start.*
 pip install swatplus-bmi          # or: uv add swatplus-bmi
 ```
 
-On Windows (x86-64, and ARM through Windows' emulation), macOS 14 or later on Apple silicon, and Linux on
-x86-64, that's all: the wheel for those platforms has SWAT+ 62.0.1 with the exchange mode inside, built
+On Windows x86-64, macOS 14 or later on Apple silicon, and Linux on x86-64, that's all (on a Windows PC
+with an ARM processor, use an x86-64 Python, which Windows emulates, and the x86-64 wheel comes with it): the wheel for those platforms has SWAT+ 62.0.1 with the exchange mode inside, built
 from this release's sources, and the wrapper uses it. Nothing else to install, no compiler, no download
 at run time. The executable is LGPL-2.1 like SWAT+ (see LICENSE); its source is this release's
 `patches/` and `fortran/` on SWAT+'s 62.0.1 tag, and `swatplus-bmi build` rebuilds it from them.
