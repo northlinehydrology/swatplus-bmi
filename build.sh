@@ -56,6 +56,8 @@ WORK="${SWATPLUS_BMI_WORK:-$HERE/build}/$TAG"
 BIN="${SWATPLUS_BMI_BIN:-$HERE/bin}"
 CMAKE="${CMAKE:-cmake}"
 PYTHON="${PYTHON:-$(command -v python3 || command -v python)}"
+# the generators read and write SWAT+'s sources as UTF-8 on every platform (Windows' default is cp1252)
+export PYTHONUTF8=1
 
 EXE=""
 WINDOWS=0

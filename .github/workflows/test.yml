@@ -98,7 +98,7 @@ jobs:
             --expect "$(uv run python tools/build_parity.py --expected "$SWATPLUS_TAG")"
       - run: uv run pytest -q
       - if: failure()
-        run: tail -50 build/*/*.log || true
+        run: tail -n 50 build/*/*.log || true
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
