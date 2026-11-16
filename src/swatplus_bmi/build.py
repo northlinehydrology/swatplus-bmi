@@ -64,11 +64,30 @@ def cmake() -> str:
     raise FileNotFoundError("CMake not found: pip install cmake, or install it from cmake.org")
 
 
+def bash() -> str:
+    """The bash to run build.sh with: $SWATPLUS_BMI_BASH, or the first on PATH. On Windows, starting
+    plain ``bash`` finds System32's first, WSL's launcher, whatever PATH says; that one, and the
+    WindowsApps alias, are passed over for MSYS2's (or Git's)."""
+    if os.environ.get("SWATPLUS_BMI_BASH"):
+        return os.environ["SWATPLUS_BMI_BASH"]
+    if sys.platform != "win32":
+        return shutil.which("bash") or "bash"
+    root = os.path.normcase(os.environ.get("SystemRoot", r"C:\Windows"))
+    for d in os.environ.get("PATH", "").split(os.pathsep):
+        exe = Path(d) / "bash.exe"
+        where = os.path.normcase(str(exe))
+        if not d or not exe.is_file() or where.startswith(root) or "windowsapps" in where:
+            continue
+        return str(exe)
+    raise FileNotFoundError("bash not found (WSL's is passed over): run swatplus-bmi build from an MSYS2 UCRT64 "
+                            "shell, or set SWATPLUS_BMI_BASH to MSYS2's bash.exe")
+
+
 def build(tag: str = DEFAULT_TAG, jobs: int = 2, stock: bool = False, nosave: bool = False,
           patch: str | None = None) -> Path:
     """Build SWAT+ ``tag`` with the exchange mode; returns the executable's path."""
     if sys.platform == "win32":
-        need = {"bash": "bash", "git": "git", "patch": "patch", "gfortran": "gfortran",
+        need = {"git": "git", "patch": "patch", "gfortran": "gfortran",
                 "ninja or make": ("ninja", "make")}
         hint = ("; on Windows, run it from an MSYS2 UCRT64 shell with pacman's "
                 "mingw-w64-ucrt-x86_64-gcc-fortran, mingw-w64-ucrt-x86_64-ninja, git and patch")
@@ -82,9 +101,10 @@ def build(tag: str = DEFAULT_TAG, jobs: int = 2, stock: bool = False, nosave: bo
         if all(shutil.which(t) is None for t in tools):
             raise FileNotFoundError(f"{name} not found" + hint)
     out = home()
-    env = dict(os.environ, SWATPLUS_BMI_WORK=str(out / "build"), SWATPLUS_BMI_BIN=str(out / "bin"),
-               PYTHON=sys.executable, CMAKE=cmake())
-    args = ["bash", str(assets() / "build.sh"), "--tag", tag, "--jobs", str(jobs)]
+    fwd = lambda p: Path(p).as_posix()   # noqa: E731  (bash takes D:/a/b on Windows, not D:\\a\\b)
+    env = dict(os.environ, SWATPLUS_BMI_WORK=fwd(out / "build"), SWATPLUS_BMI_BIN=fwd(out / "bin"),
+               PYTHON=fwd(sys.executable), CMAKE=fwd(cmake()))
+    args = [bash(), fwd(assets() / "build.sh"), "--tag", tag, "--jobs", str(jobs)]
     if stock:
         args.append("--stock")
     if nosave:
