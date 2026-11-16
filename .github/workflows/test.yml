@@ -88,7 +88,10 @@ jobs:
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-ninja
       - run: uv sync --locked
-      - run: CMAKE=/ucrt64/bin/cmake uv run ./build.sh --stock --nosave --check --jobs 4 --tag "$SWATPLUS_TAG"
+      # in MSYS2's bash with the project's Python first on PATH (uv run can't start a shell script on Windows)
+      - run: |
+          export PATH="$(pwd)/.venv/Scripts:$PATH" CMAKE=/ucrt64/bin/cmake
+          ./build.sh --stock --nosave --check --jobs 4 --tag "$SWATPLUS_TAG"
       - name: Every SWAT+ file the patch doesn't touch compiles to the same object
         run: |
           uv run python tools/build_parity.py "build/$SWATPLUS_TAG" \
