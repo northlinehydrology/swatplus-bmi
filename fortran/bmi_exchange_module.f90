@@ -1288,12 +1288,14 @@
         if (.not. op) cycle
         inquire (unit=u, named=nd, name=nm, access=acc, position=pos, size=sz)
         if (.not. nd) cycle
-        if (nm(1:1) == "/") then
-          if (.not. (len_trim(nm) > n + 1 .and. nm(1:n) == run_dir(1:n) .and. nm(n+1:n+1) == "/")) then
+        !! a path from the root or a drive (SWAT+ writes out_path with \ on Windows)
+        if (nm(1:1) == "/" .or. nm(1:1) == "\" .or. nm(2:2) == ":") then
+          if (.not. (len_trim(nm) > n + 1 .and. slashed(nm(1:n)) == slashed(run_dir(1:n)) .and. &
+                     slashed(nm(n+1:n+1)) == "/")) then
             msg = trim(nm) // " is outside the run folder (out_path in file.cio?)"
             return
           end if
-        else if (nm(1:3) == "../") then
+        else if (slashed(nm(1:3)) == "../") then
           msg = trim(nm) // " is outside the run folder (out_path in file.cio?)"
           return
         end if
@@ -1343,7 +1345,7 @@
         !! a file opened but not yet written is at its start, which is also its end
         if (pos == "ASIS" .and. sz == 0) pos = "APPEND"
         if (n > 0 .and. len_trim(nm) > n + 1) then
-          if (nm(1:n) == old_dir(1:n) .and. nm(n+1:n+1) == "/") nm = nm(n+2:)
+          if (slashed(nm(1:n)) == slashed(old_dir(1:n)) .and. slashed(nm(n+1:n+1)) == "/") nm = nm(n+2:)
         end if
         if (acc /= "DIRECT" .and. pos /= "APPEND" .and. pos /= "REWIND") then
           write (6,*) "unit ", u, " (", trim(nm), ") is partway through; left open"
@@ -2768,6 +2770,23 @@
 
       return
       end subroutine reply
+
+!!    --------------------------------------------------------------------
+      function slashed (path) result (s)
+
+!!    path with each \ made /, so a Windows path compares with either
+
+      character(len=*), intent(in) :: path
+      character(len=len(path)) :: s
+      integer :: i
+
+      s = path
+      do i = 1, len(s)
+        if (s(i:i) == "\") s(i:i) = "/"
+      end do
+
+      return
+      end function slashed
 
 !!    --------------------------------------------------------------------
       function itoa (i) result (s)
