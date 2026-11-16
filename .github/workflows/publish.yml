@@ -26,12 +26,13 @@ jobs:
           path: dist/
   # A wheel with SWAT+ inside for each platform that has one (hatch_build.py, tools/wheel_tag.py), each installed
   # alone into a new environment and run before it goes up (tools/check_wheel.py). macOS on the oldest Apple
-  # silicon runner, so the wheel runs on that macOS and later; Linux static, so any Linux.
+  # silicon runner GitHub offers (macOS 15; macos-14 is retired), so the wheel runs on that macOS and later; Linux
+  # static, so any Linux.
   wheels-unix:
     strategy:
       fail-fast: true
       matrix:
-        os: [ubuntu-latest, macos-14]
+        os: [ubuntu-latest, macos-15]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
