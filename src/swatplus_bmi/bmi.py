@@ -64,23 +64,35 @@ def sources_hash() -> str:
 
 def find_executable(given: str | None = None) -> Path:
     """The exchange-mode SWAT+ executable: given, $SWATPLUS_EXCHANGE, bin/ in a source
-    checkout, or the folder ``swatplus-bmi build`` writes to; there, the supported release's
+    checkout, the one inside the installed wheel (``_bin/``, on platforms with a wheel of their
+    own), or the folder ``swatplus-bmi build`` writes to; in a folder, the supported release's
     build if it exists, else the only one."""
     for cand in (given, os.environ.get("SWATPLUS_EXCHANGE")):
         if cand:
             return Path(cand).expanduser()
     from .build import DEFAULT_TAG, EXE, home
-    for folder in (Path(__file__).resolve().parents[2] / "bin", home() / "bin"):
+    here = Path(__file__).resolve().parent
+    for folder in (here.parents[1] / "bin", here / "_bin", home() / "bin"):
         if (folder / f"swatplus-{DEFAULT_TAG}-exchange{EXE}").exists():
-            return folder / f"swatplus-{DEFAULT_TAG}-exchange{EXE}"
+            return _runnable(folder / f"swatplus-{DEFAULT_TAG}-exchange{EXE}")
         found = sorted(folder.glob(f"swatplus-*-exchange{EXE}"))
         if len(found) == 1:
-            return found[0]
+            return _runnable(found[0])
         if found:
             raise FileNotFoundError(f"several SWAT+ exchange executables in {folder} and none for "
                                     f"{DEFAULT_TAG}: name one, or set SWATPLUS_EXCHANGE")
     raise FileNotFoundError("no SWAT+ exchange executable: run `swatplus-bmi build` "
                             "(or ./build.sh in a source checkout), or set SWATPLUS_EXCHANGE")
+
+
+def _runnable(exe: Path) -> Path:
+    """The executable, made executable if an installer dropped the mode (a wheel's file keeps it as a rule)."""
+    if os.name == "posix" and not os.access(exe, os.X_OK):
+        try:
+            exe.chmod(exe.stat().st_mode | 0o111)
+        except OSError:
+            pass
+    return exe
 
 
 class SwatPlusBmi(Bmi):
