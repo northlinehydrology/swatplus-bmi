@@ -23,8 +23,11 @@ class BundleSwat(BuildHookInterface):
         exe = Path(exe).resolve()
         if not exe.is_file():
             raise FileNotFoundError(f"SWATPLUS_BMI_BUNDLE: {exe} isn't a file")
-        tag = subprocess.run([sys.executable, str(Path(self.root) / "tools" / "wheel_tag.py"), str(exe)],
-                             check=True, capture_output=True, text=True).stdout.strip()
+        r = subprocess.run([sys.executable, str(Path(self.root) / "tools" / "wheel_tag.py"), str(exe)],
+                           capture_output=True, text=True)
+        if r.returncode:
+            raise RuntimeError(f"{exe.name} can't go in a wheel as it is: {(r.stderr or r.stdout).strip()}")
+        tag = r.stdout.strip()
         build_data["force_include"][str(exe)] = f"swatplus_bmi/_bin/{exe.name}"
         build_data["pure_python"] = False
         build_data["tag"] = f"py3-none-{tag}"

@@ -19,8 +19,39 @@ import subprocess
 import sys
 from pathlib import Path
 
-WINDOWS_DLLS = {"kernel32.dll", "msvcrt.dll", "ucrtbase.dll", "user32.dll", "advapi32.dll", "ws2_32.dll", "shell32.dll",
-                "ole32.dll", "bcrypt.dll", "ntdll.dll"}
+# DLLs every Windows has (System32), besides the api-ms-win-* sets of the Universal C runtime
+WINDOWS_DLLS = {"kernel32.dll", "kernelbase.dll", "ntdll.dll", "msvcrt.dll", "ucrtbase.dll", "user32.dll", "gdi32.dll",
+                "advapi32.dll", "shell32.dll", "shlwapi.dll", "ole32.dll", "oleaut32.dll", "comdlg32.dll", "ws2_32.dll",
+                "bcrypt.dll", "crypt32.dll", "secur32.dll", "rpcrt4.dll", "version.dll", "psapi.dll", "dbghelp.dll",
+                "winmm.dll", "iphlpapi.dll", "shcore.dll", "userenv.dll"}
+
+
+def imports(data: bytes, pe: int) -> set[str]:
+    """The DLLs a PE32+ program imports, from its import table (not every DLL name in it: gfortran's static runtime
+    names libgcc_s_seh-1.dll as text, looked for at run time, not imported)."""
+    nsect, = struct.unpack_from("<H", data, pe + 6)
+    opt_size, = struct.unpack_from("<H", data, pe + 20)
+    opt = pe + 24
+    if struct.unpack_from("<H", data, opt)[0] != 0x20B:
+        raise SystemExit("not a PE32+ (64-bit) program")
+    rva, size = struct.unpack_from("<II", data, opt + 112 + 8)          # data directory 1: imports
+    sections = [struct.unpack_from("<IIII", data, opt + opt_size + 40 * i + 8) for i in range(nsect)]
+
+    def off(r):
+        for vsize, vaddr, rawsize, rawptr in sections:
+            if vaddr <= r < vaddr + max(vsize, rawsize):
+                return rawptr + r - vaddr
+        raise SystemExit(f"address {r:#x} in no section")
+
+    names, d = set(), off(rva) if size else None
+    while d is not None:
+        name_rva = struct.unpack_from("<I", data, d + 12)[0]
+        if name_rva == 0:
+            break
+        o = off(name_rva)
+        names.add(data[o:data.index(b"\0", o)].decode().lower())
+        d += 20
+    return names
 
 
 def windows(data: bytes) -> str:
@@ -30,7 +61,7 @@ def windows(data: bytes) -> str:
     machine = struct.unpack_from("<H", data, pe + 4)[0]
     if machine != 0x8664:
         raise SystemExit(f"PE machine {machine:#x}, not x86-64")
-    names = {m.decode().lower() for m in re.findall(rb"([A-Za-z0-9_\-.]+\.(?:dll|DLL))\0", data)}
+    names = imports(data, pe)
     other = sorted(n for n in names if not (n in WINDOWS_DLLS or n.startswith("api-ms-win-")))
     if other:
         raise SystemExit(f"needs DLLs a plain Windows doesn't have: {other}")
