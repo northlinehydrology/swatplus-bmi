@@ -3,7 +3,7 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
-## Unreleased
+## 0.12.0 (2026-11-16)
 
 - Windows. Exchange mode runs there, built with MSYS2's gfortran (`swatplus-bmi build` from
   PowerShell with MSYS2's folders on PATH, or `build.sh` in its UCRT64 shell); the full suite
