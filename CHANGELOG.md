@@ -3,6 +3,18 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
+## Unreleased
+
+- Windows. Exchange mode runs there, built with MSYS2's gfortran (`swatplus-bmi build` from
+  PowerShell with MSYS2's folders on PATH, or `build.sh` in its UCRT64 shell); the full suite
+  runs on windows-latest in CI. The C helper is compiled everywhere, its descriptors binary on
+  Windows, and replies are written through it on every platform, so `/dev/stdout` isn't needed.
+  A branch on Windows is the paused state saved and loaded by a new process (no fork).
+  Executables are `.exe` there, and every Windows build, stock included, takes
+  `patches/62.0.1/windows/`, which gives gfortran SWAT+'s Linux and macOS release flags in
+  place of its debug checks. `swatplus-bmi build` passes over WSL's bash.
+- A file outside the run folder is found on Windows too, where SWAT+ writes `out_path` with `\`.
+
 ## 0.11.0 (2026-11-15)
 
 - Reservoirs, on a new `res` grid: their volume and area at the end of the day, and the day's
