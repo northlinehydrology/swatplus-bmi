@@ -27,10 +27,12 @@ Decisions behind the design:
 ## Pieces
 
 ```
-SWAT+ 62.0.1 (tag)  + patches/62.0.1/0001-*.patch  the exchange hooks: ten SWAT+ files and
-                                                        CMakeLists.txt, 29 lines added
+SWAT+ 62.0.1 (tag)  + patches/62.0.1/0001-*.patch  the exchange hooks: eleven SWAT+ files and
+                                                        CMakeLists.txt, 32 lines added
                     + patches/62.0.1/0002-*.patch  a SWAT+ fix: places of use (Found in
                                                         SWAT+ 62.0.1, item 21)
+                    + patches/62.0.1/0003-*.patch  a SWAT+ fix: irrigation from a channel
+                                                        (Found in SWAT+ 62.0.1, item 22)
                     + fortran/bmi_exchange_module.f90   the exchange mode
                     + fortran/bmi_fork.c                fork for branching, whole reads and
                                                         writes for arrays (Mac, Linux)
@@ -62,7 +64,7 @@ three in `sd_channel_control3.f90` (the channel hooks), one in
 | `exch_pause` | each day, after the weather, the land use decision tables and the manure allocation, **before** `wallo_start_day`, as `if (exch_pause()) cycle` | sends `@paused`, then answers commands until told to run; while a saved state is loading, skips the days before the saved one |
 | `exch_apply` | each day, **after** `wallo_start_day`, before `call command` | puts values set while paused in place for this day |
 | `exch_record` | `command.f90`, after the command loop, before outputs are printed | keeps the day's water allocation demand and withdrawal, which printing zeroes, the day's irrigation, and the irrigation withdrawals added up since the last record, which it then zeroes |
-| `exch_irr_take` | `actions.f90`, `irrigate`, right after the action takes its water from its source | adds what the action took from a channel or reservoir (`irrig(j)%water%flo`, m3) to that source's and the HRU's withdrawal for the day; only reads |
+| `exch_irr_take` | `actions.f90`, `irrigate`, right after the action takes its water from its source; `wet_irrp.f90`, right after a paddy's scheduled irrigation takes from a channel or reservoir | adds what was taken from a channel or reservoir (`irrig(j)%water%flo`, m3) to that source's and the HRU's withdrawal for the day; only reads |
 | `exch_channel_in` | `sd_channel_control3.f90`, right after the channel's incoming salt load (`hcs1`) is set | adds the salt set with the day's groundwater gain |
 | `exch_channel` | `sd_channel_control3.f90`, after routing and water allocation, before the outflow is set | takes a set groundwater loss from the day's outflow, with its sediment and nutrients, and records the day's exchange |
 | `exch_channel_cs` | `sd_channel_control3.f90`, after SWAT+ splits salt and constituents between outflow and storage | takes the loss's share of the outflow's salt and constituents, as seepage |
@@ -91,9 +93,9 @@ So, at a pause before day *d*:
   those sources get a set demand on day *d*+1, as they get SWAT+'s own
   (Setting fluxes).
 
-With the mode off, nothing changes (the exchange patch; the place of use fix,
-`0002-wallo-withdraw-duty.patch`, is a fix to SWAT+ and applies with the mode off
-too: Patches that fix SWAT+). The test suite checks every output file,
+With the mode off, nothing changes (the exchange patch; the two fixes to SWAT+,
+`0002-wallo-withdraw-duty.patch` for places of use and `0003-irrigate-channel-tot-stor.patch`
+for irrigation from a channel, apply with the mode off too: Patches that fix SWAT+). The test suite checks every output file,
 byte for byte, against the unpatched release, with the mode off, stepped one
 day at a time, read every day, branched, and saved and loaded (What the tests
 prove, below, says on which projects).
@@ -221,9 +223,9 @@ names follow the channel ones. CSDMS lists no aquifer or withdrawal names.
 | `land_surface__potential_evapotranspiration_rate` | hru | out | m s-1 | `hwb_d(j)%pet` (mm/day) | `pet` |
 | `soil_water__depth` | hru | out | m | `soil(j)%sw` (mm) | the profile's water above the wilting point at the end of the day, `sw_final` |
 | `land_irrigation_water__volume_flow_rate` | hru | out | m3 s-1 | `irrig(j)%applied + irrig(j)%runoff` (mm) x 10 x area (ha), kept at the end of the day (`exch_record`) | the day's irrigation from any source, as SWAT+'s water balance takes it in (HRU irrigation) |
-| `land_irrigation_water__withdrawal_volume_flow_rate` | hru | out | m3 s-1 | `irrig(j)%water%flo` (m3) after each `irrigate` action from a channel or reservoir, added up (`exch_irr_take`) | what the HRU's irrigate actions took from SWAT+'s channels and reservoirs the day just done, before the application's loss (HRU irrigation) |
-| `channel_water__irrigation_withdrawal_volume_flow_rate` | cha | out | m3 s-1 | as above, by source channel | what irrigate actions took from the channel's `ch_stor`; in 62.0.1 the channel doesn't lose it (Found in SWAT+ 62.0.1, item 22) |
-| `reservoir_water__irrigation_withdrawal_volume_flow_rate` | res | out | m3 s-1 | as above, by source reservoir | what irrigate actions took from the reservoir (`res(iob)`), which it loses |
+| `land_irrigation_water__withdrawal_volume_flow_rate` | hru | out | m3 s-1 | `irrig(j)%water%flo` (m3) after each `irrigate` action, and each paddy `irrp` day, that takes from a channel or reservoir, added up (`exch_irr_take`) | what the HRU's irrigation took from SWAT+'s channels and reservoirs the day just done, before the application's loss (HRU irrigation) |
+| `channel_water__irrigation_withdrawal_volume_flow_rate` | cha | out | m3 s-1 | as above, by source channel | what irrigation took from the channel's `ch_stor` and, with the fix, its `tot_stor`, which the channel loses (Found in SWAT+ 62.0.1, item 22) |
+| `reservoir_water__irrigation_withdrawal_volume_flow_rate` | res | out | m3 s-1 | as above, by source reservoir | what irrigation took from the reservoir (`res(iob)`), which it loses |
 | `soil_layer_water__groundwater_inflow_rate` | hly | in and out | m s-1 | added to `soil(j)%phys(k)%st` (mm) and `gwsoilq(j)` | a flux for the next day (Groundwater into the soil); reading gives what went in on the day just done |
 | `soil_water__groundwater_inflow_rate` | hru | out | m s-1 | `hwb_d(j)%gwsoil` (`gwsoilq`, mm/day) | `gwsoilq` in `hru_wb_day.txt`: gwflow's and what was set |
 | `soil_layer_bottom__depth`, `soil_layer__thickness` | hly | out | m | `soil(j)%phys(k)%d`, `%thick` (mm) | SWAT+'s layers: a 10 mm top layer, then the file's, or the depths in `soil_lyr_depths.sol` with the file's properties averaged mm by mm (`soils_init`) |
@@ -479,18 +481,29 @@ difference is the application's loss (`1 - eff` of what doesn't run off), and on
 HRU also the runoff part, which SWAT+ zeroes there (`hru_control.f90`, `irrig(j)%runoff = 0.` when
 `ires > 0`). Saved states carry the sums (`SWXSTATE-7`).
 
-Not counted: an action from an aquifer (`aqu`; a coupled groundwater model owns that water) or
-from outside (`null`, `unl`), and `wet_irrp.f90`'s paddy irrigation from a scheduled
-`irrp` operation, which takes from a channel, reservoir or aquifer without a decision table. A
-project that irrigates that way isn't booked by these reads.
+A paddy's scheduled irrigation (`irrp` in `management.sch`, `wet_irrp.f90`) takes from a channel
+or reservoir too, without a decision table, and the same hook counts it, right after the take.
+It isn't all or nothing: on a day the ponding is below 90% of its target, it asks for what fills
+it back up, less the day's rain, and takes that, up to 99% of what the source holds. Its source is
+`irrp`'s `op_data2` (`cha`, `sdc`, `res`), and its number is `op_data3` when positive, which is
+also the target depth in mm (SWAT+ 62.0.1 reads one field as both); with `op_data3` negative, the
+target is `irr.ops`' amount and the source the first of that type the HRU's routing unit sends
+water to. In SWAT+ 62.0.1 the paddy gets water from it only on the operation's own day (Found in
+SWAT+ 62.0.1, item 23): on every other day the withdrawal is taken and none of it applied, so
+there the HRU's withdrawal less `land_irrigation_water__volume_flow_rate` is all of it.
 
-**In SWAT+ 62.0.1 a channel doesn't lose what its irrigate actions take** (Found in SWAT+ 62.0.1,
+Not counted: water from an aquifer (`aqu`; a coupled groundwater model owns that water) or from
+outside (`null`, `unl`, or `irrp` with no source).
+
+**In SWAT+ 62.0.1 a channel doesn't lose what irrigation takes from it** (Found in SWAT+ 62.0.1,
 item 22): the action reduces `ch_stor`, but the channel routes from `tot_stor`, which it carries
-from the day before, and sets `ch_stor` from it again. The channel's outflow and storage are what
-they'd be without the irrigation; the field's water comes from nowhere. The channel read is what
-the action took, as SWAT+ records it; a coupled model that keeps a water balance should not take
-it out of the channel's outflow a second time, but count it as water SWAT+ adds. A reservoir does
-lose its withdrawal: `res(iob)` is the reservoir's own state, and its printed balance is short by it.
+from the day before, and sets `ch_stor` from it again. The channel's outflow and storage were what
+they'd be without the irrigation; the field's water came from nowhere. The exchange build fixes it
+(`0003-irrigate-channel-tot-stor.patch`, Patches that fix SWAT+): right after the cut, `tot_stor` is
+set again from `ch_stor` and `fp_stor`, as `ch_rtmusk.f90` sets it at the end of each day. So the
+channel's outflow and storage drop by what was taken, and a coupled model that keeps a water
+balance takes the channel read out of the channel. A reservoir always lost its withdrawal:
+`res(iob)` is the reservoir's own state, and its printed balance is short by it.
 
 ### Setting fluxes
 
@@ -898,9 +911,9 @@ The claim is three sentences, and each has its own tests:
    byte. `tests/test_stepping.py`, `test_branch.py` and `test_state.py`
    add the mode switched off, branches and saves at the first and last
    days, and branches of branches. (On the test projects, which have at most
-   one place of use; one with places of use on several channels, or several
-   on one, differs from stock 62.0.1 by the place of use fix, Patches that
-   fix SWAT+.)
+   one place of use and don't irrigate from a channel; one with places of
+   use on several channels, or several on one, or irrigation from a channel,
+   differs from stock 62.0.1 by the fixes, Patches that fix SWAT+.)
 2. **A value set changes results only through that input.** Setting
    SWAT+'s own point source flow, loads or demand back every day, read
    from a first run, gives stock output, byte for byte, and so does a zero
@@ -1119,8 +1132,8 @@ These are worth reporting upstream, separately from the exchange mode:
     is meant. Places of use sharing a point of diversion each withdraw
     another's demand, and one on any point of diversion but the file's first
     reads past the end of its own list (0, or a stray value), so places of
-    use work on one channel only. **Patched** (`patches/62.0.1/0002-wallo-withdraw-duty.patch`,
-    the one SWAT+ fix in the build; Patches that fix SWAT+, below). The
+    use work on one channel only. **Patched** (`patches/62.0.1/0002-wallo-withdraw-duty.patch`;
+    Patches that fix SWAT+, below). The
     compensation path's other faults (`wallo_control` calls the routine with
     a place of use number and a POD's position in its list; `fin` is set by
     a loop index), `poud_met`'s `deliv` added to `pou`'s, and the `irr`
@@ -1133,9 +1146,20 @@ These are worth reporting upstream, separately from the exchange mode:
     untouched by the action, and then sets `ch_stor` from it again. So the channel never loses the
     water: its outflow and storage are those of a run without the irrigation, and the field's
     water comes from nowhere. `wet_irrp.f90` takes from `ch_stor` the same way. From a reservoir,
-    the water does leave. (`tests/test_irrigation.py`,
-    `test_channel_irrigation_takes_no_water_from_the_channel_swatplus_62_0_1`; draft issue in
-    docs/upstream-issue-irrigate-channel.md.)
+    the water does leave. **Patched** (`patches/62.0.1/0003-irrigate-channel-tot-stor.patch`;
+    Patches that fix SWAT+, below). (`tests/test_irrigation.py`,
+    `test_the_channel_loses_what_it_gives` and `test_a_paddy_takes_from_its_channel`; draft issue
+    in docs/upstream-issue-irrigate-channel.md.)
+
+23. A paddy's scheduled irrigation (`irrp`) applies water only on the
+    operation's own day. `mgt_sched.f90` sets `irrig(j)%eff` from `irr.ops`
+    when the operation runs, but `time_control.f90` zeroes `irrig(:)%eff`
+    at the start of every day, and `wet_irrp.f90` applies
+    `irrig(j)%water%flo * irrig(j)%eff`. So on every later day the paddy
+    takes its water from its source (a channel, reservoir or aquifer) and
+    applies none of it. Documented, not patched; the withdrawal reads count
+    what was taken. (`tests/test_irrigation.py`,
+    `test_a_paddy_takes_from_its_channel`.)
 
 Items 7–9 and 12 were found by a study's model build (Nov 6, 2026) and
 confirmed by reading the source. Items 10, 11 and 13–15 were found while
@@ -1143,24 +1167,34 @@ adding chemistry to the exchange (0.5.0), and item 16 by the nightly
 comparisons (Nov 7, 2026), items 17 and 18 while generating the
 reads of every printed column (0.8.0), items 19 and 20 while adding
 parameters at initialize (0.9.0), item 21 by Basin Ledger's
-Rappahannock study (Nov 24, 2026), and item 22 while adding the irrigation
+Rappahannock study (Nov 24, 2026), and items 22 and 23 while adding the irrigation
 withdrawals (0.14.0).
 
 ### Patches that fix SWAT+
 
 The exchange patch never changes what SWAT+ does. A SWAT+ bug is documented
 above and drafted upstream, and a test pins it, so it fails when SWAT+
-fixes it (the aquifer withdrawal, item 3). One is patched instead, in its
-own file applied after the exchange patch: item 21,
-`0002-wallo-withdraw-duty.patch`. Stock 62.0.1 there gives no result a
-model can rely on: a place of use past the first channel reads memory
-beyond its array, so what it withdraws depends on the heap, and Basin
-Ledger's intakes (one point of diversion per channel) get nothing. The fix
-changes four lines and nothing a project with one place of use on the
-file's first point of diversion does, so the stock comparisons still hold
-for every test project; a project with places of use on several channels,
-or several on one, differs from stock 62.0.1 by the fix. The stock build
-(`--stock`) stays unpatched.
+fixes it (the aquifer withdrawal, item 3). Two are patched instead, each in
+its own file applied after the exchange patch, where stock 62.0.1 gives no
+result a model can rely on:
+
+- Item 21, `0002-wallo-withdraw-duty.patch`: a place of use past the first
+  channel reads memory beyond its array, so what it withdraws depends on
+  the heap, and Basin Ledger's intakes (one point of diversion per channel)
+  get nothing. The fix changes four lines and nothing a project with one
+  place of use on the file's first point of diversion does; a project with
+  places of use on several channels, or several on one, differs from stock
+  62.0.1 by the fix.
+- Item 22, `0003-irrigate-channel-tot-stor.patch`: irrigation from a
+  channel gets water from nowhere, which no water balance can carry (a
+  coupled model counting the withdrawal on the channel's outflow side takes
+  it out twice; one that doesn't has the basin gaining water). The fix adds
+  two lines, `tot_stor = ch_stor + fp_stor` after the cut in `actions.f90`
+  and `wet_irrp.f90`, and changes nothing a project that doesn't irrigate
+  from a channel does; one that does differs from stock 62.0.1 by the fix.
+
+The stock comparisons still hold for every test project as shipped, and the
+stock build (`--stock`) stays unpatched.
 
 ## Limits
 

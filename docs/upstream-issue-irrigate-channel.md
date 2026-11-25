@@ -51,5 +51,14 @@ evap - seep - flo_out - Δflo_stor`) closes to under 1 m3 on every day an action
 and the same in `wet_irrp.f90`. (The day's channel water balance then shows the withdrawal as a fall in storage that
 no column explains; a withdrawal column in `channel_sd_day` would close it.)
 
+**Related, found while testing this (not fixed by the change above):** a paddy's scheduled irrigation (`irrp`)
+applies water only on the operation's own day. `mgt_sched.f90` sets `irrig(j)%eff` from `irr.ops` when the `irrp`
+operation runs, but `time_control.f90` zeroes it every day (`irrig(:)%eff = 0.`), and `wet_irrp.f90` applies
+`irrig(j)%water%flo / wsa1 * irrig(j)%eff`. So on every later day the paddy takes its water from its source and
+applies none of it: in the example above with `irrp sprinkler_med sdc -1` on May 2, the paddy withdrew from
+`cha01` on 119 days and `hru_wb_day.txt`'s `irr` is non-zero on 2 (May 2, 2012 and 2021). Keeping the efficiency
+with the HRU (as `irr_hmax` is), or not zeroing it, would fix it. Separately, `irrp`'s `op_data3` is read both as
+the source's number (`irr_isc`) and as the target ponding depth (`irr_hmax`).
+
 Andrew Sommerlot
 Northline Hydrology

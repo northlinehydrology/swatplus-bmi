@@ -263,3 +263,30 @@ index d357b05..c516819 100644
        
        !! ave annual calibration output and reset time for next simulation
        call calsoft_ave_output
+diff --git a/src/wet_irrp.f90 b/src/wet_irrp.f90
+--- a/src/wet_irrp.f90
++++ b/src/wet_irrp.f90
+@@ -10,6 +10,7 @@
+       use mgt_operations_module
+       use hru_module, only : hru, ihru
+       use climate_module
++      use bmi_exchange_module, only : exch_irr_take
+       
+       implicit none
+       
+@@ -68,6 +69,7 @@
+           cs_irr(isrc) = rto * ch_water(isrc)                         ! constituents in irrigation water
+           ch_stor(isrc) = (1. - rto) * ch_stor(isrc)                        ! remainder stays in channel
+           ch_water(isrc) = (1. - rto) * ch_water(isrc)                      
++          call exch_irr_take (j, hru(j)%irr_src, isrc)   !! exchange mode: count what was taken from the channel
+         else
+           irrig(j)%water%flo = irrig(j)%demand
+         endif
+@@ -81,6 +83,7 @@
+           cs_irr(isrc) = rto * res_water(isrc)                        ! constituents in irrigation water
+           res(isrc) = (1. - rto) * res(isrc)                                ! remainder stays in reservoir
+           res_water(isrc) = (1. - rto) * res_water(isrc)                    
++          call exch_irr_take (j, hru(j)%irr_src, isrc)   !! exchange mode: count what was taken from the reservoir
+         else
+           irrig(j)%water%flo = irrig(j)%demand
+         endif

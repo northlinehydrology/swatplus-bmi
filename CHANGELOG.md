@@ -27,18 +27,35 @@ SWAT+ releases each version supports are in COMPATIBILITY.md.
   `channel_water__irrigation_withdrawal_volume_flow_rate` by channel,
   `reservoir_water__irrigation_withdrawal_volume_flow_rate` by reservoir, and
   `land_irrigation_water__withdrawal_volume_flow_rate` by HRU. SWAT+ doesn't keep its irrigation by source, so a
-  hook in `actions.f90` (`exch_irr_take`) adds up what each `irrigate` action from a channel (`cha`, `sdc`) or a
-  reservoir (`res`) takes, `irrig(j)%water%flo`, where it takes it; it only reads, and an irrigated project
-  stepped while reading them writes stock SWAT+'s output byte for byte. The sources' total is the HRUs' total
-  each day, and an HRU's withdrawal less `land_irrigation_water__volume_flow_rate` is its application's loss.
-  SWAT+ gives all or nothing, so a day the source held too little reads 0. Not counted: actions from an aquifer
-  or outside, and `wet_irrp`'s scheduled paddy irrigation. Saved states carry the sums; a state saved by
-  0.13 is refused (`SWXSTATE-7`).
-- Found while testing them, and documented, not patched: in SWAT+ 62.0.1 an `irrigate` action from a channel
-  takes its water from `ch_stor`, which the routing overwrites from `tot_stor`, so the channel never loses it
-  and the field's water comes from nowhere (a test pins it; draft issue
-  `docs/upstream-issue-irrigate-channel.md`). The channel read is what the action took, as SWAT+ records it.
-  From a reservoir the water does leave.
+  hook (`exch_irr_take`) adds up what each `irrigate` action (`actions.f90`) and each day of a paddy's
+  scheduled irrigation (`irrp`, `wet_irrp.f90`) takes from a channel (`cha`, `sdc`) or a reservoir (`res`),
+  `irrig(j)%water%flo`, where it takes it. The hooks only read: an irrigated project stepped while reading them
+  writes what the exchange build run as a program writes, byte for byte, and one irrigating from a reservoir
+  writes stock SWAT+'s output. The sources' total is the HRUs' total each day, and an HRU's withdrawal less
+  `land_irrigation_water__volume_flow_rate` is its application's loss. An `irrigate` action gives all or
+  nothing, so a day its source held too little reads 0; a paddy's `irrp` takes what it asks for, up to 99% of
+  what the source holds. Not counted: water from an aquifer or from outside. Saved states carry the sums; a
+  state saved by 0.13 is refused (`SWXSTATE-7`).
+- Irrigation from a channel takes the water out of the channel, which stock SWAT+ 62.0.1 doesn't. Its
+  `irrigate` action from `cha`/`sdc` (`actions.f90`), and a paddy's `irrp` from a channel (`wet_irrp.f90`),
+  cut the channel's `ch_stor`, but `ch_rtmusk.f90` routes from `tot_stor`, carried from the end of the day
+  before, and then sets `ch_stor` from it again. So the channel never lost the water: its outflow and storage
+  were what they'd be with no irrigation, and the field's water came from nowhere. The fix sets
+  `tot_stor = ch_stor + fp_stor` right after the cut, as `ch_rtmusk` does at the end of each day (two lines,
+  `fp_stor` untouched), in its own patch, `patches/62.0.1/0003-irrigate-channel-tot-stor.patch`.
+  **Why patched, not only documented:** what stock gives here is water from nowhere, which no water balance
+  can carry: a coupled model counting the channel's withdrawal on its outflow side takes it out twice, and one
+  that doesn't has a basin gaining water. With the fix the channel's outflow and storage drop by exactly what
+  was taken, day by day, until the field's return reaches it (`tests/test_irrigation.py`, for an action and
+  for a paddy). Reservoirs and aquifers were right and are unchanged. A project that irrigates from a channel
+  now differs from stock 62.0.1 by the fix; the test projects as shipped don't (Osu_1hru's paddy irrigates
+  from outside), so every stock comparison still holds. The stock build stays unpatched. Draft SWAT+ issue:
+  `docs/upstream-issue-irrigate-channel.md`.
+- Found while testing the paddy's reads, and documented, not patched: in SWAT+ 62.0.1 a paddy's `irrp`
+  applies water only on the operation's own day. `time_control.f90` zeroes `irrig(:)%eff` every day and only
+  the operation sets it, so on later days `wet_irrp` takes its water from its source and applies none of it
+  (a test pins it; noted in the draft issue). With the channel fix, such a withdrawal from a channel now
+  leaves the channel, where stock took it from nowhere and lost it.
 - The build hash changes (the patches and the exchange module), so an executable built by 0.13 is refused:
   rebuild with `swatplus-bmi build`, or install the wheel with SWAT+ inside.
 

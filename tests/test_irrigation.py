@@ -55,10 +55,11 @@ def test_irrigation_read_is_swats():
 # any action from it would find nothing. Its seepage is turned off and the storage coefficient
 # (scoef, parameters.bsn) halved, so it holds some water some days.
 #
-# In SWAT+ 62.0.1 the water an irrigate action takes from a channel never leaves the channel
-# (test_channel_irrigation_takes_no_water_from_the_channel_swatplus_62_0_1); from a reservoir it does.
+# In SWAT+ 62.0.1 the water an irrigate action takes from a channel never left the channel; the
+# exchange build fixes that (patches/62.0.1/0003-irrigate-channel-tot-stor.patch,
+# test_the_channel_loses_what_it_gives). From a reservoir it always did.
 
-from datetime import date
+from datetime import date, timedelta
 
 from conftest import STOCK, differences, run_stock
 from reservoir import with_reservoir
@@ -68,6 +69,7 @@ WRES = "reservoir_water__irrigation_withdrawal_volume_flow_rate"
 WHRU = "land_irrigation_water__withdrawal_volume_flow_rate"
 VOL = "channel_water__volume"
 QOUT = "channel_water__volume_outflow_rate"
+CH_WB = ("channel_sd:evap", "channel_sd:seep", "channel_sd:precip")   # m3 on the day
 AMOUNT = 1.0                                  # mm per action
 DEMAND = AMOUNT * 10.0 * 10.0                 # m3: mm x ha x 10
 EFF = 0.85                                    # sprinkler_med
@@ -136,7 +138,7 @@ def step_irrigation(run, extra=()):
 def irrigated():
     need(EXCHANGE)
     run = project("Osu_1hru", "Osu_1hru-irr-cha", daily=True, edit=from_source())
-    return step_irrigation(run)
+    return step_irrigation(run, CH_WB)
 
 
 def test_withdrawal_reads_are_in_the_catalog():
@@ -186,42 +188,73 @@ def test_the_hru_takes_what_reaches_it_and_its_loss(irrigated):
     np.testing.assert_allclose((w - irr)[on], (1 - EFF) * w[on], rtol=1e-4)
 
 
-def test_channel_irrigation_takes_no_water_from_the_channel_swatplus_62_0_1(irrigated):
-    """Documents a SWAT+ 62.0.1 bug, so the test fails when it's fixed.
+def channel_loses(got, run, base, base_run):
+    """Against ``base``, the same project taking nothing, the channel's outflow and storage drop by
+    exactly what was withdrawn, day by day until the field's own return reaches the channel: what
+    the channel has given up by the end of each day (the outflow it lost so far, and what it holds
+    less) is what was taken from it so far, less the evaporation it was spared (SWAT+ caps a
+    channel's evaporation at what it holds, so a channel emptied by the withdrawal evaporates
+    less). Both runs step with CH_WB read. Returns the first day the return arrives."""
+    cha = daily_table(run / "channel_sd_day.txt")["cha01"]
+    ref = daily_table(base_run / "channel_sd_day.txt")["cha01"]
+    returned = int(np.flatnonzero(cha["flo_in"] != ref["flo_in"])[0])
+    w = got[WCHA][:returned] * 86400.0                          # m3 on the day
+    assert w.sum() >= DEMAND                                    # taken before the field's return
+    lost = (base[QOUT] - got[QOUT]) * 86400.0 + base["channel_sd:evap"] - got["channel_sd:evap"]
+    lost += base["channel_sd:seep"] - got["channel_sd:seep"] - (base["channel_sd:precip"] - got["channel_sd:precip"])
+    given = np.cumsum(lost[:returned]) + (base[VOL] - got[VOL])[:returned]
+    np.testing.assert_allclose(given, np.cumsum(w), rtol=1e-4, atol=1e-2)
+    first = int(np.flatnonzero(w > 0)[0])
+    assert (got[QOUT][first] < base[QOUT][first]) and (got[VOL][first] < base[VOL][first])
+    return returned
 
-    actions.f90's irrigate takes the water from ch_stor, but the channel routes from tot_stor
-    (ch_rtmusk.f90), which it carries from the day before and which the action doesn't touch, and
-    then sets ch_stor from it again. So the channel never loses what its irrigate actions take,
-    and the field gets water from nowhere. Against the same project with nothing irrigated, cha01's
-    outflow and storage are the same to the bit until the field's own return reaches it, and the
-    channel's printed daily balance closes with no room for the withdrawal.
-    docs/upstream-issue-irrigate-channel.md."""
+
+def test_the_channel_loses_what_it_gives(irrigated):
+    """In SWAT+ 62.0.1 the channel never lost what irrigate took from it: the action cut ch_stor,
+    but ch_rtmusk.f90 routes from tot_stor, carried from the day before, and then set ch_stor from
+    it again (docs/upstream-issue-irrigate-channel.md). The exchange build fixes it
+    (patches/62.0.1/0003-irrigate-channel-tot-stor.patch)."""
     got, run, _ = irrigated
     base, base_run, _ = step_irrigation(project("Osu_1hru", "Osu_1hru-irr-none", daily=True,
-                                                edit=from_source(0.0)))
+                                                edit=from_source(0.0)), CH_WB)
     assert (base[WHRU] == 0).all()
-    cha = daily_table(run / "channel_sd_day.txt")["cha01"]
-    returned = int(np.flatnonzero(cha["flo_in"] != daily_table(base_run / "channel_sd_day.txt")["cha01"]["flo_in"])[0])
-    w = got[WCHA] * 86400.0                                     # m3 on the day
-    assert w[:returned].sum() >= DEMAND                         # taken before the field's return
-    assert np.array_equal(got[QOUT][:returned], base[QOUT][:returned])
-    assert np.array_equal(got[VOL][:returned], base[VOL][:returned])
-
-    q_in, q_out = cha["flo_in"] * 86400, cha["flo_out"] * 86400
-    resid = q_in + cha["precip"] - cha["evap"] - cha["seep"] - q_out - np.diff(np.r_[0.0, cha["flo_stor"]])
-    on = w > 0
-    assert (np.abs(resid[on]) < 0.05 * w[on]).all()
+    channel_loses(got, run, base, base_run)
 
 
 def test_withdrawals_change_nothing_swat_does():
-    """The irrigated project stepped, reading every withdrawal every day, writes stock SWAT+'s
-    output, byte for byte."""
-    need(STOCK, EXCHANGE)
-    stock = project("Osu_1hru", "Osu_1hru-irr-stock", daily=True, edit=from_source())
-    run_stock(stock)
+    """The irrigated project stepped, reading every withdrawal every day, writes what the
+    exchange build writes run as a program, byte for byte. (Stock SWAT+ 62.0.1 writes other
+    output here: its channel never loses the water, test_the_channel_loses_what_it_gives.)"""
+    need(EXCHANGE)
+    plain = project("Osu_1hru", "Osu_1hru-irr-plain", daily=True, edit=from_source())
+    run_stock(plain, EXCHANGE)
     got, stepped, _ = step_irrigation(project("Osu_1hru", "Osu_1hru-irr-stepped", daily=True,
                                               edit=from_source()))
     assert (got[WHRU] > 0).sum() > 30
+    assert differences(plain, stepped) == []
+
+
+def from_reservoir(run):
+    with_reservoir(run)
+    from_source(src="res 1")(run)
+
+
+def test_reservoir_irrigation_is_stock_swats():
+    """The channel fix changes nothing when the water comes from a reservoir: the project
+    irrigating from res01, stepped while reading the withdrawals every day, writes stock SWAT+'s
+    output byte for byte."""
+    need(STOCK, EXCHANGE)
+    stock = project("Osu_1hru", "Osu_1hru-irr-res-stock", daily=True, edit=from_reservoir)
+    run_stock(stock)
+    m = SwatPlusBmi()
+    m.initialize(str(project("Osu_1hru", "Osu_1hru-irr-res-stepped", daily=True, edit=from_reservoir)))
+    taken = 0.0
+    while m.get_current_time() < m.get_end_time():
+        m.update()
+        taken += m.get_value(WRES, np.empty(1))[0] * 86400.0
+    stepped = m.run_dir
+    m.finalize()
+    assert taken > 30 * DEMAND
     assert differences(stock, stepped) == []
 
 
@@ -229,14 +262,9 @@ def test_a_reservoir_gives_what_the_hru_takes():
     """pad_irr_r irrigating from res01 (tests/reservoir.py, below cha01): the reservoir's read is
     the HRU's, each action takes 100 m3 or nothing, and the reservoir loses it."""
     need(EXCHANGE)
-
-    def edit(run):
-        with_reservoir(run)
-        from_source(src="res 1")(run)
-
     RVOL = "reservoir_water__volume"
     m = SwatPlusBmi()
-    m.initialize(str(project("Osu_1hru", "Osu_1hru-irr-res", edit=edit)))
+    m.initialize(str(project("Osu_1hru", "Osu_1hru-irr-res", edit=from_reservoir)))
     flows = ["reservoir_water__volume_inflow_rate", "reservoir_water__volume_outflow_rate",
              "reservoir_water__precipitation_volume_flow_rate", "reservoir_water__evaporation_volume_flow_rate",
              "reservoir_water__seepage_volume_flow_rate"]
@@ -275,3 +303,55 @@ def test_a_saved_state_carries_the_withdrawals():
     for name, v in want.items():
         assert np.array_equal(n.get_value(name, np.empty(1)), v), name
     n.finalize()
+
+
+# A paddy's scheduled irrigation (management.sch's irrp, wet_irrp.f90) takes from its channel or
+# reservoir too, and is counted the same way. It isn't all or nothing: on a day the paddy's ponding
+# is below 90% of its target it asks for what fills it back up (less the day's rain) and takes
+# that, up to 99% of what the source holds. With op_data3 negative, the target is irr.ops' amount
+# (sprinkler_med, 25 mm) and the source is the first of the type the HRU's routing unit sends
+# water to (rtu001 to sdc 1, cha01); a positive op_data3 is both the target depth and the
+# source's number. pad_irr_r is left irrigating 0 mm from the channel, so its actions take nothing.
+
+def paddy_from(src="sdc"):
+    """An edit: from_source(0.0), and rice140_rot's schedule turns on the paddy's irrigation from
+    ``src`` on May 2."""
+    def edit(run):
+        from_source(0.0)(run)
+        p = run / "management.sch"
+        lines = p.read_text().splitlines()
+        i = next(k for k, line in enumerate(lines) if line.split()[:1] == ["rice140_rot"])
+        f = lines[i].split()
+        lines[i] = f"{f[0]}  {int(f[1]) + 1}  {f[2]}"
+        j = next(k for k in range(i, len(lines)) if lines[k].split()[:1] == ["manu"])
+        lines.insert(j + 1, f"irrp      5          2      0     sprinkler_med   {src}  -1")
+        p.write_text("\n".join(lines) + "\n")
+    return edit
+
+
+def test_a_paddy_takes_from_its_channel():
+    """The paddy's irrp takes from cha01 on many days, the channel's read is the HRU's, never
+    more than 99% of what the channel held, and the channel loses it (the channel fix).
+
+    It also documents a SWAT+ 62.0.1 bug, so the test fails when it's fixed: time_control.f90
+    zeroes irrig(:)%eff every day, and only the irrp operation's own day (May 2) sets it again from
+    irr.ops, so on every other day wet_irrp takes its water from the source and applies none of it
+    (irrig(j)%applied is the water times eff). Water reaches the paddy on the operation's day only,
+    eff (0.85) of the withdrawal; on the others the whole withdrawal is the application's loss."""
+    need(EXCHANGE)
+    got, run, start = step_irrigation(project("Osu_1hru", "Osu_1hru-irrp-cha", daily=True, edit=paddy_from()),
+                                      CH_WB)
+    base, base_run, _ = step_irrigation(project("Osu_1hru", "Osu_1hru-irrp-none", daily=True,
+                                                edit=from_source(0.0)), CH_WB)
+    assert (base[WHRU] == 0).all()
+    assert np.array_equal(got[WCHA], got[WHRU])
+    on = got[WHRU] > 0
+    assert on.sum() > 30
+    assert (got[WHRU] * 86400.0 <= 0.99 * got["before"] * (1 + 1e-6) + 1e-6).all()
+    channel_loses(got, run, base, base_run)
+
+    days = np.arange(len(on))
+    op_day = np.array([(start + timedelta(days=int(d))).timetuple()[1:3] == (5, 2) for d in days])
+    np.testing.assert_allclose(got[IRR][on & op_day], EFF * got[WHRU][on & op_day], rtol=1e-5)
+    assert (on & op_day).sum() >= 1
+    assert (got[IRR][on & ~op_day] == 0).all()

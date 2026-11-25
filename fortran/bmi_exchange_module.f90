@@ -40,9 +40,10 @@
 !!    salt and nutrients with its water (exch_channel, exch_channel_cs).
 !!
 !!    Some reads are counted where SWAT+ does something it keeps no record
-!!    of: what a decision table's irrigate action takes from a channel or a
-!!    reservoir, by source and by HRU (exch_irr_take, in actions). Those
-!!    hooks only add up; they change nothing SWAT+ does.
+!!    of: what a decision table's irrigate action, or a paddy's scheduled
+!!    irrigation (irrp), takes from a channel or a reservoir, by source and
+!!    by HRU (exch_irr_take, in actions and wet_irrp). Those hooks only add
+!!    up; they change nothing SWAT+ does.
 
       use iso_fortran_env, only : input_unit
       use, intrinsic :: iso_c_binding, only : c_int, c_char, c_null_char, c_size_t, c_int32_t
@@ -150,8 +151,8 @@
       real, dimension(:), allocatable :: pou_wdr_day     !! m3/day     |place of use withdrawal
       real, dimension(:), allocatable :: hru_irr_day     !! mm         |irrigation on the HRU (to the soil and its runoff), by HRU number
 
-      !! what SWAT+'s irrigate actions took from channels and reservoirs, m3, added up where
-      !! actions.f90 takes it (exch_irr_take): the day in progress (_now) and the day just
+      !! what SWAT+'s irrigate actions and paddy irrigation took from channels and reservoirs, m3,
+      !! added up where actions.f90 and wet_irrp.f90 take it (exch_irr_take): the day in progress (_now) and the day just
       !! done (_day, kept in exch_record). By channel and reservoir grid index, and by HRU number
       real(8), dimension(:), allocatable :: irr_cha_now, irr_cha_day
       real(8), dimension(:), allocatable :: irr_res_now, irr_res_day
@@ -779,10 +780,12 @@
       subroutine exch_irr_take (j, src, isrc)
 
 !!    called in actions, case irrigate, right after the action has taken its
-!!    water from its source: adds up, by source and by HRU, what an irrigate
-!!    action took from a channel (cha, sdc) or a reservoir (res). That's
-!!    irrig(j)%water%flo, rto times the source's storage before the take (m3),
-!!    and 0 when the source held too little and SWAT+ gave none. It only
+!!    water from its source, and in wet_irrp (a paddy's scheduled irrigation,
+!!    irrp) right after it has taken from a channel or a reservoir: adds up,
+!!    by source and by HRU, what was taken from a channel (cha, sdc) or a
+!!    reservoir (res). That's irrig(j)%water%flo, rto times the source's
+!!    storage before the take (m3); an irrigate action's is 0 when the source
+!!    held too little and SWAT+ gave none. It only
 !!    reads: SWAT+ doesn't tag irrig(j)%demand with its source, so the
 !!    withdrawal is counted here, where it happens. Aquifers and outside
 !!    sources aren't counted.
@@ -2019,21 +2022,21 @@
         end do
 
       case ("channel_water__irrigation_withdrawal_volume_flow_rate")
-        !! what the day's irrigate actions took from the channel (exch_irr_take)
+        !! what the day's irrigate actions and paddy irrigation took from the channel (exch_irr_take)
         allocate (val(sp_ob%chandeg), source = 0.d0)
         do i = 1, sp_ob%chandeg
           val(i) = irr_cha_day(i) / 86400.d0                !m3 -> m3/s
         end do
 
       case ("reservoir_water__irrigation_withdrawal_volume_flow_rate")
-        !! what the day's irrigate actions took from the reservoir (exch_irr_take)
+        !! what the day's irrigate actions and paddy irrigation took from the reservoir (exch_irr_take)
         allocate (val(sp_ob%res), source = 0.d0)
         do i = 1, sp_ob%res
           val(i) = irr_res_day(i) / 86400.d0                !m3 -> m3/s
         end do
 
       case ("land_irrigation_water__withdrawal_volume_flow_rate")
-        !! what the HRU's irrigate actions took from SWAT+ channels and reservoirs the day
+        !! what the HRU's irrigate actions and paddy irrigation took from SWAT+ channels and reservoirs the day
         !! just done (exch_irr_take), before the application's loss and runoff
         allocate (val(sp_ob%hru), source = 0.d0)
         do i = 1, sp_ob%hru
