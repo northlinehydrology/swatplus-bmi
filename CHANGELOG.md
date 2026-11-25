@@ -3,7 +3,7 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
-## 0.14.0 (unreleased)
+## 0.14.0 (2026-11-24)
 
 - Places of use on any channel, and several on one, now withdraw their own demand. SWAT+ 62.0.1's
   `wallo_withdraw.f90` sized a place of use's withdrawal from `pou(ipou)%pod(ipod)%duty`, with `ipou` its
