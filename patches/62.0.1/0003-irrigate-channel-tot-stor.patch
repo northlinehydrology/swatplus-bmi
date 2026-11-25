@@ -1,0 +1,33 @@
+SWAT+ 62.0.1 bug fix, not part of the exchange mode: irrigation from a channel (actions.f90's
+irrigate from cha or sdc, and wet_irrp.f90's paddy irrigation) cuts the channel's ch_stor,
+but ch_rtmusk.f90 routes from tot_stor, carried from the end of the day before, and then
+sets ch_stor from it again. So the channel never lost the water and the field's water came
+from nowhere. With this, tot_stor is set again from ch_stor and fp_stor right after the
+cut, as ch_rtmusk sets it at the end of each day; fp_stor is untouched. Reservoirs and
+aquifers were right and aren't changed. docs/upstream-issue-irrigate-channel.md;
+tests/test_irrigation.py.
+
+diff --git a/src/actions.f90 b/src/actions.f90
+--- a/src/actions.f90
++++ b/src/actions.f90
+@@ -298,6 +298,8 @@
+               rto1 = (1. - rto)
+               irrig(j)%water = rto * ch_stor(iob)                       ! organics in irrigation water
+               ch_stor(iob) = rto1 * ch_stor(iob)                        ! remainder stays in channel
++              !! swatplus-bmi: the channel routes from tot_stor (ch_rtmusk), so the water leaves it too
++              tot_stor(iob) = ch_stor(iob) + fp_stor(iob)
+               cs_irr(iob) = rto * ch_water(iob)                         ! constituents in irrigation water
+               ch_water(iob) = rto1 * ch_water(iob)                      ! remainder stays in channel
+               
+diff --git a/src/wet_irrp.f90 b/src/wet_irrp.f90
+--- a/src/wet_irrp.f90
++++ b/src/wet_irrp.f90
+@@ -68,6 +68,8 @@
+           irrig(j)%water = rto * ch_stor(isrc)                       ! irrigation water
+           cs_irr(isrc) = rto * ch_water(isrc)                         ! constituents in irrigation water
+           ch_stor(isrc) = (1. - rto) * ch_stor(isrc)                        ! remainder stays in channel
++          !! swatplus-bmi: the channel routes from tot_stor (ch_rtmusk), so the water leaves it too
++          tot_stor(isrc) = ch_stor(isrc) + fp_stor(isrc)
+           ch_water(isrc) = (1. - rto) * ch_water(isrc)                      
+           call exch_irr_take (j, hru(j)%irr_src, isrc)   !! exchange mode: count what was taken from the channel
+         else

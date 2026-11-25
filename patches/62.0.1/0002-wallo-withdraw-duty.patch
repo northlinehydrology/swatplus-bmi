@@ -1,0 +1,40 @@
+SWAT+ 62.0.1 bug fix, not part of the exchange mode: wallo_withdraw.f90 reads a place
+of use's duty as pou(ipou)%pod(ipod)%duty, where ipou is the place's position in its
+point of diversion's list and ipod the point of diversion's number. The right entry is
+pou(pou_num)%pod(pod_num)%duty, which the routine computes a few lines later. Without
+this, a place of use on any point of diversion but the first reads past the end of its
+own list (0 or a stray value), and places of use sharing a point of diversion each
+withdraw another's demand. docs/upstream-issue-wallo-withdraw.md; tests/test_allocation.py.
+
+diff --git a/src/wallo_withdraw.f90 b/src/wallo_withdraw.f90
+--- a/src/wallo_withdraw.f90
++++ b/src/wallo_withdraw.f90
+@@ -25,20 +25,22 @@
+       !! POD (source) object number from POD object
+       j = pod(ipod)%typ_num
+       
++      !! POD number from delivery object, pou number from loop in wallo_control
++      !! (swatplus-bmi: computed before the duty, which is indexed by them; ipou is the place
++      !! of use's position in the POD's list, not its number)
++      pod_num = pod(ipod)%pou(ipou)%pod_num
++      pou_num = pod(ipod)%pou(ipou)%num
++      
+       !! set the duty or compensation for the POD - if compensation, then duty is umet duty for the POU
+       if (wallo_comp == "y") then
+-        wdraw_max = pou(ipou)%pod(ipod)%duty - poud_met(ipou)%pod(ipod)%deliv
++        wdraw_max = pou(pou_num)%pod(pod_num)%duty - poud_met(pou_num)%pod(pod_num)%deliv
+       else
+-        wdraw_max = pou(ipou)%pod(ipod)%duty
++        wdraw_max = pou(pou_num)%pod(pod_num)%duty
+       end if
+       
+       !! zero out the withdrawal for the POD
+       outflo_om = hz
+       
+-      !! POD number from delivery object, pou number from loop in wallo_control
+-      pod_num = pod(ipod)%pou(ipou)%pod_num
+-      pou_num = pod(ipod)%pou(ipou)%num
+-      
+       !! check minimum storage/flow limits and withdraw water from each POD
+       select case (pod(ipod)%typ)
+       

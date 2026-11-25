@@ -4,4 +4,4 @@ from .bmi import SwatPlusBmi
 from .exchange import ExchangeError
 
 __all__ = ["SwatPlusBmi", "ExchangeError"]
-__version__ = "0.13.1"
+__version__ = "0.14.0"

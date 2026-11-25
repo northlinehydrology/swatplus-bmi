@@ -3,6 +3,71 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
+## 0.14.0 (2026-11-25)
+
+- Places of use on any channel, and several on one, now withdraw their own demand. SWAT+ 62.0.1's
+  `wallo_withdraw.f90` sized a place of use's withdrawal from `pou(ipou)%pod(ipod)%duty`, with `ipou` its
+  position in its point of diversion's list and `ipod` the point of diversion's number, where
+  `pou(pou_num)%pod(pod_num)%duty` is meant. Places of use sharing a point of diversion took each other's
+  demands (one over its own), and one on any point of diversion but the file's first read past the end of its
+  list and withdrew nothing, or a stray value; since a channel has one point of diversion, places of use
+  worked on one channel only (Basin Ledger's Rappahannock study: 8 of 9 intakes got nothing). The fix
+  computes the two numbers first and indexes the duty by them, four lines, in its own patch,
+  `patches/62.0.1/0002-wallo-withdraw-duty.patch`, applied after the exchange patch.
+  **Why patched, not only documented**, as the aquifer withdrawal bug is: stock 62.0.1 has no result to stay
+  faithful to here (what a place of use past the first channel withdraws is whatever memory lies past its
+  array), and without the fix water allocation can't serve more than one channel. A project with one place
+  of use on the file's first point of diversion runs as before, so every stock comparison still holds; one
+  with places of use on several channels, or several on one, now differs from stock 62.0.1 by the fix. The
+  stock build stays unpatched. Two tests on Osu_1hru (`tests/test_allocation.py`) fail without it. Draft
+  SWAT+ issue: `docs/upstream-issue-wallo-withdraw.md`, which also lists related faults left as they are
+  (compensation's arguments, `fin`'s loop index, `poud_met`'s `deliv`, the `irr` place of use type).
+
+- What SWAT+'s irrigation takes from its channels and reservoirs, read-only, m3 s-1, for the day just done:
+  `channel_water__irrigation_withdrawal_volume_flow_rate` by channel,
+  `reservoir_water__irrigation_withdrawal_volume_flow_rate` by reservoir, and
+  `land_irrigation_water__withdrawal_volume_flow_rate` by HRU. SWAT+ doesn't keep its irrigation by source, so a
+  hook (`exch_irr_take`) adds up what each `irrigate` action (`actions.f90`) and each day of a paddy's
+  scheduled irrigation (`irrp`, `wet_irrp.f90`) takes from a channel (`cha`, `sdc`) or a reservoir (`res`),
+  `irrig(j)%water%flo`, where it takes it. The hooks only read: an irrigated project stepped while reading them
+  writes what the exchange build run as a program writes, byte for byte, and one irrigating from a reservoir
+  writes stock SWAT+'s output. The sources' total is the HRUs' total each day, and an HRU's withdrawal less
+  `land_irrigation_water__volume_flow_rate` is its application's loss. An `irrigate` action gives all or
+  nothing, so a day its source held too little reads 0; a paddy's `irrp` takes what it asks for, up to 99% of
+  what the source holds. Not counted: water from an aquifer or from outside. Saved states carry the sums
+  (`SWXSTATE-7`).
+- A state saved by 0.13 (`SWXSTATE-6`) still loads: 0.14 adds only the withdrawal sums to a state, and they
+  load as zero (SWAT+'s own variables are saved in the same layout; the serializer's digest is unchanged).
+  So a study's warm-up states carry over without a new warm-up. One thing such a state can't hold: what the
+  saved day's decision tables took from a channel or reservoir before the pause, so on that day the
+  withdrawal reads miss it, and that day's channel take routes as 0.13 left it. A state from 0.13 is
+  otherwise exactly the state 0.14 would load (`tests/test_state.py`; also checked on a 0.13.1 Rappahannock
+  state). Older states are refused, as before.
+- Irrigation from a channel takes the water out of the channel, which stock SWAT+ 62.0.1 doesn't. Its
+  `irrigate` action from `cha`/`sdc` (`actions.f90`), and a paddy's `irrp` from a channel (`wet_irrp.f90`),
+  cut the channel's `ch_stor`, but `ch_rtmusk.f90` routes from `tot_stor`, carried from the end of the day
+  before, and then sets `ch_stor` from it again. So the channel never lost the water: its outflow and storage
+  were what they'd be with no irrigation, and the field's water came from nowhere. The fix sets
+  `tot_stor = ch_stor + fp_stor` right after the cut, as `ch_rtmusk` does at the end of each day (two lines,
+  `fp_stor` untouched), in its own patch, `patches/62.0.1/0003-irrigate-channel-tot-stor.patch`.
+  **Why patched, not only documented:** what stock gives here is water from nowhere, which no water balance
+  can carry: a coupled model counting the channel's withdrawal on its outflow side takes it out twice, and one
+  that doesn't has a basin gaining water. With the fix the channel's outflow and storage drop by exactly what
+  was taken, day by day, until the field's return reaches it (`tests/test_irrigation.py`, for an action and
+  for a paddy). Reservoirs and aquifers were right and are unchanged. A project that irrigates from a channel
+  now differs from stock 62.0.1 by the fix; the test projects as shipped don't (Osu_1hru's paddy irrigates
+  from outside), so every stock comparison still holds. The stock build stays unpatched. Draft SWAT+ issue:
+  `docs/upstream-issue-irrigate-channel.md`.
+- Found while testing the paddy's reads, and documented, not patched: in SWAT+ 62.0.1 a paddy's `irrp`
+  applies water only on the operation's own day. `time_control.f90` zeroes `irrig(:)%eff` every day and only
+  the operation sets it, so on later days `wet_irrp` takes its water from its source and applies none of it
+  (a test pins it; noted in the draft issue). With the channel fix, such a withdrawal from a channel now
+  leaves the channel, where stock took it from nowhere and lost it.
+- The build hash changes (the patches and the exchange module), so an executable built by 0.13 is refused:
+  rebuild with `swatplus-bmi build`, or install the wheel with SWAT+ inside. A warm-up run by 0.13 ran without
+  the two fixes (places of use past the first channel withdrew nothing; irrigation from a channel took no
+  water from it), so its state carries that history.
+
 ## 0.13.1 (2026-11-16)
 
 - `pip install swatplus-bmi` is all it takes on Windows x86-64 (an ARM PC with an x86-64 Python too), macOS 15 or

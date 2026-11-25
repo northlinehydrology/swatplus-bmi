@@ -22,7 +22,7 @@ against unpatched SWAT+ on the projects listed in [COMPATIBILITY.md](COMPATIBILI
 paused run can also be saved and loaded, or branched in memory, so a warm-up is run once and
 every scenario starts from the same state.
 
-**Status:** working for SWAT+ 62.0.1; release 0.13.1 ([PyPI](https://pypi.org/project/swatplus-bmi/), [Zenodo](https://doi.org/10.5281/zenodo.23963201)). Tested on the two example projects that
+**Status:** working for SWAT+ 62.0.1; release 0.14.0 ([PyPI](https://pypi.org/project/swatplus-bmi/), [Zenodo](https://doi.org/10.5281/zenodo.23963201)). Tested on the two example projects that
 ship with SWAT+ (below) and a 2,371-HRU study build. See [COMPATIBILITY.md](COMPATIBILITY.md) and the design note,
 [docs/design.md](docs/design.md).
 
@@ -454,6 +454,9 @@ objects in a project are left out. Landscape units and the basin (for the
 | `land_surface__potential_evapotranspiration_rate` | HRUs | no | m s-1 | `pet` |
 | `soil_water__depth` | HRUs | no | m | `sw_final`: the profile's water above the wilting point |
 | `land_irrigation_water__volume_flow_rate` | HRUs | no | m3 s-1 | the day's irrigation on the HRU, from any source: `irr` in `hru_wb_day.txt` (what reached the soil) and its runoff, times the area |
+| `land_irrigation_water__withdrawal_volume_flow_rate` | HRUs | no | m3 s-1 | what the HRU's `irrigate` actions and paddy irrigation (`irrp`) took from SWAT+'s channels and reservoirs, before the application's loss |
+| `channel_water__irrigation_withdrawal_volume_flow_rate` | channels | no | m3 s-1 | what `irrigate` actions and paddy irrigation took from the channel (Gotchas: stock SWAT+ 62.0.1 doesn't take it out of the channel; the exchange build does) |
+| `reservoir_water__irrigation_withdrawal_volume_flow_rate` | reservoirs | no | m3 s-1 | what `irrigate` actions and paddy irrigation took from the reservoir |
 | `soil_layer_water__groundwater_inflow_rate` | HRU soil layers | yes (the next day) | m s-1 | groundwater into the layer, where gwflow puts its own; read after the day, what went in |
 | `soil_water__groundwater_inflow_rate` | HRUs | no | m s-1 | `gwsoilq` in `hru_wb_day.txt`: groundwater into the soil profile, gwflow's or set |
 | `soil_layer_bottom__depth` | HRU soil layers | no | m | the layer's bottom below the surface (`d`) |
@@ -650,6 +653,35 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   SWAT+ records it in full and takes none of the excess: 4.1% of the withdrawal in our test, all
   of it on low-flow days. The wrapper warns, and `channel_water__volume_inflow_rate` goes
   negative on those days. (Draft report: `docs/upstream-issue-recall-diversion.md`.)
+- **Places of use are read with the right indices, which stock SWAT+ 62.0.1 doesn't.** Its
+  `wallo_withdraw.f90` sizes a withdrawal from the demand of the place of use whose number is
+  this one's position in its point of diversion's list, on the point of diversion's own number.
+  So places of use sharing a point of diversion take each other's demands, and one on any point
+  of diversion but the file's first gets nothing (or a stray value): places of use worked on one
+  channel only. swatplus-bmi patches this (0.14.0; `0002-wallo-withdraw-duty.patch`), so a project
+  with places of use on several channels, or several on one, gives other results than stock
+  62.0.1. (Draft report: `docs/upstream-issue-wallo-withdraw.md`, with related faults left as they
+  are: compensation, and the `irr` place of use type.)
+- **One point of diversion per channel.** SWAT+ keeps one point of diversion per channel
+  (`sd_ch%wallo_pod`), so several places of use on one channel must share one
+  `point_of_diver.wro` row that lists them all. With separate rows for the same channel, the last
+  row read is the channel's, and the places of use on the others withdraw nothing, with no
+  message. A point of diversion serves its places of use in the order it lists them (senior
+  first), not pro rata.
+- **Irrigation from a channel takes the water out of the channel, which stock SWAT+ 62.0.1
+  doesn't.** Its `irrigate` from `cha` (and a paddy's `irrp` from a channel) takes the demand from
+  the channel's `ch_stor`, but the channel routes from `tot_stor`, which the action doesn't touch,
+  and sets `ch_stor` from it again: the field got the water and the channel kept it. swatplus-bmi
+  patches this (0.14.0; `0003-irrigate-channel-tot-stor.patch`), so the channel's outflow drops by
+  what `channel_water__irrigation_withdrawal_volume_flow_rate` reads, and a water balance takes the
+  withdrawal out of the channel; a project irrigating from a channel gives other results than stock
+  62.0.1. From a reservoir the water always left. (Draft report:
+  `docs/upstream-issue-irrigate-channel.md`.)
+- **A paddy's scheduled irrigation (`irrp`) applies water only on the operation's day in SWAT+
+  62.0.1.** SWAT+ zeroes the irrigation efficiency every day and only the `irrp` operation sets it,
+  so on every later day the paddy takes its water from its source and applies none of it. The
+  withdrawal reads count what was taken; `land_irrigation_water__volume_flow_rate` shows what was
+  applied. Not patched. A paddy irrigated by a decision table's `irrigate` isn't affected.
 - **Aquifer withdrawals in SWAT+ 62.0.1 deliver less than they remove.** The aquifer loses the
   demand, but the user is credited with demand × (1 − demand/storage). It's a bug in
   `wallo_withdraw.f90`; a test documents it and will fail once SWAT+ fixes it. (Draft report:
@@ -731,7 +763,12 @@ close: before a gain goes into a channel's transfer, the wrapper allocates the t
 constituent arrays, which SWAT+ 62.0.1 forgets; they stay zero, so no value changes, but without
 them the gain would stop the run.) Problems in SWAT+ are documented
 here and drafted as SWAT+ issues (`docs/upstream-issue-*.md`), and any workaround belongs in the
-model setup, not in the patch. A fix would be a separate, opt-in patch with its own name.
+model setup, not in the patch. A fix is a separate patch with its own name, and there are two,
+where stock 62.0.1 has no result to stay faithful to (Gotchas):
+`patches/62.0.1/0002-wallo-withdraw-duty.patch`, for places of use, whose demand stock reads past
+the end of an array; and `patches/62.0.1/0003-irrigate-channel-tot-stor.patch`, for irrigation
+from a channel, whose water stock never takes out of the channel. The stock build (`--stock`)
+stays unpatched (docs/design.md, Patches that fix SWAT+).
 
 ## The protocol
 

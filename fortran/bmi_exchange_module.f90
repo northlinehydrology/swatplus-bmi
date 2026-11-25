@@ -38,6 +38,12 @@
 !!    A mass set with a groundwater gain enters where SWAT+ takes in that
 !!    constituent (exch_apply, exch_channel_in); a loss takes the outflow's
 !!    salt and nutrients with its water (exch_channel, exch_channel_cs).
+!!
+!!    Some reads are counted where SWAT+ does something it keeps no record
+!!    of: what a decision table's irrigate action, or a paddy's scheduled
+!!    irrigation (irrp), takes from a channel or a reservoir, by source and
+!!    by HRU (exch_irr_take, in actions and wet_irrp). Those hooks only add
+!!    up; they change nothing SWAT+ does.
 
       use iso_fortran_env, only : input_unit
       use, intrinsic :: iso_c_binding, only : c_int, c_char, c_null_char, c_size_t, c_int32_t
@@ -49,7 +55,7 @@
       private
       public :: exch_on, exch_open, exch_start, exch_pause, exch_apply, exch_record, exch_end,     &
                 exch_channel, exch_channel_in, exch_channel_cs, exch_hru_soil, exch_hru_gwsoil,   &
-                exch_hru_gwsoil_mass, exch_res_in, exch_res
+                exch_hru_gwsoil_mass, exch_res_in, exch_res, exch_irr_take
 
       logical :: exch_on = .false.        !! exchange mode is on
       integer :: cmd_unit = input_unit    !! commands in
@@ -63,7 +69,10 @@
       logical :: ended = .false.          !! the simulation has ended (exch_end)
       integer, parameter :: unit_max = 1000000   !! highest unit number branch looks at
       character(len=80) :: paused_line = ""      !! the last @paused reply
-      character(len=16), parameter :: state_magic = "SWXSTATE-6"
+      character(len=16), parameter :: state_magic = "SWXSTATE-7"
+      !! a state saved by 0.13 (SWXSTATE-6) loads too: it's this layout without the irrigation
+      !! withdrawals (irr_*), which load as zero
+      character(len=16), parameter :: state_magic_6 = "SWXSTATE-6"
 
       !! loading a saved state: run forward to the saved day, then load
       logical :: loading = .false.
@@ -145,11 +154,18 @@
       real, dimension(:), allocatable :: pou_wdr_day     !! m3/day     |place of use withdrawal
       real, dimension(:), allocatable :: hru_irr_day     !! mm         |irrigation on the HRU (to the soil and its runoff), by HRU number
 
+      !! what SWAT+'s irrigate actions and paddy irrigation took from channels and reservoirs, m3,
+      !! added up where actions.f90 and wet_irrp.f90 take it (exch_irr_take): the day in progress (_now) and the day just
+      !! done (_day, kept in exch_record). By channel and reservoir grid index, and by HRU number
+      real(8), dimension(:), allocatable :: irr_cha_now, irr_cha_day
+      real(8), dimension(:), allocatable :: irr_res_now, irr_res_day
+      real(8), dimension(:), allocatable :: irr_hru_now, irr_hru_day
+
       !! the catalog: the water variables, the chemistry variables, one per species, then
       !! every column of the daily output records (exch_start). var_fam is 0 for a water
       !! variable, the chemistry family, or gen_fam for an output column (var_sp its number)
       integer, parameter :: gen_fam = 9
-      integer, parameter :: nbase = 46
+      integer, parameter :: nbase = 49
       character(len=64), dimension(nbase), parameter :: base_name = [character(len=64) ::     &
             "channel_water__volume_outflow_rate",                           &
             "channel_water__volume",                                        &
@@ -196,25 +212,31 @@
             "reservoir_water__precipitation_volume_flow_rate",             &
             "reservoir_water__evaporation_volume_flow_rate",               &
             "reservoir_water__seepage_volume_flow_rate",                   &
-            "reservoir_water__groundwater_volume_exchange_rate"]
+            "reservoir_water__groundwater_volume_exchange_rate",           &
+            "channel_water__irrigation_withdrawal_volume_flow_rate",       &
+            "reservoir_water__irrigation_withdrawal_volume_flow_rate",     &
+            "land_irrigation_water__withdrawal_volume_flow_rate"]
       character(len=8), dimension(nbase), parameter :: base_grid = [character(len=8) ::      &
             "cha", "cha", "cha", "aqu", "aqu", "aqu", "aqu", "rec", "pou", "pou",    &
             "cha", "cha", "hly", "hru", "hru", "hru", "hru", "hru",                  &
             "pcp", "tmp", "tmp", "slr", "hmd", "wnd", "hly", "hru",                  &
             "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hru", "hru", "hru", &
-            "res", "res", "res", "res", "res", "res", "res", "res"]
+            "res", "res", "res", "res", "res", "res", "res", "res",                  &
+            "cha", "res", "hru"]
       character(len=8), dimension(nbase), parameter :: base_units = [character(len=8) ::     &
             "m3 s-1", "m3", "m3 s-1", "m3", "m", "m3 s-1", "m s-1", "m3 s-1", "m3 s-1", "m3 s-1", &
             "m", "m3 s-1", "degC", "m", "m s-1", "m s-1", "m s-1", "m",                  &
             "m s-1", "degC", "degC", "W m-2", "1", "m s-1", "m s-1", "m s-1",        &
             "m", "m", "m", "m", "m", "m", "m s-1", "kg s-1", "kg s-1", "kg s-1", "kg s-1",      &
-            "m3 s-1", "m3", "m2", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1"]
+            "m3 s-1", "m3", "m2", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1",   &
+            "m3 s-1", "m3 s-1", "m3 s-1"]
       character(len=3), dimension(nbase), parameter :: base_role = [character(len=3) ::      &
             "out", "out", "out", "out", "out", "out", "out", "in", "in", "out",  &
             "out", "in", "in", "out", "out", "out", "out", "out",                    &
             "in", "in", "in", "in", "in", "in", "in", "out",                         &
             "out", "out", "out", "out", "out", "out", "out", "in", "in", "out", "out", "out",   &
-            "out", "out", "out", "out", "out", "out", "out", "in"]
+            "out", "out", "out", "out", "out", "out", "out", "in",                   &
+            "out", "out", "out"]
       !! chemistry families: <prefix><species><suffix>
       integer, parameter :: fam_conc = 1, fam_exch = 2, fam_rchg = 3, fam_load = 4
       character(len=24), dimension(4), parameter :: fam_prefix = [character(len=24) ::      &
@@ -366,6 +388,12 @@
       allocate (pou_dmd_day(db_mx%wallo_pou), source = 0.)
       allocate (pou_wdr_day(db_mx%wallo_pou), source = 0.)
       allocate (hru_irr_day(sp_ob%hru), source = 0.)
+      allocate (irr_cha_now(sp_ob%chandeg), source = 0.d0)
+      allocate (irr_cha_day(sp_ob%chandeg), source = 0.d0)
+      allocate (irr_res_now(sp_ob%res), source = 0.d0)
+      allocate (irr_res_day(sp_ob%res), source = 0.d0)
+      allocate (irr_hru_now(sp_ob%hru), source = 0.d0)
+      allocate (irr_hru_day(sp_ob%hru), source = 0.d0)
       allocate (chx_flo(sp_ob%chandeg), source = 0.)
       allocate (chx_on(sp_ob%chandeg), source = .false.)
       allocate (chx_gain(sp_ob%chandeg), source = 0.)
@@ -752,6 +780,53 @@
       end subroutine exch_res
 
 !!    --------------------------------------------------------------------
+      subroutine exch_irr_take (j, src, isrc)
+
+!!    called in actions, case irrigate, right after the action has taken its
+!!    water from its source, and in wet_irrp (a paddy's scheduled irrigation,
+!!    irrp) right after it has taken from a channel or a reservoir: adds up,
+!!    by source and by HRU, what was taken from a channel (cha, sdc) or a
+!!    reservoir (res). That's irrig(j)%water%flo, rto times the source's
+!!    storage before the take (m3); an irrigate action's is 0 when the source
+!!    held too little and SWAT+ gave none. It only
+!!    reads: SWAT+ doesn't tag irrig(j)%demand with its source, so the
+!!    withdrawal is counted here, where it happens. Aquifers and outside
+!!    sources aren't counted.
+
+      use hydrograph_module, only : irrig
+
+      integer, intent(in) :: j                            !HRU number
+      character(len=*), intent(in) :: src                 !the action's source object type
+      integer, intent(in) :: isrc                         !the source's number
+      integer :: i = 0
+      real(8) :: v = 0.d0
+
+      if (.not. exch_on) return
+      if (.not. allocated(irr_hru_now)) return
+      if (j < 1 .or. j > size(irr_hru_now)) return
+
+      select case (src)
+      case ("cha", "sdc")
+        if (isrc < lbound(cha_bmi,1) .or. isrc > ubound(cha_bmi,1)) return
+        i = cha_bmi(isrc)
+        if (i == 0) return
+        v = irrig(j)%water%flo
+        irr_cha_now(i) = irr_cha_now(i) + v
+      case ("res")
+        if (isrc < lbound(res_bmi,1) .or. isrc > ubound(res_bmi,1)) return
+        i = res_bmi(isrc)
+        if (i == 0) return
+        v = irrig(j)%water%flo
+        irr_res_now(i) = irr_res_now(i) + v
+      case default
+        return
+      end select
+      irr_hru_now(j) = irr_hru_now(j) + v
+
+      return
+      end subroutine exch_irr_take
+
+!!    --------------------------------------------------------------------
       subroutine exch_channel_in (ich)
 
 !!    called in sd_channel_control3 right after the channel's incoming salt
@@ -973,6 +1048,14 @@
       do i = 1, size(hru_irr_day)
         hru_irr_day(i) = irrig(i)%applied + irrig(i)%runoff
       end do
+      !! what irrigate actions took from channels and reservoirs since the last record
+      !! (exch_irr_take); the next day's adds up from zero
+      irr_cha_day = irr_cha_now
+      irr_res_day = irr_res_now
+      irr_hru_day = irr_hru_now
+      irr_cha_now = 0.d0
+      irr_res_now = 0.d0
+      irr_hru_now = 0.d0
       !! a state or flux set for the day applies that day only, even for an
       !! HRU the day's commands didn't run
       hly_on = .false.
@@ -1416,6 +1499,8 @@
       write (u) state_magic, swx_state_digest, days_done, paused_line
       write (u) size(pou_dmd_day), pou_dmd_day, pou_wdr_day
       write (u) size(hru_irr_day), hru_irr_day
+      write (u) size(irr_cha_now), size(irr_res_now), irr_cha_now, irr_cha_day, irr_res_now,   &
+                irr_res_day, irr_hru_now, irr_hru_day
       write (u) size(chx_day), chx_day
       write (u) size(rsx_flo), rsx_flo, rsx_on, rsv_day
       write (u) size(rec_flo), rec_flo, rec_flo_on, dmd_flo, dmd_flo_on, chx_flo, chx_on
@@ -1544,7 +1629,7 @@
       end if
       read (u, iostat=ios) magic, digest, load_day
       close (u)
-      if (ios /= 0 .or. magic /= state_magic) then
+      if (ios /= 0 .or. (magic /= state_magic .and. magic /= state_magic_6)) then
         call reply ("@error not a saved SWAT+ state: " // path)
       else if (digest /= swx_state_digest) then
         call reply ("@error the state was saved by a different build (" // trim(digest) //         &
@@ -1572,10 +1657,12 @@
       use bmi_state_module, only : swx_state_load
 
       character(len=16) :: magic = ""
+      character(len=16) :: head = ""                      !! the state's version, from its first line
       character(len=16) :: digest = ""
       character(len=64) :: word = ""
       integer :: u = 0
       integer :: n = 0
+      integer :: k = 0
       integer :: ios = 0
 
       open (newunit=u, file=trim(load_path), access="stream", form="unformatted", action="read",  &
@@ -1593,6 +1680,19 @@
         error stop 7
       end if
       read (u) hru_irr_day
+      if (magic == state_magic_6) then
+        !! saved by 0.13, before the irrigation withdrawals were counted: they start from zero.
+        !! What the saved day's decision tables took before the pause isn't in that state
+        irr_cha_now = 0.d0; irr_cha_day = 0.d0; irr_res_now = 0.d0; irr_res_day = 0.d0
+        irr_hru_now = 0.d0; irr_hru_day = 0.d0
+      else
+        read (u) n, k
+        if (n /= size(irr_cha_now) .or. k /= size(irr_res_now)) then
+          call reply ("@error the saved state has a different number of channels or reservoirs")
+          error stop 7
+        end if
+        read (u) irr_cha_now, irr_cha_day, irr_res_now, irr_res_day, irr_hru_now, irr_hru_day
+      end if
       read (u) n
       if (n /= size(chx_day)) then
         call reply ("@error the saved state has a different number of channels")
@@ -1625,9 +1725,10 @@
       read (u) chm_flo, chm_on, chm_day, chm_wait, rcm_flo, rcm_on
       call read_units (u)
       call swx_state_load (u)
+      head = magic
       read (u) magic
       close (u)
-      if (magic /= state_magic) then
+      if (magic /= head) then
         call reply ("@error the saved state ends early: " // trim(load_path))
         error stop 7
       end if
@@ -1930,6 +2031,28 @@
         allocate (val(sp_ob%res), source = 0.d0)
         do i = 1, sp_ob%res
           val(i) = rsv_day(k,i) / 86400.d0                             !m3 -> m3/s
+        end do
+
+      case ("channel_water__irrigation_withdrawal_volume_flow_rate")
+        !! what the day's irrigate actions and paddy irrigation took from the channel (exch_irr_take)
+        allocate (val(sp_ob%chandeg), source = 0.d0)
+        do i = 1, sp_ob%chandeg
+          val(i) = irr_cha_day(i) / 86400.d0                !m3 -> m3/s
+        end do
+
+      case ("reservoir_water__irrigation_withdrawal_volume_flow_rate")
+        !! what the day's irrigate actions and paddy irrigation took from the reservoir (exch_irr_take)
+        allocate (val(sp_ob%res), source = 0.d0)
+        do i = 1, sp_ob%res
+          val(i) = irr_res_day(i) / 86400.d0                !m3 -> m3/s
+        end do
+
+      case ("land_irrigation_water__withdrawal_volume_flow_rate")
+        !! what the HRU's irrigate actions and paddy irrigation took from SWAT+ channels and reservoirs the day
+        !! just done (exch_irr_take), before the application's loss and runoff
+        allocate (val(sp_ob%hru), source = 0.d0)
+        do i = 1, sp_ob%hru
+          val(i) = irr_hru_day(ob(sp_ob1%hru + i - 1)%num) / 86400.d0   !m3 -> m3/s
         end do
 
       case ("land_irrigation_water__volume_flow_rate")

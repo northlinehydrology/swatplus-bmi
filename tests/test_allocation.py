@@ -202,3 +202,82 @@ def test_aquifer_withdrawal_delivers_less_than_it_removes_swatplus_62_0_1():
     rto = removed / stor
     assert (delivered < removed).all()
     np.testing.assert_allclose(delivered, removed * (1 - rto), rtol=2e-3)
+
+
+# Places of use read with the right indices (patches/62.0.1/0002-wallo-withdraw-duty.patch).
+# SWAT+ 62.0.1's wallo_withdraw.f90 reads a place of use's duty as pou(ipou)%pod(ipod)%duty, with
+# ipou its position in the point of diversion's list and ipod the point of diversion's number,
+# where pou(pou_num)%pod(pod_num)%duty is meant. Stock 62.0.1 gives places of use sharing a point
+# of diversion each other's demands, and a place of use on any point of diversion but the first a
+# read past the end of its list (0, or a stray value). docs/upstream-issue-wallo-withdraw.md.
+
+POU_HDR = "num name typ typ_num pods pors dtbl_mx rate_max dtbl_pod_fr dtbl_por_fr"
+POD_HDR = "num name typ typ_num pous pou_num pou_name pod_num typ typ_num right"
+WANT = {"user01": 0.0010, "user02": 0.0002}             # m3/s; cha01 carries about 0.003 to 0.03
+
+
+def add_places(pous, pods):
+    """``pous``: (name, the point of diversion it takes from), numbered in order; ``pods``: the
+    rows of point_of_diver.wro. Each place of use takes from cha01 with no returns."""
+    def edit(run):
+        add_allocation(run)
+        rows = ["place_of_use.wro", str(len(pous)), POU_HDR]
+        for i, (name, pod) in enumerate(pous, 1):
+            rows += [f"{i} {name} out {i} 1 0 null 100.0 null null",
+                     f"1 {pod} cha01 cha 1 null 0 null 0.0 null 1000000. 1.0 n"]
+        (run / "place_of_use.wro").write_text("\n".join(rows) + "\n")
+        (run / "point_of_diver.wro").write_text("\n".join(["point_of_diver.wro", str(len(pods)), POD_HDR, *pods])
+                                                + "\n")
+    return edit
+
+
+def run_places(dest, pous, pods, days=365):
+    """Each place of use asks WANT every day for ``days`` days; returns its names, demands and
+    withdrawals (m3/s, day by day) and cha01's outflow."""
+    run = project("Osu_1hru", dest, edit=add_places(pous, pods))
+    m = SwatPlusBmi()
+    m.initialize(str(run))
+    names = list(m.get_grid_object_names(m.get_var_grid(DMD)))
+    want = np.array([WANT[n] for n in names])
+    w, d, q = [], [], []
+    while m.get_current_time() < days:
+        m.set_value(DMD, want)
+        m.update()
+        w.append(m.get_value(WDR, np.empty(len(names))))
+        d.append(m.get_value(DMD, np.empty(len(names))))
+        q.append(m.get_value(QOUT, np.empty(1))[0])
+    m.finalize()
+    return names, np.array(d), np.array(w), np.array(q)
+
+
+def test_places_of_use_sharing_a_point_of_diversion_each_get_their_own_demand():
+    """user02 listed first on cha01's point of diversion, user01 second: each asks for its own
+    demand and gets no more than that. Stock 62.0.1 gives user02 user01's demand (over its own on
+    a third of the days) and user01 user02's."""
+    need(EXCHANGE)
+    names, d, w, q = run_places("Osu_1hru-wa-shared", [("user01", 1), ("user02", 1)],
+                                ["1 cha01 cha 1 2 2 user02 1 out 2 senior 1 user01 1 out 1 senior"])
+    assert names == ["user01", "user02"]
+    np.testing.assert_allclose(d, [[WANT["user01"], WANT["user02"]]] * len(d), rtol=1e-6)
+    assert (w <= d * (1 + 1e-6)).all()
+    # user02, the senior, is served first; when the channel has enough for both, each gets its own
+    full = np.isclose(w, d, rtol=1e-5).all(axis=1)
+    assert full.sum() > 100
+    # user01's demand is five times user02's, and it gets that, which stock 62.0.1 never gives it
+    assert (w[:, 0] > 2 * WANT["user02"]).sum() > 100
+
+
+def test_place_of_use_on_a_later_point_of_diversion_delivers_as_on_the_first():
+    """user01 alone on cha01, its point of diversion the file's second (after one with no places
+    of use) delivers what it does when its point of diversion is the first, day by day. Stock
+    62.0.1 reads its duty past the end of its list and delivers nothing."""
+    need(EXCHANGE)
+    pou = [("user01", 1)]
+    _, d1, w1, q1 = run_places("Osu_1hru-wa-pod1", pou, ["1 cha01 cha 1 1 1 user01 1 out 1 senior"])
+    pou = [("user01", 2)]
+    _, d2, w2, q2 = run_places("Osu_1hru-wa-pod2", pou,
+                               ["1 nothing cha 1 0", "2 cha01 cha 1 1 1 user01 1 out 1 senior"])
+    assert (w1 > 0).sum() > 300
+    assert np.array_equal(d2, d1)
+    assert np.array_equal(w2, w1)
+    assert np.array_equal(q2, q1)
