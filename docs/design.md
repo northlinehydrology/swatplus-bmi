@@ -27,7 +27,9 @@ Decisions behind the design:
 ## Pieces
 
 ```
-SWAT+ 62.0.1 (tag)  + patches/62.0.1/*.patch     five edited files and CMakeLists.txt, 20 lines
+SWAT+ 62.0.1 (tag)  + patches/62.0.1/0001-*.patch  the exchange hooks
+                    + patches/62.0.1/0002-*.patch  a SWAT+ fix: places of use (Found in
+                                                        SWAT+ 62.0.1, item 21)
                     + fortran/bmi_exchange_module.f90   the exchange mode
                     + fortran/bmi_fork.c                fork for branching, whole reads and
                                                         writes for arrays (Mac, Linux)
@@ -86,7 +88,9 @@ So, at a pause before day *d*:
   those sources get a set demand on day *d*+1, as they get SWAT+'s own
   (Setting fluxes).
 
-With the mode off, nothing changes. The test suite checks every output file,
+With the mode off, nothing changes (the exchange patch; the place of use fix,
+`0002-wallo-withdraw-duty.patch`, is a fix to SWAT+ and applies with the mode off
+too: Patches that fix SWAT+). The test suite checks every output file,
 byte for byte, against the unpatched release, with the mode off, stepped one
 day at a time, read every day, branched, and saved and loaded (What the tests
 prove, below, says on which projects).
@@ -858,7 +862,10 @@ The claim is three sentences, and each has its own tests:
    and loaded there, and compares every file with a stock run, byte for
    byte. `tests/test_stepping.py`, `test_branch.py` and `test_state.py`
    add the mode switched off, branches and saves at the first and last
-   days, and branches of branches.
+   days, and branches of branches. (On the test projects, which have at most
+   one place of use; one with places of use on several channels, or several
+   on one, differs from stock 62.0.1 by the place of use fix, Patches that
+   fix SWAT+.)
 2. **A value set changes results only through that input.** Setting
    SWAT+'s own point source flow, loads or demand back every day, read
    from a first run, gives stock output, byte for byte, and so does a zero
@@ -1070,12 +1077,45 @@ These are worth reporting upstream, separately from the exchange mode:
     aquifer's water table, or from zero. (In
     docs/upstream-issue-calibration.md.)
 
+21. `wallo_withdraw.f90` sizes a place of use's withdrawal from
+    `pou(ipou)%pod(ipod)%duty`, where `ipou` is the place of use's position
+    in its point of diversion's list and `ipod` the point of diversion's
+    number; `pou(pou_num)%pod(pod_num)%duty`, computed a few lines later,
+    is meant. Places of use sharing a point of diversion each withdraw
+    another's demand, and one on any point of diversion but the file's first
+    reads past the end of its own list (0, or a stray value), so places of
+    use work on one channel only. **Patched** (`patches/62.0.1/0002-wallo-withdraw-duty.patch`,
+    the one SWAT+ fix in the build; Patches that fix SWAT+, below). The
+    compensation path's other faults (`wallo_control` calls the routine with
+    a place of use number and a POD's position in its list; `fin` is set by
+    a loop index), `poud_met`'s `deliv` added to `pou`'s, and the `irr`
+    place of use type (`wallo_pou_deliv`, `wallo_start_day`) are documented,
+    not patched. (`tests/test_allocation.py`, the two place of use tests;
+    draft issue in docs/upstream-issue-wallo-withdraw.md.)
+
 Items 7–9 and 12 were found by a study's model build (Nov 6, 2026) and
 confirmed by reading the source. Items 10, 11 and 13–15 were found while
 adding chemistry to the exchange (0.5.0), and item 16 by the nightly
 comparisons (Nov 7, 2026), items 17 and 18 while generating the
-reads of every printed column (0.8.0), and items 19 and 20 while adding
-parameters at initialize (0.9.0).
+reads of every printed column (0.8.0), items 19 and 20 while adding
+parameters at initialize (0.9.0), and item 21 by Basin Ledger's
+Rappahannock study (Nov 24, 2026).
+
+### Patches that fix SWAT+
+
+The exchange patch never changes what SWAT+ does. A SWAT+ bug is documented
+above and drafted upstream, and a test pins it, so it fails when SWAT+
+fixes it (the aquifer withdrawal, item 3). One is patched instead, in its
+own file applied after the exchange patch: item 21,
+`0002-wallo-withdraw-duty.patch`. Stock 62.0.1 there gives no result a
+model can rely on: a place of use past the first channel reads memory
+beyond its array, so what it withdraws depends on the heap, and Basin
+Ledger's intakes (one point of diversion per channel) get nothing. The fix
+changes four lines and nothing a project with one place of use on the
+file's first point of diversion does, so the stock comparisons still hold
+for every test project; a project with places of use on several channels,
+or several on one, differs from stock 62.0.1 by the fix. The stock build
+(`--stock`) stays unpatched.
 
 ## Limits
 

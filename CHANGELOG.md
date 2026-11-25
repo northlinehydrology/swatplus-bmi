@@ -3,6 +3,26 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
+## 0.14.0 (unreleased)
+
+- Places of use on any channel, and several on one, now withdraw their own demand. SWAT+ 62.0.1's
+  `wallo_withdraw.f90` sized a place of use's withdrawal from `pou(ipou)%pod(ipod)%duty`, with `ipou` its
+  position in its point of diversion's list and `ipod` the point of diversion's number, where
+  `pou(pou_num)%pod(pod_num)%duty` is meant. Places of use sharing a point of diversion took each other's
+  demands (one over its own), and one on any point of diversion but the file's first read past the end of its
+  list and withdrew nothing, or a stray value; since a channel has one point of diversion, places of use
+  worked on one channel only (Basin Ledger's Rappahannock study: 8 of 9 intakes got nothing). The fix
+  computes the two numbers first and indexes the duty by them, four lines, in its own patch,
+  `patches/62.0.1/0002-wallo-withdraw-duty.patch`, applied after the exchange patch.
+  **Why patched, not only documented**, as the aquifer withdrawal bug is: stock 62.0.1 has no result to stay
+  faithful to here (what a place of use past the first channel withdraws is whatever memory lies past its
+  array), and without the fix water allocation can't serve more than one channel. A project with one place
+  of use on the file's first point of diversion runs as before, so every stock comparison still holds; one
+  with places of use on several channels, or several on one, now differs from stock 62.0.1 by the fix. The
+  stock build stays unpatched. Two tests on Osu_1hru (`tests/test_allocation.py`) fail without it. Draft
+  SWAT+ issue: `docs/upstream-issue-wallo-withdraw.md`, which also lists related faults left as they are
+  (compensation's arguments, `fin`'s loop index, `poud_met`'s `deliv`, the `irr` place of use type).
+
 ## 0.13.1 (2026-11-16)
 
 - `pip install swatplus-bmi` is all it takes on Windows x86-64 (an ARM PC with an x86-64 Python too), macOS 15 or

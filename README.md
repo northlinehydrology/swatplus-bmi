@@ -650,6 +650,21 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   SWAT+ records it in full and takes none of the excess: 4.1% of the withdrawal in our test, all
   of it on low-flow days. The wrapper warns, and `channel_water__volume_inflow_rate` goes
   negative on those days. (Draft report: `docs/upstream-issue-recall-diversion.md`.)
+- **Places of use are read with the right indices, which stock SWAT+ 62.0.1 doesn't.** Its
+  `wallo_withdraw.f90` sizes a withdrawal from the demand of the place of use whose number is
+  this one's position in its point of diversion's list, on the point of diversion's own number.
+  So places of use sharing a point of diversion take each other's demands, and one on any point
+  of diversion but the file's first gets nothing (or a stray value): places of use worked on one
+  channel only. swatplus-bmi patches this (0.14.0; `0002-wallo-withdraw-duty.patch`), so a project
+  with places of use on several channels, or several on one, gives other results than stock
+  62.0.1. (Draft report: `docs/upstream-issue-wallo-withdraw.md`, with related faults left as they
+  are: compensation, and the `irr` place of use type.)
+- **One point of diversion per channel.** SWAT+ keeps one point of diversion per channel
+  (`sd_ch%wallo_pod`), so several places of use on one channel must share one
+  `point_of_diver.wro` row that lists them all. With separate rows for the same channel, the last
+  row read is the channel's, and the places of use on the others withdraw nothing, with no
+  message. A point of diversion serves its places of use in the order it lists them (senior
+  first), not pro rata.
 - **Aquifer withdrawals in SWAT+ 62.0.1 deliver less than they remove.** The aquifer loses the
   demand, but the user is credited with demand × (1 − demand/storage). It's a bug in
   `wallo_withdraw.f90`; a test documents it and will fail once SWAT+ fixes it. (Draft report:
@@ -731,7 +746,10 @@ close: before a gain goes into a channel's transfer, the wrapper allocates the t
 constituent arrays, which SWAT+ 62.0.1 forgets; they stay zero, so no value changes, but without
 them the gain would stop the run.) Problems in SWAT+ are documented
 here and drafted as SWAT+ issues (`docs/upstream-issue-*.md`), and any workaround belongs in the
-model setup, not in the patch. A fix would be a separate, opt-in patch with its own name.
+model setup, not in the patch. A fix is a separate patch with its own name, and there is one:
+`patches/62.0.1/0002-wallo-withdraw-duty.patch`, for places of use (Gotchas). Stock 62.0.1 reads
+their demand past the end of an array there, so it has no result to stay faithful to; the stock
+build (`--stock`) stays unpatched (docs/design.md, Patches that fix SWAT+).
 
 ## The protocol
 
