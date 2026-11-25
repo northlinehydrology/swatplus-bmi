@@ -70,6 +70,9 @@
       integer, parameter :: unit_max = 1000000   !! highest unit number branch looks at
       character(len=80) :: paused_line = ""      !! the last @paused reply
       character(len=16), parameter :: state_magic = "SWXSTATE-7"
+      !! a state saved by 0.13 (SWXSTATE-6) loads too: it's this layout without the irrigation
+      !! withdrawals (irr_*), which load as zero
+      character(len=16), parameter :: state_magic_6 = "SWXSTATE-6"
 
       !! loading a saved state: run forward to the saved day, then load
       logical :: loading = .false.
@@ -1626,7 +1629,7 @@
       end if
       read (u, iostat=ios) magic, digest, load_day
       close (u)
-      if (ios /= 0 .or. magic /= state_magic) then
+      if (ios /= 0 .or. (magic /= state_magic .and. magic /= state_magic_6)) then
         call reply ("@error not a saved SWAT+ state: " // path)
       else if (digest /= swx_state_digest) then
         call reply ("@error the state was saved by a different build (" // trim(digest) //         &
@@ -1654,6 +1657,7 @@
       use bmi_state_module, only : swx_state_load
 
       character(len=16) :: magic = ""
+      character(len=16) :: head = ""                      !! the state's version, from its first line
       character(len=16) :: digest = ""
       character(len=64) :: word = ""
       integer :: u = 0
@@ -1676,12 +1680,19 @@
         error stop 7
       end if
       read (u) hru_irr_day
-      read (u) n, k
-      if (n /= size(irr_cha_now) .or. k /= size(irr_res_now)) then
-        call reply ("@error the saved state has a different number of channels or reservoirs")
-        error stop 7
+      if (magic == state_magic_6) then
+        !! saved by 0.13, before the irrigation withdrawals were counted: they start from zero.
+        !! What the saved day's decision tables took before the pause isn't in that state
+        irr_cha_now = 0.d0; irr_cha_day = 0.d0; irr_res_now = 0.d0; irr_res_day = 0.d0
+        irr_hru_now = 0.d0; irr_hru_day = 0.d0
+      else
+        read (u) n, k
+        if (n /= size(irr_cha_now) .or. k /= size(irr_res_now)) then
+          call reply ("@error the saved state has a different number of channels or reservoirs")
+          error stop 7
+        end if
+        read (u) irr_cha_now, irr_cha_day, irr_res_now, irr_res_day, irr_hru_now, irr_hru_day
       end if
-      read (u) irr_cha_now, irr_cha_day, irr_res_now, irr_res_day, irr_hru_now, irr_hru_day
       read (u) n
       if (n /= size(chx_day)) then
         call reply ("@error the saved state has a different number of channels")
@@ -1714,9 +1725,10 @@
       read (u) chm_flo, chm_on, chm_day, chm_wait, rcm_flo, rcm_on
       call read_units (u)
       call swx_state_load (u)
+      head = magic
       read (u) magic
       close (u)
-      if (magic /= state_magic) then
+      if (magic /= head) then
         call reply ("@error the saved state ends early: " // trim(load_path))
         error stop 7
       end if

@@ -142,3 +142,74 @@ def test_save_load_continue_is_stock_ames():
     n.update_until(n.get_end_time())
     n.finalize()
     assert differences(stock, RUNS / "Ames_sub1-st-loaded") == []
+
+
+def as_0_13(snap):
+    """Rewrite a saved state as swatplus-bmi 0.13 wrote it (SWXSTATE-6): the same layout without
+    the irrigation withdrawals' record, which follows the places of use and the HRU irrigation."""
+    import struct
+    p = snap / "state.bin"
+    data = bytearray(p.read_bytes())
+    assert data[:16] == b"SWXSTATE-7".ljust(16) and data[-16:] == b"SWXSTATE-7".ljust(16)
+    off = 16 + 16 + 4 + 80                                   # magic, digest, days_done, paused_line
+    (n,) = struct.unpack_from("<i", data, off)
+    off += 4 + 2 * 4 * n                                     # pou_dmd_day, pou_wdr_day
+    (nh,) = struct.unpack_from("<i", data, off)
+    off += 4 + 4 * nh                                        # hru_irr_day
+    nc, nr = struct.unpack_from("<ii", data, off)
+    del data[off:off + 8 + 8 * 2 * (nc + nr + nh)]           # the irrigation withdrawals
+    data[:16] = data[-16:] = b"SWXSTATE-6".ljust(16)
+    p.write_bytes(bytes(data))
+
+
+def test_a_state_saved_by_0_13_loads_with_the_withdrawals_zero(tmp_path):
+    """0.14 adds the day's irrigation withdrawals to a saved state (SWXSTATE-7) and changes
+    nothing else in it, so a 0.13 state (SWXSTATE-6) loads with them zero: the run carries on as
+    from the same state saved by 0.14, every output file byte for byte, and the withdrawals read
+    0 for the day before the load and the same as the 0.14 state's from the first day on (when,
+    as here, the saved day's decision tables took nothing before the pause)."""
+    import shutil
+    from test_irrigation import WCHA, WHRU, from_source
+    need(EXCHANGE)
+    m = SwatPlusBmi()
+    m.initialize(str(project("Osu_1hru", "Osu_1hru-st-013-a", daily=True, edit=from_source())))
+    m.update_until(2000)
+    snap = m.save_state(tmp_path / "v7")
+    m.finalize()
+    old = tmp_path / "v6"
+    shutil.copytree(snap, old)
+    as_0_13(old)
+
+    reads = {}
+    for name, state in (("v7", snap), ("v6", old)):
+        n = SwatPlusBmi()
+        n.initialize(str(project("Osu_1hru", f"Osu_1hru-st-013-{name}", daily=True, edit=from_source())))
+        n.load_state(state)
+        assert n.get_current_time() == 2000
+        first = n.get_value(WCHA, np.empty(1))[0]
+        got = []
+        while n.get_current_time() < n.get_end_time():
+            n.update()
+            got.append([n.get_value(WCHA, np.empty(1))[0], n.get_value(WHRU, np.empty(1))[0]])
+        n.finalize()
+        reads[name] = (first, np.array(got))
+    assert reads["v6"][0] == 0
+    assert np.array_equal(reads["v6"][1], reads["v7"][1])
+    assert (reads["v6"][1][:, 0] > 0).sum() > 10
+    assert differences(RUNS / "Osu_1hru-st-013-v7", RUNS / "Osu_1hru-st-013-v6") == []
+
+
+def test_a_state_of_an_unknown_version_is_refused(tmp_path):
+    need(EXCHANGE)
+    m = SwatPlusBmi()
+    m.initialize(str(project("Osu_1hru", "Osu_1hru-st-ver-a")))
+    m.update_until(10)
+    snap = m.save_state(tmp_path / "snap")
+    m.finalize()
+    data = bytearray((snap / "state.bin").read_bytes())
+    data[:16] = b"SWXSTATE-5".ljust(16)
+    (snap / "state.bin").write_bytes(bytes(data))
+    n = SwatPlusBmi()
+    n.initialize(str(project("Osu_1hru", "Osu_1hru-st-ver-b")))
+    with pytest.raises(ExchangeError, match="not a saved SWAT\\+ state"):
+        n.load_state(snap)

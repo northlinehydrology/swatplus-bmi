@@ -479,7 +479,9 @@ done: `channel_water__irrigation_withdrawal_volume_flow_rate`,
 HRUs' total. An HRU's withdrawal is at least its `land_irrigation_water__volume_flow_rate`: the
 difference is the application's loss (`1 - eff` of what doesn't run off), and on a wetland or paddy
 HRU also the runoff part, which SWAT+ zeroes there (`hru_control.f90`, `irrig(j)%runoff = 0.` when
-`ires > 0`). Saved states carry the sums (`SWXSTATE-7`).
+`ires > 0`). Saved states carry the sums (`SWXSTATE-7`). A state saved by 0.13 (`SWXSTATE-6`, the same
+layout without them) loads with them zero; what the saved day's decision tables took before the pause
+isn't in it.
 
 A paddy's scheduled irrigation (`irrp` in `management.sch`, `wet_irrp.f90`) takes from a channel
 or reservoir too, without a decision table, and the same hook counts it, right after the take.

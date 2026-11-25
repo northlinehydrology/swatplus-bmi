@@ -3,7 +3,7 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
-## 0.14.0 (2026-11-24)
+## 0.14.0 (2026-11-25)
 
 - Places of use on any channel, and several on one, now withdraw their own demand. SWAT+ 62.0.1's
   `wallo_withdraw.f90` sized a place of use's withdrawal from `pou(ipou)%pod(ipod)%duty`, with `ipou` its
@@ -34,8 +34,15 @@ SWAT+ releases each version supports are in COMPATIBILITY.md.
   writes stock SWAT+'s output. The sources' total is the HRUs' total each day, and an HRU's withdrawal less
   `land_irrigation_water__volume_flow_rate` is its application's loss. An `irrigate` action gives all or
   nothing, so a day its source held too little reads 0; a paddy's `irrp` takes what it asks for, up to 99% of
-  what the source holds. Not counted: water from an aquifer or from outside. Saved states carry the sums; a
-  state saved by 0.13 is refused (`SWXSTATE-7`).
+  what the source holds. Not counted: water from an aquifer or from outside. Saved states carry the sums
+  (`SWXSTATE-7`).
+- A state saved by 0.13 (`SWXSTATE-6`) still loads: 0.14 adds only the withdrawal sums to a state, and they
+  load as zero (SWAT+'s own variables are saved in the same layout; the serializer's digest is unchanged).
+  So a study's warm-up states carry over without a new warm-up. One thing such a state can't hold: what the
+  saved day's decision tables took from a channel or reservoir before the pause, so on that day the
+  withdrawal reads miss it, and that day's channel take routes as 0.13 left it. A state from 0.13 is
+  otherwise exactly the state 0.14 would load (`tests/test_state.py`; also checked on a 0.13.1 Rappahannock
+  state). Older states are refused, as before.
 - Irrigation from a channel takes the water out of the channel, which stock SWAT+ 62.0.1 doesn't. Its
   `irrigate` action from `cha`/`sdc` (`actions.f90`), and a paddy's `irrp` from a channel (`wet_irrp.f90`),
   cut the channel's `ch_stor`, but `ch_rtmusk.f90` routes from `tot_stor`, carried from the end of the day
@@ -57,7 +64,9 @@ SWAT+ releases each version supports are in COMPATIBILITY.md.
   (a test pins it; noted in the draft issue). With the channel fix, such a withdrawal from a channel now
   leaves the channel, where stock took it from nowhere and lost it.
 - The build hash changes (the patches and the exchange module), so an executable built by 0.13 is refused:
-  rebuild with `swatplus-bmi build`, or install the wheel with SWAT+ inside.
+  rebuild with `swatplus-bmi build`, or install the wheel with SWAT+ inside. A warm-up run by 0.13 ran without
+  the two fixes (places of use past the first channel withdrew nothing; irrigation from a channel took no
+  water from it), so its state carries that history.
 
 ## 0.13.1 (2026-11-16)
 
