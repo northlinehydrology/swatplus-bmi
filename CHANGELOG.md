@@ -23,6 +23,25 @@ SWAT+ releases each version supports are in COMPATIBILITY.md.
   SWAT+ issue: `docs/upstream-issue-wallo-withdraw.md`, which also lists related faults left as they are
   (compensation's arguments, `fin`'s loop index, `poud_met`'s `deliv`, the `irr` place of use type).
 
+- What SWAT+'s irrigation takes from its channels and reservoirs, read-only, m3 s-1, for the day just done:
+  `channel_water__irrigation_withdrawal_volume_flow_rate` by channel,
+  `reservoir_water__irrigation_withdrawal_volume_flow_rate` by reservoir, and
+  `land_irrigation_water__withdrawal_volume_flow_rate` by HRU. SWAT+ doesn't keep its irrigation by source, so a
+  hook in `actions.f90` (`exch_irr_take`) adds up what each `irrigate` action from a channel (`cha`, `sdc`) or a
+  reservoir (`res`) takes, `irrig(j)%water%flo`, where it takes it; it only reads, and an irrigated project
+  stepped while reading them writes stock SWAT+'s output byte for byte. The sources' total is the HRUs' total
+  each day, and an HRU's withdrawal less `land_irrigation_water__volume_flow_rate` is its application's loss.
+  SWAT+ gives all or nothing, so a day the source held too little reads 0. Not counted: actions from an aquifer
+  or outside, and `wet_irrp`'s scheduled paddy irrigation. Saved states carry the sums; a state saved by
+  0.13 is refused (`SWXSTATE-7`).
+- Found while testing them, and documented, not patched: in SWAT+ 62.0.1 an `irrigate` action from a channel
+  takes its water from `ch_stor`, which the routing overwrites from `tot_stor`, so the channel never loses it
+  and the field's water comes from nowhere (a test pins it; draft issue
+  `docs/upstream-issue-irrigate-channel.md`). The channel read is what the action took, as SWAT+ records it.
+  From a reservoir the water does leave.
+- The build hash changes (the patches and the exchange module), so an executable built by 0.13 is refused:
+  rebuild with `swatplus-bmi build`, or install the wheel with SWAT+ inside.
+
 ## 0.13.1 (2026-11-16)
 
 - `pip install swatplus-bmi` is all it takes on Windows x86-64 (an ARM PC with an x86-64 Python too), macOS 15 or

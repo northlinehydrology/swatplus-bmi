@@ -454,6 +454,9 @@ objects in a project are left out. Landscape units and the basin (for the
 | `land_surface__potential_evapotranspiration_rate` | HRUs | no | m s-1 | `pet` |
 | `soil_water__depth` | HRUs | no | m | `sw_final`: the profile's water above the wilting point |
 | `land_irrigation_water__volume_flow_rate` | HRUs | no | m3 s-1 | the day's irrigation on the HRU, from any source: `irr` in `hru_wb_day.txt` (what reached the soil) and its runoff, times the area |
+| `land_irrigation_water__withdrawal_volume_flow_rate` | HRUs | no | m3 s-1 | what the HRU's `irrigate` actions took from SWAT+'s channels and reservoirs, before the application's loss |
+| `channel_water__irrigation_withdrawal_volume_flow_rate` | channels | no | m3 s-1 | what `irrigate` actions took from the channel (see Gotchas: SWAT+ 62.0.1 doesn't take it out of the channel) |
+| `reservoir_water__irrigation_withdrawal_volume_flow_rate` | reservoirs | no | m3 s-1 | what `irrigate` actions took from the reservoir |
 | `soil_layer_water__groundwater_inflow_rate` | HRU soil layers | yes (the next day) | m s-1 | groundwater into the layer, where gwflow puts its own; read after the day, what went in |
 | `soil_water__groundwater_inflow_rate` | HRUs | no | m s-1 | `gwsoilq` in `hru_wb_day.txt`: groundwater into the soil profile, gwflow's or set |
 | `soil_layer_bottom__depth` | HRU soil layers | no | m | the layer's bottom below the surface (`d`) |
@@ -665,6 +668,14 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   row read is the channel's, and the places of use on the others withdraw nothing, with no
   message. A point of diversion serves its places of use in the order it lists them (senior
   first), not pro rata.
+- **Irrigation from a channel takes no water from the channel in SWAT+ 62.0.1.** A decision
+  table's `irrigate` from `cha` takes its demand from the channel's `ch_stor`, but the channel
+  routes from `tot_stor`, which the action doesn't touch, and sets `ch_stor` from it again. The
+  field gets the water and the channel keeps it: its outflow is what it would be without the
+  irrigation. `channel_water__irrigation_withdrawal_volume_flow_rate` reads what the action took,
+  as SWAT+ records it; a water balance should count it as water SWAT+ adds, not take it out of the
+  channel's outflow again. From a reservoir the water does leave. A test documents it and will
+  fail once SWAT+ fixes it. (Draft report: `docs/upstream-issue-irrigate-channel.md`.)
 - **Aquifer withdrawals in SWAT+ 62.0.1 deliver less than they remove.** The aquifer loses the
   demand, but the user is credited with demand × (1 − demand/storage). It's a bug in
   `wallo_withdraw.f90`; a test documents it and will fail once SWAT+ fixes it. (Draft report:

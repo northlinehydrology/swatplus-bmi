@@ -12,6 +12,25 @@ index efa4e69..33f8c1e 100644
  add_executable(${SWATPLUS_EXE} ${sources})
  
  #############################################################################
+diff --git a/src/actions.f90 b/src/actions.f90
+--- a/src/actions.f90
++++ b/src/actions.f90
+@@ -29,6 +29,7 @@
+       use reservoir_data_module
+       use manure_allocation_module
+       use water_allocation_module
++      use bmi_exchange_module, only : exch_irr_take
+ 
+       implicit none
+       
+@@ -318,6 +319,7 @@
+               !res_water(iob) = rto1 * res_water(iob)                    ! remainder stays in reservoir
+               
+             end select
++            call exch_irr_take (j, d_tbl%act(iac)%ob, iob)   !! exchange mode: count what was taken from a channel or reservoir
+                   
+             ! add irrigation to yearly sum for dtbl conditioning jga 6-25
+             hru(j)%irr_yr = hru(j)%irr_yr + irrig(j)%applied
 diff --git a/src/command.f90 b/src/command.f90
 index fc8e026..4b9dddc 100644
 --- a/src/command.f90
