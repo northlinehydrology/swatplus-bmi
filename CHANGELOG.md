@@ -3,7 +3,7 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
-## 0.15.0 (unreleased)
+## 0.15.0 (2026-11-26)
 
 - Irrigation can be applied to an HRU from outside SWAT+, for a study's reported irrigators or
   estimated unreported irrigation (Basin Ledger's request 9). Four inputs on the hru grid, each
