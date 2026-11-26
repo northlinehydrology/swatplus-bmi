@@ -34,7 +34,8 @@ SWAT+ releases each version supports are in COMPATIBILITY.md.
   (`SWXSTATE-7`) or 0.13 (`SWXSTATE-6`) still loads, with nothing set; SWAT+'s own variables are
   saved in the same layout, and the serializer's digest is unchanged, so warm-up states carry over.
 - The build hash changes (the exchange patch and module), so an executable built by 0.14 is
-  refused: rebuild with `swatplus-bmi build`, or install the wheel with SWAT+ inside.
+  refused: rebuild with `swatplus-bmi build`, or install the wheel with SWAT+ inside. The
+  README's count of the patch's calls was stale: nineteen calls in eleven SWAT+ files.
 
 ## 0.14.0 (2026-11-25)
 

@@ -28,7 +28,7 @@ Decisions behind the design:
 
 ```
 SWAT+ 62.0.1 (tag)  + patches/62.0.1/0001-*.patch  the exchange hooks: eleven SWAT+ files and
-                                                        CMakeLists.txt, 32 lines added
+                                                        CMakeLists.txt, 42 lines added
                     + patches/62.0.1/0002-*.patch  a SWAT+ fix: places of use (Found in
                                                         SWAT+ 62.0.1, item 21)
                     + patches/62.0.1/0003-*.patch  a SWAT+ fix: irrigation from a channel
@@ -54,8 +54,8 @@ three in `sd_channel_control3.f90` (the channel hooks), two in
 `hru_control.f90` (the soil temperature hook and irrigation applied from outside), one in `swr_percmain.f90`
 (groundwater into the soil), one each in `nut_nlch.f90` and `nut_solp.f90`
 (its nitrate and phosphorus), two in `res_control.f90` (the reservoir hooks), one in
-`actions.f90` (irrigation withdrawals), one in
-`main.f90.in` and one in `command.f90`. Each returns at once when exchange mode is off.
+`actions.f90` and two in `wet_irrp.f90` (irrigation withdrawals), one in
+`main.f90.in` and one in `command.f90`: nineteen in eleven files. Each returns at once when exchange mode is off.
 
 | Call | Where | What it does in exchange mode |
 |---|---|---|

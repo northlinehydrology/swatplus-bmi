@@ -562,7 +562,7 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   setting SWAT+'s own values back doesn't either. The suite checks every output file against
   unpatched SWAT+, including 46 years of Ames_sub1, and CI checks that every SWAT+ file the
   patch doesn't touch compiles to the same object as in the stock build.
-- **Small and off by default.** Ten calls in five SWAT+ files, one Fortran module, and a C file
+- **Small and off by default.** Nineteen calls in eleven SWAT+ files, one Fortran module, and a C file
   of nine short functions, for `fork` and for whole reads and writes of arrays. With the mode off, SWAT+ behaves exactly as it does without the
   patch. It's meant to be proposed to the SWAT+ team (`docs/upstream-issue.md`).
 - **No linking.** Text lines and raw arrays over standard input and output. The Python
