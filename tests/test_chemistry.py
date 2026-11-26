@@ -92,9 +92,10 @@ def test_the_species_are_in_the_catalog():
                 m.get_var_grid({"cha": GW, "aqu": "aquifer_water__volume", "rec": PS}[grid]))
             assert (name in m.get_input_var_names()) == settable
             assert name in m.get_output_var_names()
-    # the per-species families; the soil's groundwater nitrate and P are fixed (test_gw_soil.py)
+    # the per-species families; the soil's groundwater nitrate and P (test_gw_soil.py) and the
+    # irrigation's (test_irrigation_applied.py) are fixed
     chem = [v for v in m.get_output_var_names()
-            if ("__mass" in v or "_mass_" in v) and not v.startswith("soil_")]
+            if ("__mass" in v or "_mass_" in v) and not v.startswith(("soil_", "land_irrigation_"))]
     assert len(chem) == 8
     m.finalize()
 

@@ -18,9 +18,9 @@ Decisions behind the design:
   files directly.
 - **Daily steps.** SWAT+'s sub-daily options aren't exposed.
 - **Fluxes, and states through hooks.** Point source flow and load, water
-  allocation demand, and a channel's groundwater exchange and the mass it
-  carries can be set, and soil layer temperature as the first state
-  (Setting states). Storage, land
+  allocation demand, a channel's groundwater exchange and the mass it
+  carries, and irrigation applied to an HRU with its nitrate and P can be
+  set, and soil layer temperature as the first state (Setting states). Storage, land
   use, soils and parameters can't; they are scenario inputs.
 - **Snapshots.** A warm-up is run once and every scenario starts from it.
 
@@ -50,8 +50,8 @@ and talks to it over standard input and output; nothing is linked.
 ## Where SWAT+ pauses
 
 The daily loop is in `time_control.f90`. The patch adds four calls there,
-three in `sd_channel_control3.f90` (the channel hooks), one in
-`hru_control.f90` (the soil temperature hook), one in `swr_percmain.f90`
+three in `sd_channel_control3.f90` (the channel hooks), two in
+`hru_control.f90` (the soil temperature hook and irrigation applied from outside), one in `swr_percmain.f90`
 (groundwater into the soil), one each in `nut_nlch.f90` and `nut_solp.f90`
 (its nitrate and phosphorus), two in `res_control.f90` (the reservoir hooks), one in
 `actions.f90` (irrigation withdrawals), one in
@@ -71,6 +71,7 @@ three in `sd_channel_control3.f90` (the channel hooks), one in
 | `exch_res_in` | `res_control.f90`, right after the day's inflow is added to the reservoir | adds a set groundwater gain to the reservoir and its inflow |
 | `exch_res` | `res_control.f90`, after the day's outflow, evaporation and seepage are taken, before the area is updated | takes a set groundwater loss, no more than the reservoir holds, as seepage, and keeps the day's water |
 | `exch_hru_soil` | `hru_control.f90`, right after `stmp_solt` | replaces the day's soil layer temperatures that were set |
+| `exch_hru_irr` | `hru_control.f90`, right after `mgt_operatn`, before `surface` | adds the irrigation set for the day to SWAT+'s own: water into the soil to `irrig(j)%applied` (and `hru(j)%irr_yr`), runoff to `irrig(j)%runoff`, nitrate and soluble P to the top soil layer |
 | `exch_hru_gwsoil` | `swr_percmain.f90`, right after gwflow's `gwflow_soil` call, before the day's infiltration and percolation | adds the groundwater set for the day to the HRU's soil layers, counted in `gwsoilq` as gwflow's is |
 | `exch_hru_gwsoil_mass` | `nut_nlch.f90` and `nut_solp.f90`, right after gwflow adds its groundwater's nitrate and P | adds the nitrate and labile P set with the day's groundwater, counted in `gwsoiln`, `gwsoilp` |
 | `exch_end` | `time_control`, after the year loop | sends `@ended`, then answers commands until told to finish |
@@ -226,6 +227,9 @@ names follow the channel ones. CSDMS lists no aquifer or withdrawal names.
 | `land_irrigation_water__withdrawal_volume_flow_rate` | hru | out | m3 s-1 | `irrig(j)%water%flo` (m3) after each `irrigate` action, and each paddy `irrp` day, that takes from a channel or reservoir, added up (`exch_irr_take`) | what the HRU's irrigation took from SWAT+'s channels and reservoirs the day just done, before the application's loss (HRU irrigation) |
 | `channel_water__irrigation_withdrawal_volume_flow_rate` | cha | out | m3 s-1 | as above, by source channel | what irrigation took from the channel's `ch_stor` and, with the fix, its `tot_stor`, which the channel loses (Found in SWAT+ 62.0.1, item 22) |
 | `reservoir_water__irrigation_withdrawal_volume_flow_rate` | res | out | m3 s-1 | as above, by source reservoir | what irrigation took from the reservoir (`res(iob)`), which it loses |
+| `land_irrigation_water__infiltration_volume_flow_rate` | hru | in and out | m3 s-1 | added to `irrig(j)%applied` and `hru(j)%irr_yr` (mm = m3 / (10 x area)) | irrigation applied from outside for the next day, the water that enters the soil; printed in `irr`; reading gives what went in on the day just done (Irrigation applied from outside) |
+| `land_irrigation_water__runoff_volume_flow_rate` | hru | in and out | m3 s-1 | added to `irrig(j)%runoff` (mm) | the water that runs off; `surface` adds it to `surfq` (`surq_cont`) |
+| `land_irrigation_water_no3__mass_flow_rate`, `land_irrigation_water_solp__mass_flow_rate` | hru | in and out | kg s-1 | added to `soil1(j)%mn(1)%no3`, `soil1(j)%mp(1)%lab` (kg/ha) | the water's nitrate (N) and soluble P, into the top soil layer; set only with water into the soil |
 | `soil_layer_water__groundwater_inflow_rate` | hly | in and out | m s-1 | added to `soil(j)%phys(k)%st` (mm) and `gwsoilq(j)` | a flux for the next day (Groundwater into the soil); reading gives what went in on the day just done |
 | `soil_water__groundwater_inflow_rate` | hru | out | m s-1 | `hwb_d(j)%gwsoil` (`gwsoilq`, mm/day) | `gwsoilq` in `hru_wb_day.txt`: gwflow's and what was set |
 | `soil_layer_bottom__depth`, `soil_layer__thickness` | hly | out | m | `soil(j)%phys(k)%d`, `%thick` (mm) | SWAT+'s layers: a 10 mm top layer, then the file's, or the depths in `soil_lyr_depths.sol` with the file's properties averaged mm by mm (`soils_init`) |
@@ -507,6 +511,77 @@ channel's outflow and storage drop by what was taken, and a coupled model that k
 balance takes the channel read out of the channel. A reservoir always lost its withdrawal:
 `res(iob)` is the reservoir's own state, and its printed balance is short by it.
 
+### Irrigation applied from outside
+
+The way in for irrigation a coupled model withdraws and SWAT+ doesn't: a study's reported
+irrigators, or estimates of unreported irrigation, applied to the HRUs they water. SWAT+ 62.0.1
+has no way to give an HRU a stated amount: water allocation's `irr` place of use reads an HRU
+number it never sets, an `irrigate` action applies its table's constant depth, and upland
+irrigation's nitrate (`irr.ops`' `no3_ppm`) reaches no soil (only a paddy's ponded water,
+`wetland_control.f90`).
+
+Four variables on the hru grid, set for the next day and read after it as what went in:
+`land_irrigation_water__infiltration_volume_flow_rate` and
+`land_irrigation_water__runoff_volume_flow_rate` (m3 s-1), the water that enters the soil and the
+water that runs off, as SWAT+ splits its own irrigation (`irr.ops`' `surq` fraction), after any
+application loss; and `land_irrigation_water_no3__mass_flow_rate` and
+`land_irrigation_water_solp__mass_flow_rate` (kg s-1), the nitrate (as N) and soluble P the water
+carries. The hook, `exch_hru_irr`, is the line after `mgt_operatn` in `hru_control.f90`. SWAT+
+sets `irrig(j)%applied` and `irrig(j)%runoff` with `=` when it irrigates, and its decision tables
+(at the top of the HRU's day) and scheduled `irrm` (in `mgt_operatn`) have done so by then, so the
+hook adds to the day's irrigation and they don't replace it. (Water allocation's `irr` place of
+use, which would deliver from inside a channel's or aquifer's day, irrigates no HRU in 62.0.1: it
+reads an HRU number it never sets.) From there on it is SWAT+'s own irrigation:
+
+- the water into the soil goes on `irrig(j)%applied`, which `swr_percmain` adds to the water
+  entering the top layer (with sub-daily steps, `hru_control` spreads it over the day), which
+  `hru_control` prints as `irr` in `hru_wb` (`hwb_d(j)%irr`), and which the 0.11 read
+  `land_irrigation_water__volume_flow_rate` includes. It is added to the year's irrigation that
+  decision tables test (`hru(j)%irr_yr`, `irr_year`), as SWAT+ adds its own;
+- the runoff goes on `irrig(j)%runoff`, which `surface` adds to the day's surface runoff
+  (`surfq`, printed as `surq_cont`), and which SWAT+'s surface runoff lag (`sq_surfst`) sends on
+  over the next days (`surq_gen`); the 0.11 read includes it;
+- either restarts the days since the last irrigation (`pcom(j)%days_irr`, the `days_irr`
+  condition), as each of SWAT+'s irrigations does;
+- the nitrate and soluble P go into the top soil layer, `soil1(j)%mn(1)%no3` and
+  `soil1(j)%mp(1)%lab`, as fertilizer's do, before the day's water routing and nutrient
+  processes, so the runoff, percolation, lateral flow and plants take them from there.
+
+Refused: a negative value; a value on an HRU of no area; any value on a wetland or paddy HRU
+(`surf_stor` in `hru-data.hru`), where SWAT+ irrigates the ponded water, not the soil, zeroes
+the runoff, and its own paddy irrigation (`wet_irrp`) replaces the day's after the hook; and a
+nitrate or P mass with no water set into that HRU's soil for the day, since the mass comes with
+the water (and once one is set, that water can't be set back to 0). An HRU a decision table
+turns into a wetland during the day (`actions.f90`) takes none of what was set, and reads 0.
+Zero is always accepted, and setting 0 everywhere every day is stock SWAT+, byte for byte.
+
+What SWAT+ doesn't keep, and the reads therefore are the only record of: the set nitrate and P
+(no `hru_nb` column takes irrigation's nutrients; the soil's nitrate and P rise), and the runoff
+(SWAT+ prints an irrigation's runoff in `surq_cont` and `surq_gen` but not in `irr`, for its own
+irrigation as for the set one, so `hru_wb`'s printed balance is short by it). Not written: a line
+in `mgt_out.txt`, which SWAT+ writes for its own irrigation. Salts and other constituents in the
+water aren't exposed.
+
+**On a day with rain, the runoff comes out of the rain** (Found in SWAT+ 62.0.1, item 24):
+`hru_control` takes the rain's infiltration as `precip_eff - surfq(j)`, and by then `surfq`
+holds the irrigation's runoff too. So an irrigation's runoff, SWAT+'s own or set, adds water to
+the HRU only by what it exceeds the day's rain infiltration by; the rest leaves in the rain's
+place. A model that books the runoff as water applied should apply it on dry days, or put it
+into the soil instead and let SWAT+ make the runoff. Documented, not patched.
+
+The tests (`tests/test_irrigation_applied.py`, Osu_1hru made upland, two years): nothing set and
+0 set every day are stock; water set on 30 days of a summer reads back as set, prints as `irr`,
+raises the soil by what went in and the runoff by what was set that day, and closes over the
+run, within 0.5 mm of 192 mm (180 into the soil, 12 of runoff on dry days), and day by day as
+SWAT+ prints it; a decision table's 21.25 mm on
+its own days prints with the set water added; 20 kg of nitrate set with water on one day all
+leaves the HRU within the run (2.0 kg/ha, no crop), through SWAT+'s percolation,
+denitrification and runoff, and the runoff's nitrate and P rise that day; a rainy day's runoff
+adds nothing (item 24); a paddy is refused; every refusal keeps nothing; all four every day run
+in bounds on the checked build; and a set saved or branched before its day goes in after.
+Saved states carry what is set and what went in (`SWXSTATE-8`); a state saved by 0.14
+(`SWXSTATE-7`) or 0.13 loads with none set.
+
 ### Setting fluxes
 
 - A set value applies to the next day only. Anything SWAT+ would not use
@@ -539,6 +614,8 @@ balance takes the channel read out of the channel. A reservoir always lost its w
   year. A load on a diversion (a negative flow, set or SWAT+'s own) is
   refused, and so is a negative flow on a day a load is set: SWAT+ gives a
   diversion the channel's concentration (`recall_salt`, `recall_nut`).
+- **Irrigation applied from outside**: upland HRUs with area; a mass with
+  water into the soil (Irrigation applied from outside).
 - Storage can't be set.
 
 ### Setting states
@@ -920,7 +997,8 @@ The claim is three sentences, and each has its own tests:
    SWAT+'s own point source flow, loads or demand back every day, read
    from a first run, gives stock output, byte for byte, and so does a zero
    groundwater exchange every day. A set on one day changes only that day
-   (`test_setting.py`, `test_groundwater.py`, `test_gw_soil.py`), by
+   (`test_setting.py`, `test_groundwater.py`, `test_gw_soil.py`,
+   `test_irrigation_applied.py`), by
    exactly the water set (balances close). Every kind of set runs on a build with array bounds
    checked (`build.sh --check`). The channel itself is checked apart from SWAT+
    (`test_transport.py`): any 8-byte bit pattern, NaN payloads and
@@ -1162,6 +1240,22 @@ These are worth reporting upstream, separately from the exchange mode:
     applies none of it. Documented, not patched; the withdrawal reads count
     what was taken. (`tests/test_irrigation.py`,
     `test_a_paddy_takes_from_its_channel`.)
+24. On an upland HRU, an irrigation's runoff on a day with rain is taken out
+    of the rain. `surface.f90` adds `irrig(j)%runoff` to `surfq(j)`, and
+    `hru_control.f90` then takes the rain's infiltration as
+    `precip_eff - surfq(j)` (at least 0). So the runoff leaves, but the soil
+    gets that much less of the rain, and the HRU gains water from the
+    runoff only by what exceeds the rain's infiltration. SWAT+'s own
+    irrigation (`irr.ops`' `surq` fraction, as in `furrow`) and the set
+    runoff alike. Documented, not patched. (`tests/test_irrigation_applied.py`,
+    `test_runoff_on_a_rainy_day_comes_out_of_the_rain`.)
+25. Upland irrigation's water quality is never used: `mgt_sched.f90` sets
+    `irrig(j)%no3` from `irr.ops`' `no3_ppm` for a paddy's `irrp`, and only
+    `wetland_control.f90` adds it, to the ponded water. An upland HRU's
+    irrigation, from any source, brings no nitrate, and SWAT+'s
+    nutrient balance (`hru_nb`) has no column for irrigation's. The wrapper's
+    nitrate and P set with irrigation go into the top layer instead
+    (Irrigation applied from outside). Documented, not patched.
 
 Items 7–9 and 12 were found by a study's model build (Nov 6, 2026) and
 confirmed by reading the source. Items 10, 11 and 13–15 were found while
@@ -1169,8 +1263,9 @@ adding chemistry to the exchange (0.5.0), and item 16 by the nightly
 comparisons (Nov 7, 2026), items 17 and 18 while generating the
 reads of every printed column (0.8.0), items 19 and 20 while adding
 parameters at initialize (0.9.0), item 21 by Basin Ledger's
-Rappahannock study (Nov 24, 2026), and items 22 and 23 while adding the irrigation
-withdrawals (0.14.0).
+Rappahannock study (Nov 24, 2026), items 22 and 23 while adding the irrigation
+withdrawals (0.14.0), and items 24 and 25 while adding irrigation applied from outside
+(0.15.0).
 
 ### Patches that fix SWAT+
 
@@ -1204,8 +1299,8 @@ stock build (`--stock`) stays unpatched.
   routing.
 - Only fluxes and listed states can be set: point source flow and loads
   (daily recalls inside their records), water allocation demand, a
-  channel's groundwater exchange and the mass a gain carries, and soil
-  layer temperature.
+  channel's groundwater exchange and the mass a gain carries, irrigation
+  applied to upland HRUs with its nitrate and P, and soil layer temperature.
 - Chemistry is salt ions, nitrate and soluble phosphorus. SWAT+'s other
   constituents, pesticides and pathogens aren't exposed; a loss takes the
   other constituents with its water but leaves pesticides and pathogens,

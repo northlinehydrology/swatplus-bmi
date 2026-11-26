@@ -457,6 +457,9 @@ objects in a project are left out. Landscape units and the basin (for the
 | `land_irrigation_water__withdrawal_volume_flow_rate` | HRUs | no | m3 s-1 | what the HRU's `irrigate` actions and paddy irrigation (`irrp`) took from SWAT+'s channels and reservoirs, before the application's loss |
 | `channel_water__irrigation_withdrawal_volume_flow_rate` | channels | no | m3 s-1 | what `irrigate` actions and paddy irrigation took from the channel (Gotchas: stock SWAT+ 62.0.1 doesn't take it out of the channel; the exchange build does) |
 | `reservoir_water__irrigation_withdrawal_volume_flow_rate` | reservoirs | no | m3 s-1 | what `irrigate` actions and paddy irrigation took from the reservoir |
+| `land_irrigation_water__infiltration_volume_flow_rate` | HRUs | yes (the next day; not a wetland or paddy) | m3 s-1 | irrigation applied from outside that enters the soil: added to SWAT+'s own irrigation that day, printed in `irr`; read after the day, what went in |
+| `land_irrigation_water__runoff_volume_flow_rate` | HRUs | yes (the next day; not a wetland or paddy) | m3 s-1 | irrigation applied from outside that runs off, added to the day's surface runoff (`surq_cont`) |
+| `land_irrigation_water_no3__mass_flow_rate`, `land_irrigation_water_solp__mass_flow_rate` | HRUs | with water into the soil | kg s-1 | the irrigation water's nitrate (N) and soluble P, into the top soil layer |
 | `soil_layer_water__groundwater_inflow_rate` | HRU soil layers | yes (the next day) | m s-1 | groundwater into the layer, where gwflow puts its own; read after the day, what went in |
 | `soil_water__groundwater_inflow_rate` | HRUs | no | m s-1 | `gwsoilq` in `hru_wb_day.txt`: groundwater into the soil profile, gwflow's or set |
 | `soil_layer_bottom__depth` | HRU soil layers | no | m | the layer's bottom below the surface (`d`) |
@@ -489,9 +492,11 @@ Names follow [CSDMS Standard Names](https://csdms.colorado.edu/wiki/CSDMS_Standa
 channel volume and flow names and the recharge name are on the CSDMS list. The others are new,
 built the same way. SWAT+ keeps 4-byte reals; values come out of BMI as 8-byte reals
 (`float64`), so a value read and set back is SWAT+'s own to the bit. Every variable is checked
-against SWAT+'s own daily output in the tests, to the digits SWAT+ prints, except three SWAT+
+against SWAT+'s own daily output in the tests, to the digits SWAT+ prints, except five SWAT+
 62.0.1 can't show: an aquifer's salt recharge and a point source's salt load (its salt module
-doesn't run with aquifers or point sources) and an aquifer's soluble P recharge (not printed).
+doesn't run with aquifers or point sources), an aquifer's soluble P recharge (not printed), and
+the nitrate and P set with irrigation (not printed; the tests follow the nitrate out of the HRU
+instead).
 
 ### Every printed daily column
 
@@ -682,6 +687,15 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   so on every later day the paddy takes its water from its source and applies none of it. The
   withdrawal reads count what was taken; `land_irrigation_water__volume_flow_rate` shows what was
   applied. Not patched. A paddy irrigated by a decision table's `irrigate` isn't affected.
+- **Irrigation applied from outside goes on upland HRUs only, and its runoff is best set on dry
+  days.** The four `land_irrigation_water__*` inputs add to SWAT+'s own irrigation for the day,
+  where SWAT+ puts it (docs/design.md, "Irrigation applied from outside"). A wetland or paddy HRU
+  is refused: SWAT+ irrigates its ponded water, and its paddy irrigation replaces the day's. On
+  a day with rain, SWAT+ 62.0.1 takes an irrigation's runoff, its own or set, out of the rain's
+  infiltration (`precip_eff - surfq` in `hru_control.f90`), so the runoff adds water to the HRU
+  only by what exceeds that; water set into the soil is always added. SWAT+ prints irrigation's
+  runoff in `surq_cont` but not in `irr`, and prints no irrigation nitrate or P anywhere, so the
+  reads are the record of what went in. Not patched.
 - **Aquifer withdrawals in SWAT+ 62.0.1 deliver less than they remove.** The aquifer loses the
   demand, but the user is credited with demand × (1 − demand/storage). It's a bug in
   `wallo_withdraw.f90`; a test documents it and will fail once SWAT+ fixes it. (Draft report:
