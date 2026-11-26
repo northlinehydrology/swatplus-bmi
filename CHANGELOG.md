@@ -3,6 +3,40 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
+## 0.15.0 (unreleased)
+
+- Irrigation can be applied to an HRU from outside SWAT+, for a study's reported irrigators or
+  estimated unreported irrigation (Basin Ledger's request 9). Four inputs on the hru grid, each
+  set for the next day and read after it as what went in (0 on other days):
+  `land_irrigation_water__infiltration_volume_flow_rate` and
+  `land_irrigation_water__runoff_volume_flow_rate` (m3 s-1), the water that enters the soil and
+  the water that runs off, and `land_irrigation_water_no3__mass_flow_rate` and
+  `land_irrigation_water_solp__mass_flow_rate` (kg s-1), the nitrate (N) and soluble P it
+  carries. A hook right after the day's management operations (`exch_hru_irr`,
+  `hru_control.f90`) adds them to SWAT+'s own irrigation for the day, where SWAT+ puts it: the
+  water on `irrig(j)%applied`, which enters the soil, prints as `irr` in `hru_wb`, counts in the
+  year's irrigation decision tables test (`irr_yr`) and in `land_irrigation_water__volume_flow_rate`;
+  the runoff on `irrig(j)%runoff`, which joins the day's surface runoff; either restarts the days
+  since the last irrigation; the nitrate and P into the top soil layer, as fertilizer's go. A
+  decision table's or a scheduled irrigation the same day adds to the set water, and the set
+  water to it. No new science: with nothing set, or 0 set, SWAT+'s output is stock's, byte for
+  byte.
+- Refused: a negative value, an HRU of no area, a wetland or paddy HRU (SWAT+ irrigates its ponded
+  water, and its own paddy irrigation replaces the day's), and a nitrate or P mass with no water
+  set into that HRU's soil.
+- Found and documented, not patched (docs/design.md, Found in SWAT+ 62.0.1, items 24 and 25): on a
+  day with rain, SWAT+ 62.0.1 takes an irrigation's runoff, its own or set, out of the rain's
+  infiltration (`precip_eff - surfq`), so the runoff adds water to the HRU only by what exceeds
+  that; and an upland HRU's irrigation brings no nitrate (`irr.ops`' `no3_ppm` reaches only a
+  paddy's ponded water), and `hru_nb` has no column for irrigation's nutrients. SWAT+ prints an
+  irrigation's runoff in `surq_cont`, not in `irr`.
+- Saved states carry what is set and what went in (`SWXSTATE-8`). A state saved by 0.14
+  (`SWXSTATE-7`) or 0.13 (`SWXSTATE-6`) still loads, with nothing set; SWAT+'s own variables are
+  saved in the same layout, and the serializer's digest is unchanged, so warm-up states carry over.
+- The build hash changes (the exchange patch and module), so an executable built by 0.14 is
+  refused: rebuild with `swatplus-bmi build`, or install the wheel with SWAT+ inside. The
+  README's count of the patch's calls was stale: nineteen calls in eleven SWAT+ files.
+
 ## 0.14.0 (2026-11-25)
 
 - Places of use on any channel, and several on one, now withdraw their own demand. SWAT+ 62.0.1's

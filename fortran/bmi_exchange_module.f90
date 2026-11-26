@@ -44,6 +44,12 @@
 !!    irrigation (irrp), takes from a channel or a reservoir, by source and
 !!    by HRU (exch_irr_take, in actions and wet_irrp). Those hooks only add
 !!    up; they change nothing SWAT+ does.
+!!
+!!    Irrigation can be applied to an HRU from outside SWAT+ for the next
+!!    day: water into the soil and water that runs off, with the nitrate and
+!!    soluble phosphorus it carries (exch_hru_irr, in hru_control after the
+!!    day's management operations). It goes where SWAT+'s own irrigation
+!!    goes, added to what SWAT+ applied that day.
 
       use iso_fortran_env, only : input_unit
       use, intrinsic :: iso_c_binding, only : c_int, c_char, c_null_char, c_size_t, c_int32_t
@@ -55,7 +61,7 @@
       private
       public :: exch_on, exch_open, exch_start, exch_pause, exch_apply, exch_record, exch_end,     &
                 exch_channel, exch_channel_in, exch_channel_cs, exch_hru_soil, exch_hru_gwsoil,   &
-                exch_hru_gwsoil_mass, exch_res_in, exch_res, exch_irr_take
+                exch_hru_gwsoil_mass, exch_res_in, exch_res, exch_irr_take, exch_hru_irr
 
       logical :: exch_on = .false.        !! exchange mode is on
       integer :: cmd_unit = input_unit    !! commands in
@@ -69,9 +75,11 @@
       logical :: ended = .false.          !! the simulation has ended (exch_end)
       integer, parameter :: unit_max = 1000000   !! highest unit number branch looks at
       character(len=80) :: paused_line = ""      !! the last @paused reply
-      character(len=16), parameter :: state_magic = "SWXSTATE-7"
-      !! a state saved by 0.13 (SWXSTATE-6) loads too: it's this layout without the irrigation
-      !! withdrawals (irr_*), which load as zero
+      character(len=16), parameter :: state_magic = "SWXSTATE-8"
+      !! states saved by 0.14 (SWXSTATE-7) and 0.13 (SWXSTATE-6) load too: 7 is this layout
+      !! without the irrigation applied from outside (ira_*), and 6 without the irrigation
+      !! withdrawals (irr_*) as well, which load as zero
+      character(len=16), parameter :: state_magic_7 = "SWXSTATE-7"
       character(len=16), parameter :: state_magic_6 = "SWXSTATE-6"
 
       !! loading a saved state: run forward to the saved day, then load
@@ -161,11 +169,20 @@
       real(8), dimension(:), allocatable :: irr_res_now, irr_res_day
       real(8), dimension(:), allocatable :: irr_hru_now, irr_hru_day
 
+      !! irrigation applied to an HRU from outside SWAT+ (exch_hru_irr), by HRU number:
+      !! 1 water into the soil and 2 water that runs off (m3/s), 3 its nitrate (as N) and
+      !! 4 its soluble P (kg/s). Set for the next day (ira_set, ira_on, as given), and what
+      !! went in the day just done (ira_day, m3/day and kg/day)
+      integer, parameter :: n_ira = 4
+      real(8), dimension(:,:), allocatable :: ira_set
+      logical, dimension(:,:), allocatable :: ira_on
+      real(8), dimension(:,:), allocatable :: ira_day
+
       !! the catalog: the water variables, the chemistry variables, one per species, then
       !! every column of the daily output records (exch_start). var_fam is 0 for a water
       !! variable, the chemistry family, or gen_fam for an output column (var_sp its number)
       integer, parameter :: gen_fam = 9
-      integer, parameter :: nbase = 49
+      integer, parameter :: nbase = 53
       character(len=64), dimension(nbase), parameter :: base_name = [character(len=64) ::     &
             "channel_water__volume_outflow_rate",                           &
             "channel_water__volume",                                        &
@@ -215,28 +232,32 @@
             "reservoir_water__groundwater_volume_exchange_rate",           &
             "channel_water__irrigation_withdrawal_volume_flow_rate",       &
             "reservoir_water__irrigation_withdrawal_volume_flow_rate",     &
-            "land_irrigation_water__withdrawal_volume_flow_rate"]
+            "land_irrigation_water__withdrawal_volume_flow_rate",           &
+            "land_irrigation_water__infiltration_volume_flow_rate",         &
+            "land_irrigation_water__runoff_volume_flow_rate",               &
+            "land_irrigation_water_no3__mass_flow_rate",                    &
+            "land_irrigation_water_solp__mass_flow_rate"]
       character(len=8), dimension(nbase), parameter :: base_grid = [character(len=8) ::      &
             "cha", "cha", "cha", "aqu", "aqu", "aqu", "aqu", "rec", "pou", "pou",    &
             "cha", "cha", "hly", "hru", "hru", "hru", "hru", "hru",                  &
             "pcp", "tmp", "tmp", "slr", "hmd", "wnd", "hly", "hru",                  &
             "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hru", "hru", "hru", &
             "res", "res", "res", "res", "res", "res", "res", "res",                  &
-            "cha", "res", "hru"]
+            "cha", "res", "hru", "hru", "hru", "hru", "hru"]
       character(len=8), dimension(nbase), parameter :: base_units = [character(len=8) ::     &
             "m3 s-1", "m3", "m3 s-1", "m3", "m", "m3 s-1", "m s-1", "m3 s-1", "m3 s-1", "m3 s-1", &
             "m", "m3 s-1", "degC", "m", "m s-1", "m s-1", "m s-1", "m",                  &
             "m s-1", "degC", "degC", "W m-2", "1", "m s-1", "m s-1", "m s-1",        &
             "m", "m", "m", "m", "m", "m", "m s-1", "kg s-1", "kg s-1", "kg s-1", "kg s-1",      &
             "m3 s-1", "m3", "m2", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1",   &
-            "m3 s-1", "m3 s-1", "m3 s-1"]
+            "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1", "kg s-1", "kg s-1"]
       character(len=3), dimension(nbase), parameter :: base_role = [character(len=3) ::      &
             "out", "out", "out", "out", "out", "out", "out", "in", "in", "out",  &
             "out", "in", "in", "out", "out", "out", "out", "out",                    &
             "in", "in", "in", "in", "in", "in", "in", "out",                         &
             "out", "out", "out", "out", "out", "out", "out", "in", "in", "out", "out", "out",   &
             "out", "out", "out", "out", "out", "out", "out", "in",                   &
-            "out", "out", "out"]
+            "out", "out", "out", "in", "in", "in", "in"]
       !! chemistry families: <prefix><species><suffix>
       integer, parameter :: fam_conc = 1, fam_exch = 2, fam_rchg = 3, fam_load = 4
       character(len=24), dimension(4), parameter :: fam_prefix = [character(len=24) ::      &
@@ -394,6 +415,9 @@
       allocate (irr_res_day(sp_ob%res), source = 0.d0)
       allocate (irr_hru_now(sp_ob%hru), source = 0.d0)
       allocate (irr_hru_day(sp_ob%hru), source = 0.d0)
+      allocate (ira_set(n_ira,sp_ob%hru), source = 0.d0)
+      allocate (ira_on(n_ira,sp_ob%hru), source = .false.)
+      allocate (ira_day(n_ira,sp_ob%hru), source = 0.d0)
       allocate (chx_flo(sp_ob%chandeg), source = 0.)
       allocate (chx_on(sp_ob%chandeg), source = .false.)
       allocate (chx_gain(sp_ob%chandeg), source = 0.)
@@ -639,6 +663,8 @@
       !! nitrate and phosphorus at exch_hru_gwsoil_mass
       hly_gw_day = 0.
       hly_gwm_day = 0.
+      !! irrigation from outside goes in at exch_hru_irr, HRU by HRU
+      ira_day = 0.d0
 
       return
       end subroutine exch_apply
@@ -1001,6 +1027,71 @@
       end subroutine exch_hru_gwsoil_mass
 
 !!    --------------------------------------------------------------------
+      subroutine exch_hru_irr (j)
+
+!!    called in hru_control right after mgt_operatn, before surface: adds
+!!    the irrigation set for the HRU's day to SWAT+'s own for the day, where
+!!    SWAT+'s irrigation goes. Decision tables (actions, at the top of the
+!!    HRU's day) and scheduled irrigation (mgt_operatn) set irrig(j)%applied
+!!    and %runoff with "=" before this, so the set water adds to theirs.
+!!    The water into the soil goes on irrig(j)%applied, which swr_percmain
+!!    puts into the soil and hru_control prints as irr (hwb_d), and into the
+!!    yearly sum decision tables test (hru(j)%irr_yr); the runoff goes on
+!!    irrig(j)%runoff, which surface adds to the day's surface runoff. Both
+!!    restart the days since the last irrigation, as SWAT+'s do. The
+!!    nitrate and soluble P go into the top soil layer (soil1(j)%mn(1)%no3,
+!!    %mp(1)%lab), where fertilizer goes. Not on a wetland or paddy HRU:
+!!    SWAT+ puts irrigation there into the ponded water, and one that became
+!!    a wetland during the day takes none (refused at the set otherwise).
+
+      use hydrograph_module, only : irrig
+      use hru_module, only : hru
+      use plant_module, only : pcom
+      use organic_mineral_mass_module, only : soil1
+
+      integer, intent(in) :: j                            !HRU number
+      real(8) :: m3mm = 0.d0                              !m3 per mm on the HRU
+      real :: add = 0.                                    !mm or kg/ha
+
+      if (.not. exch_on) return
+      if (.not. allocated(ira_on)) return
+      if (j < 1 .or. j > size(ira_on,2)) return
+      if (.not. any(ira_on(:,j))) return
+      if (hru(j)%dbs%surf_stor > 0 .or. hru(j)%area_ha <= 0.) then
+        ira_on(:,j) = .false.
+        return
+      end if
+
+      m3mm = 10.d0 * hru(j)%area_ha
+      if (ira_on(1,j)) then
+        add = real(ira_set(1,j) * 86400.d0 / m3mm)        !m3/s -> mm
+        irrig(j)%applied = irrig(j)%applied + add
+        hru(j)%irr_yr = hru(j)%irr_yr + add
+        ira_day(1,j) = add * m3mm                         !m3/day
+        if (add > 0.) pcom(j)%days_irr = 1
+      end if
+      if (ira_on(2,j)) then
+        add = real(ira_set(2,j) * 86400.d0 / m3mm)
+        irrig(j)%runoff = irrig(j)%runoff + add
+        ira_day(2,j) = add * m3mm
+        if (add > 0.) pcom(j)%days_irr = 1
+      end if
+      if (ira_on(3,j)) then
+        add = real(ira_set(3,j) * 86400.d0 / hru(j)%area_ha)   !kg/s -> kg/ha
+        soil1(j)%mn(1)%no3 = soil1(j)%mn(1)%no3 + add
+        ira_day(3,j) = add * hru(j)%area_ha                    !kg/day
+      end if
+      if (ira_on(4,j)) then
+        add = real(ira_set(4,j) * 86400.d0 / hru(j)%area_ha)
+        soil1(j)%mp(1)%lab = soil1(j)%mp(1)%lab + add
+        ira_day(4,j) = add * hru(j)%area_ha
+      end if
+      ira_on(:,j) = .false.
+
+      return
+      end subroutine exch_hru_irr
+
+!!    --------------------------------------------------------------------
       real function rating_depth (ich, flo_rate)
 
 !!    water depth on SWAT+'s rating curve for a channel at a flow rate (m3/s),
@@ -1061,6 +1152,7 @@
       hly_on = .false.
       hly_gw_on = .false.
       hly_gwm_on = .false.
+      ira_on = .false.
 
       return
       end subroutine exch_record
@@ -1501,6 +1593,7 @@
       write (u) size(hru_irr_day), hru_irr_day
       write (u) size(irr_cha_now), size(irr_res_now), irr_cha_now, irr_cha_day, irr_res_now,   &
                 irr_res_day, irr_hru_now, irr_hru_day
+      write (u) size(ira_set,2), ira_set, ira_on, ira_day
       write (u) size(chx_day), chx_day
       write (u) size(rsx_flo), rsx_flo, rsx_on, rsv_day
       write (u) size(rec_flo), rec_flo, rec_flo_on, dmd_flo, dmd_flo_on, chx_flo, chx_on
@@ -1629,7 +1722,7 @@
       end if
       read (u, iostat=ios) magic, digest, load_day
       close (u)
-      if (ios /= 0 .or. (magic /= state_magic .and. magic /= state_magic_6)) then
+      if (ios /= 0 .or. (magic /= state_magic .and. magic /= state_magic_7 .and. magic /= state_magic_6)) then
         call reply ("@error not a saved SWAT+ state: " // path)
       else if (digest /= swx_state_digest) then
         call reply ("@error the state was saved by a different build (" // trim(digest) //         &
@@ -1692,6 +1785,17 @@
           error stop 7
         end if
         read (u) irr_cha_now, irr_cha_day, irr_res_now, irr_res_day, irr_hru_now, irr_hru_day
+      end if
+      if (magic == state_magic_7 .or. magic == state_magic_6) then
+        !! saved by 0.14 or 0.13, before irrigation could be applied from outside: none is set
+        ira_set = 0.d0; ira_on = .false.; ira_day = 0.d0
+      else
+        read (u) n
+        if (n /= size(ira_set,2)) then
+          call reply ("@error the saved state has a different number of HRUs")
+          error stop 7
+        end if
+        read (u) ira_set, ira_on, ira_day
       end if
       read (u) n
       if (n /= size(chx_day)) then
@@ -2064,6 +2168,15 @@
           val(i) = hru_irr_day(ob(iob)%num) * hru(ob(iob)%num)%area_ha * 10.d0 / 86400.d0   !mm*ha -> m3/s
         end do
 
+      case ("land_irrigation_water__infiltration_volume_flow_rate", "land_irrigation_water__runoff_volume_flow_rate", &
+            "land_irrigation_water_no3__mass_flow_rate", "land_irrigation_water_solp__mass_flow_rate")
+        !! the irrigation applied from outside on the day just done, as it went in (exch_hru_irr)
+        k = ira_kind (name)
+        allocate (val(sp_ob%hru), source = 0.d0)
+        do i = 1, sp_ob%hru
+          val(i) = ira_day(k, ob(sp_ob1%hru + i - 1)%num) / 86400.d0   !m3/day -> m3/s, kg/day -> kg/s
+        end do
+
       case default
         iv = var_index(name)
         if (iv == 0) then
@@ -2412,6 +2525,10 @@
           end if
         end if
 
+      case ("land_irrigation_water__infiltration_volume_flow_rate", "land_irrigation_water__runoff_volume_flow_rate", &
+            "land_irrigation_water_no3__mass_flow_rate", "land_irrigation_water_solp__mass_flow_rate")
+        call take_irrigation (ira_kind(name), i, v, keep, msg)
+
       case default
         iv = var_index(name)
         if (iv == 0) then
@@ -2515,6 +2632,88 @@
 
       return
       end subroutine take_chem
+
+!!    --------------------------------------------------------------------
+      integer function ira_kind (name)
+
+!!    which of the irrigation applied from outside a variable is (ira_set)
+
+      character(len=*), intent(in) :: name
+
+      select case (name)
+      case ("land_irrigation_water__infiltration_volume_flow_rate"); ira_kind = 1
+      case ("land_irrigation_water__runoff_volume_flow_rate");       ira_kind = 2
+      case ("land_irrigation_water_no3__mass_flow_rate");            ira_kind = 3
+      case default;                                                  ira_kind = 4
+      end select
+
+      return
+      end function ira_kind
+
+!!    --------------------------------------------------------------------
+      subroutine take_irrigation (k, i, v, keep, msg)
+
+!!    take_value for irrigation applied to HRU i from outside the next day
+!!    (exch_hru_irr): k 1 water into the soil, 2 water that runs off (m3/s),
+!!    3 nitrate, 4 soluble P (kg/s). Refused: a negative value, an HRU of no
+!!    area, a wetland or paddy HRU (SWAT+ puts irrigation there into the
+!!    ponded water, and its own paddy irrigation replaces the day's), and a
+!!    nitrate or P mass with no water set into the soil for the HRU that day
+
+      use hydrograph_module, only : sp_ob, sp_ob1, ob
+      use hru_module, only : hru
+
+      integer, intent(in) :: k
+      integer, intent(in) :: i
+      real(8), intent(in) :: v                            !m3/s or kg/s
+      logical, intent(in) :: keep
+      character(len=*), intent(out) :: msg
+      integer :: j = 0
+
+      msg = ""
+      if (i < 1 .or. i > sp_ob%hru) then
+        msg = "index out of range"
+        return
+      end if
+      j = ob(sp_ob1%hru + i - 1)%num
+      if (v < 0.d0) then
+        msg = "irrigation applied to an HRU can't be negative"
+        return
+      end if
+      if (v > 0.d0) then
+        if (hru(j)%area_ha <= 0.) then
+          msg = "HRU " // trim(ob(sp_ob1%hru + i - 1)%name) // " has no area"
+          return
+        end if
+        if (v * 86400.d0 / hru(j)%area_ha > huge(1.)) then
+          msg = "the value is too large for SWAT+'s 4-byte reals"
+          return
+        end if
+        if (hru(j)%dbs%surf_stor > 0) then
+          msg = "HRU " // trim(ob(sp_ob1%hru + i - 1)%name) // " is a wetland or paddy (surf_stor in " //   &
+                "hru-data.hru): SWAT+ puts its irrigation into the ponded water, and its paddy irrigation " //  &
+                "replaces the day's, so irrigation set from outside would not be used as given"
+          return
+        end if
+        if (k > 2 .and. .not. (ira_on(1,j) .and. ira_set(1,j) > 0.d0)) then
+          msg = "no irrigation water is set into HRU " // trim(ob(sp_ob1%hru + i - 1)%name) // "'s soil " //  &
+                "for the next day; set land_irrigation_water__infiltration_volume_flow_rate first: " //       &
+                "the nitrate and phosphorus come with the water"
+          return
+        end if
+      end if
+      if (k == 1 .and. v <= 0.d0 .and. any(ira_on(3:4,j) .and. ira_set(3:4,j) > 0.d0)) then
+        msg = "nitrate or phosphorus is set with HRU " // trim(ob(sp_ob1%hru + i - 1)%name) // "'s " //    &
+              "irrigation water for the next day, so the water into the soil can't be set to 0"
+        return
+      end if
+      if (keep) then
+        ira_set(k,j) = v
+        ira_on(k,j) = .true.
+      end if
+
+      return
+      end subroutine take_irrigation
 
 !!    --------------------------------------------------------------------
       subroutine check_recall (i, msg)

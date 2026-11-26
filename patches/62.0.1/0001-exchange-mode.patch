@@ -53,14 +53,13 @@ index fc8e026..4b9dddc 100644
        if (time%yrs > pco%nyskip) then
        
 diff --git a/src/hru_control.f90 b/src/hru_control.f90
-index 8d202f9..0036b8a 100644
 --- a/src/hru_control.f90
 +++ b/src/hru_control.f90
 @@ -28,6 +28,7 @@
        use mgt_operations_module
        use reservoir_module
        use output_landscape_module
-+      use bmi_exchange_module, only : exch_hru_soil
++      use bmi_exchange_module, only : exch_hru_soil, exch_hru_irr
        use output_ls_pesticide_module
        use time_module
        use conditional_module
@@ -72,6 +71,14 @@ index 8d202f9..0036b8a 100644
          
          !!compute canopy interception
          call sq_canopyint
+@@ -306,6 +308,7 @@
+ 
+         !! perform management operations
+         if (yr_skip(j) == 0) call mgt_operatn
++        call exch_hru_irr (j)   !! exchange mode: irrigation set from outside adds to the day's here
+         
+         !! compute surface runoff processes
+         if (ires == 0) then
 diff --git a/src/main.f90.in b/src/main.f90.in
 index 8fe25aa..196511e 100644
 --- a/src/main.f90.in
