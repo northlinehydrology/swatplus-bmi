@@ -3,7 +3,7 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
-## 0.16.0 (unreleased)
+## 0.16.0 (2026-11-27)
 
 - The soil cover of SWAT+'s soil evaporation can be set for an HRU's next day, the second
   settable state after soil temperature (Basin Ledger's Rappahannock study: forest ET too low).
