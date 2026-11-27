@@ -50,6 +50,12 @@
 !!    soluble phosphorus it carries (exch_hru_irr, in hru_control after the
 !!    day's management operations). It goes where SWAT+'s own irrigation
 !!    goes, added to what SWAT+ applied that day.
+!!
+!!    The soil cover SWAT+'s soil evaporation sees can be set for an HRU's
+!!    next day (exch_hru_cover, in et_act right after SWAT+ computes it):
+!!    the set value replaces SWAT+'s for that day only. SWAT+ keeps no soil
+!!    cover from day to day, so the set value carries on only through what
+!!    the day's evaporation did.
 
       use iso_fortran_env, only : input_unit
       use, intrinsic :: iso_c_binding, only : c_int, c_char, c_null_char, c_size_t, c_int32_t
@@ -61,7 +67,8 @@
       private
       public :: exch_on, exch_open, exch_start, exch_pause, exch_apply, exch_record, exch_end,     &
                 exch_channel, exch_channel_in, exch_channel_cs, exch_hru_soil, exch_hru_gwsoil,   &
-                exch_hru_gwsoil_mass, exch_res_in, exch_res, exch_irr_take, exch_hru_irr
+                exch_hru_gwsoil_mass, exch_res_in, exch_res, exch_irr_take, exch_hru_irr,   &
+                exch_hru_cover
 
       logical :: exch_on = .false.        !! exchange mode is on
       integer :: cmd_unit = input_unit    !! commands in
@@ -75,10 +82,12 @@
       logical :: ended = .false.          !! the simulation has ended (exch_end)
       integer, parameter :: unit_max = 1000000   !! highest unit number branch looks at
       character(len=80) :: paused_line = ""      !! the last @paused reply
-      character(len=16), parameter :: state_magic = "SWXSTATE-8"
-      !! states saved by 0.14 (SWXSTATE-7) and 0.13 (SWXSTATE-6) load too: 7 is this layout
-      !! without the irrigation applied from outside (ira_*), and 6 without the irrigation
-      !! withdrawals (irr_*) as well, which load as zero
+      character(len=16), parameter :: state_magic = "SWXSTATE-9"
+      !! states saved by 0.15 (SWXSTATE-8), 0.14 (SWXSTATE-7) and 0.13 (SWXSTATE-6) load too:
+      !! 8 is this layout without the soil cover (cov_*), 7 without the irrigation applied
+      !! from outside (ira_*) as well, and 6 without the irrigation withdrawals (irr_*) as
+      !! well, which load as zero, or as nothing set
+      character(len=16), parameter :: state_magic_8 = "SWXSTATE-8"
       character(len=16), parameter :: state_magic_7 = "SWXSTATE-7"
       character(len=16), parameter :: state_magic_6 = "SWXSTATE-6"
 
@@ -178,11 +187,17 @@
       logical, dimension(:,:), allocatable :: ira_on
       real(8), dimension(:,:), allocatable :: ira_day
 
+      !! the soil cover of SWAT+'s soil evaporation (exch_hru_cover), kg/ha, by HRU number: set
+      !! for the next day, and what et_act used the day just done (NaN if it computed none)
+      real, dimension(:), allocatable :: cov_set
+      logical, dimension(:), allocatable :: cov_on
+      real, dimension(:), allocatable :: cov_day
+
       !! the catalog: the water variables, the chemistry variables, one per species, then
       !! every column of the daily output records (exch_start). var_fam is 0 for a water
       !! variable, the chemistry family, or gen_fam for an output column (var_sp its number)
       integer, parameter :: gen_fam = 9
-      integer, parameter :: nbase = 53
+      integer, parameter :: nbase = 57
       character(len=64), dimension(nbase), parameter :: base_name = [character(len=64) ::     &
             "channel_water__volume_outflow_rate",                           &
             "channel_water__volume",                                        &
@@ -236,28 +251,35 @@
             "land_irrigation_water__infiltration_volume_flow_rate",         &
             "land_irrigation_water__runoff_volume_flow_rate",               &
             "land_irrigation_water_no3__mass_flow_rate",                    &
-            "land_irrigation_water_solp__mass_flow_rate"]
+            "land_irrigation_water_solp__mass_flow_rate",                   &
+            "soil_surface_cover__mass-per-area_density",                    &
+            "land_vegetation__above-ground_mass-per-area_density",          &
+            "land_vegetation_leaf__mass-per-area_density",                  &
+            "land_surface_residue__mass-per-area_density"]
       character(len=8), dimension(nbase), parameter :: base_grid = [character(len=8) ::      &
             "cha", "cha", "cha", "aqu", "aqu", "aqu", "aqu", "rec", "pou", "pou",    &
             "cha", "cha", "hly", "hru", "hru", "hru", "hru", "hru",                  &
             "pcp", "tmp", "tmp", "slr", "hmd", "wnd", "hly", "hru",                  &
             "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hru", "hru", "hru", &
             "res", "res", "res", "res", "res", "res", "res", "res",                  &
-            "cha", "res", "hru", "hru", "hru", "hru", "hru"]
+            "cha", "res", "hru", "hru", "hru", "hru", "hru",                         &
+            "hru", "hru", "hru", "hru"]
       character(len=8), dimension(nbase), parameter :: base_units = [character(len=8) ::     &
             "m3 s-1", "m3", "m3 s-1", "m3", "m", "m3 s-1", "m s-1", "m3 s-1", "m3 s-1", "m3 s-1", &
             "m", "m3 s-1", "degC", "m", "m s-1", "m s-1", "m s-1", "m",                  &
             "m s-1", "degC", "degC", "W m-2", "1", "m s-1", "m s-1", "m s-1",        &
             "m", "m", "m", "m", "m", "m", "m s-1", "kg s-1", "kg s-1", "kg s-1", "kg s-1",      &
             "m3 s-1", "m3", "m2", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1",   &
-            "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1", "kg s-1", "kg s-1"]
+            "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1", "kg s-1", "kg s-1",               &
+            "kg m-2", "kg m-2", "kg m-2", "kg m-2"]
       character(len=3), dimension(nbase), parameter :: base_role = [character(len=3) ::      &
             "out", "out", "out", "out", "out", "out", "out", "in", "in", "out",  &
             "out", "in", "in", "out", "out", "out", "out", "out",                    &
             "in", "in", "in", "in", "in", "in", "in", "out",                         &
             "out", "out", "out", "out", "out", "out", "out", "in", "in", "out", "out", "out",   &
             "out", "out", "out", "out", "out", "out", "out", "in",                   &
-            "out", "out", "out", "in", "in", "in", "in"]
+            "out", "out", "out", "in", "in", "in", "in",                             &
+            "in", "out", "out", "out"]
       !! chemistry families: <prefix><species><suffix>
       integer, parameter :: fam_conc = 1, fam_exch = 2, fam_rchg = 3, fam_load = 4
       character(len=24), dimension(4), parameter :: fam_prefix = [character(len=24) ::      &
@@ -418,6 +440,9 @@
       allocate (ira_set(n_ira,sp_ob%hru), source = 0.d0)
       allocate (ira_on(n_ira,sp_ob%hru), source = .false.)
       allocate (ira_day(n_ira,sp_ob%hru), source = 0.d0)
+      allocate (cov_set(sp_ob%hru), source = 0.)
+      allocate (cov_on(sp_ob%hru), source = .false.)
+      allocate (cov_day(sp_ob%hru), source = ieee_value (0., ieee_quiet_nan))
       allocate (chx_flo(sp_ob%chandeg), source = 0.)
       allocate (chx_on(sp_ob%chandeg), source = .false.)
       allocate (chx_gain(sp_ob%chandeg), source = 0.)
@@ -665,6 +690,8 @@
       hly_gwm_day = 0.
       !! irrigation from outside goes in at exch_hru_irr, HRU by HRU
       ira_day = 0.d0
+      !! the soil cover at exch_hru_cover: NaN for an HRU whose et_act computes none
+      cov_day = ieee_value (0., ieee_quiet_nan)
 
       return
       end subroutine exch_apply
@@ -1092,6 +1119,36 @@
       end subroutine exch_hru_irr
 
 !!    --------------------------------------------------------------------
+      subroutine exch_hru_cover (j, cover)
+
+!!    called in et_act right after SWAT+ computes the HRU's soil cover
+!!    (above-ground plant mass of the community plus surface residue,
+!!    pl_mass(j)%ab_gr_com%m + pl_mass(j)%rsd_tot%m, kg/ha) and before its
+!!    soil evaporation uses it (eaj = Exp(-5.e-5 * (cover + 0.1))): a cover
+!!    set for the day replaces SWAT+'s, and the cover used is kept for the
+!!    read. et_act computes the cover only when the canopy's storage leaves
+!!    some of the day's PET (pet > 1.e-6), so on other days this isn't
+!!    called and a cover set for the day isn't used. Under snow (sno_mm >=
+!!    0.5) SWAT+ takes eaj = 0.5 whatever the cover, and on a wetland with
+!!    water its evaporation doesn't use the cover; a set cover is used there
+!!    as SWAT+'s own would be, which is not at all.
+
+      integer, intent(in) :: j                            !HRU number
+      real, intent(inout) :: cover                        !kg/ha
+
+      if (.not. exch_on) return
+      if (.not. allocated(cov_on)) return
+      if (j < 1 .or. j > size(cov_on)) return
+      if (cov_on(j)) then
+        cover = cov_set(j)
+        cov_on(j) = .false.
+      end if
+      cov_day(j) = cover
+
+      return
+      end subroutine exch_hru_cover
+
+!!    --------------------------------------------------------------------
       real function rating_depth (ich, flo_rate)
 
 !!    water depth on SWAT+'s rating curve for a channel at a flow rate (m3/s),
@@ -1153,6 +1210,7 @@
       hly_gw_on = .false.
       hly_gwm_on = .false.
       ira_on = .false.
+      cov_on = .false.
 
       return
       end subroutine exch_record
@@ -1594,6 +1652,7 @@
       write (u) size(irr_cha_now), size(irr_res_now), irr_cha_now, irr_cha_day, irr_res_now,   &
                 irr_res_day, irr_hru_now, irr_hru_day
       write (u) size(ira_set,2), ira_set, ira_on, ira_day
+      write (u) size(cov_set), cov_set, cov_on, cov_day
       write (u) size(chx_day), chx_day
       write (u) size(rsx_flo), rsx_flo, rsx_on, rsv_day
       write (u) size(rec_flo), rec_flo, rec_flo_on, dmd_flo, dmd_flo_on, chx_flo, chx_on
@@ -1722,7 +1781,8 @@
       end if
       read (u, iostat=ios) magic, digest, load_day
       close (u)
-      if (ios /= 0 .or. (magic /= state_magic .and. magic /= state_magic_7 .and. magic /= state_magic_6)) then
+      if (ios /= 0 .or. (magic /= state_magic .and. magic /= state_magic_8 .and. magic /= state_magic_7 .and.     &
+          magic /= state_magic_6)) then
         call reply ("@error not a saved SWAT+ state: " // path)
       else if (digest /= swx_state_digest) then
         call reply ("@error the state was saved by a different build (" // trim(digest) //         &
@@ -1796,6 +1856,18 @@
           error stop 7
         end if
         read (u) ira_set, ira_on, ira_day
+      end if
+      if (magic == state_magic_8 .or. magic == state_magic_7 .or. magic == state_magic_6) then
+        !! saved by 0.15, 0.14 or 0.13, before the soil cover could be set: none is set, and the
+        !! saved day's cover reads as none computed
+        cov_set = 0.; cov_on = .false.; cov_day = ieee_value (0., ieee_quiet_nan)
+      else
+        read (u) n
+        if (n /= size(cov_set)) then
+          call reply ("@error the saved state has a different number of HRUs")
+          error stop 7
+        end if
+        read (u) cov_set, cov_on, cov_day
       end if
       read (u) n
       if (n /= size(chx_day)) then
@@ -1909,6 +1981,7 @@
       use hru_module, only : hru
       use output_landscape_module, only : hwb_d, hnb_d
       use water_body_module, only : res_wat_d
+      use organic_mineral_mass_module, only : pl_mass
 
       character(len=*), intent(in) :: name
       real(8), dimension(:), allocatable, intent(out) :: val
@@ -2177,6 +2250,31 @@
           val(i) = ira_day(k, ob(sp_ob1%hru + i - 1)%num) / 86400.d0   !m3/day -> m3/s, kg/day -> kg/s
         end do
 
+      case ("soil_surface_cover__mass-per-area_density")
+        !! the soil cover the HRU's soil evaporation used the day just done, set or SWAT+'s own
+        !! (exch_hru_cover); NaN on a day et_act computed none
+        allocate (val(sp_ob%hru), source = 0.d0)
+        do i = 1, sp_ob%hru
+          val(i) = cov_day(ob(sp_ob1%hru + i - 1)%num) / 10000.d0     !kg/ha -> kg/m2
+        end do
+
+      case ("land_vegetation__above-ground_mass-per-area_density", "land_vegetation_leaf__mass-per-area_density", &
+            "land_surface_residue__mass-per-area_density")
+        !! the plant community's above-ground and leaf mass as SWAT+ last summed them
+        !! (pl_community, before the day's growth, less what senescence and dormancy dropped
+        !! since), and the surface residue, at the end of the day just done: the next day's
+        !! et_act takes the above-ground mass plus the residue as its soil cover
+        allocate (val(sp_ob%hru), source = 0.d0)
+        do i = 1, sp_ob%hru
+          k = ob(sp_ob1%hru + i - 1)%num
+          select case (name)
+          case ("land_vegetation__above-ground_mass-per-area_density"); val(i) = pl_mass(k)%ab_gr_com%m
+          case ("land_vegetation_leaf__mass-per-area_density");          val(i) = pl_mass(k)%leaf_com%m
+          case default;                                                  val(i) = pl_mass(k)%rsd_tot%m
+          end select
+          val(i) = val(i) / 10000.d0                                   !kg/ha -> kg/m2
+        end do
+
       case default
         iv = var_index(name)
         if (iv == 0) then
@@ -2382,7 +2480,7 @@
 
       character(len=*), intent(in) :: name
       integer, intent(in) :: i
-      real(8), intent(in) :: v                            !m3/s, kg/s, or deg C
+      real(8), intent(in) :: v                            !m3/s, kg/s, deg C or kg/m2
       logical, intent(in) :: keep
       character(len=*), intent(out) :: msg
       integer :: irec = 0
@@ -2528,6 +2626,24 @@
       case ("land_irrigation_water__infiltration_volume_flow_rate", "land_irrigation_water__runoff_volume_flow_rate", &
             "land_irrigation_water_no3__mass_flow_rate", "land_irrigation_water_solp__mass_flow_rate")
         call take_irrigation (ira_kind(name), i, v, keep, msg)
+
+      case ("soil_surface_cover__mass-per-area_density")
+        if (i < 1 .or. i > sp_ob%hru) then
+          msg = "index out of range"
+          return
+        end if
+        if (v < 0.d0) then
+          msg = "a soil cover can't be negative"
+          return
+        end if
+        if (v * 10000.d0 > huge(1.)) then
+          msg = "the value is too large for SWAT+'s 4-byte reals"
+          return
+        end if
+        if (keep) then
+          cov_set(ob(sp_ob1%hru + i - 1)%num) = real(v * 10000.d0)      !kg/m2 -> kg/ha
+          cov_on(ob(sp_ob1%hru + i - 1)%num) = .true.
+        end if
 
       case default
         iv = var_index(name)
