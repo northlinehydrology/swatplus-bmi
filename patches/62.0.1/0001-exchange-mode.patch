@@ -52,6 +52,25 @@ index fc8e026..4b9dddc 100644
        !! print all output files
        if (time%yrs > pco%nyskip) then
        
+diff --git a/src/et_act.f90 b/src/et_act.f90
+--- a/src/et_act.f90
++++ b/src/et_act.f90
+@@ -44,6 +44,7 @@
+       use hydrograph_module
+       use water_body_module
+       use reservoir_data_module
++      use bmi_exchange_module, only : exch_hru_cover
+       
+       implicit none
+ 
+@@ -124,6 +125,7 @@
+         es_max = 0.
+         eos1 = 0.
+         cover = pl_mass(j)%ab_gr_com%m + pl_mass(j)%rsd_tot%m
++        call exch_hru_cover (j, cover)   !! exchange mode: a set soil cover replaces the day's here
+         if (hru(j)%sno_mm >= 0.5) then
+           eaj = 0.5
+         else
 diff --git a/src/hru_control.f90 b/src/hru_control.f90
 --- a/src/hru_control.f90
 +++ b/src/hru_control.f90

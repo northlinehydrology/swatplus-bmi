@@ -27,8 +27,8 @@ Decisions behind the design:
 ## Pieces
 
 ```
-SWAT+ 62.0.1 (tag)  + patches/62.0.1/0001-*.patch  the exchange hooks: eleven SWAT+ files and
-                                                        CMakeLists.txt, 42 lines added
+SWAT+ 62.0.1 (tag)  + patches/62.0.1/0001-*.patch  the exchange hooks: twelve SWAT+ files and
+                                                        CMakeLists.txt, 44 lines added
                     + patches/62.0.1/0002-*.patch  a SWAT+ fix: places of use (Found in
                                                         SWAT+ 62.0.1, item 21)
                     + patches/62.0.1/0003-*.patch  a SWAT+ fix: irrigation from a channel
@@ -54,8 +54,9 @@ three in `sd_channel_control3.f90` (the channel hooks), two in
 `hru_control.f90` (the soil temperature hook and irrigation applied from outside), one in `swr_percmain.f90`
 (groundwater into the soil), one each in `nut_nlch.f90` and `nut_solp.f90`
 (its nitrate and phosphorus), two in `res_control.f90` (the reservoir hooks), one in
-`actions.f90` and two in `wet_irrp.f90` (irrigation withdrawals), one in
-`main.f90.in` and one in `command.f90`: nineteen in eleven files. Each returns at once when exchange mode is off.
+`actions.f90` and two in `wet_irrp.f90` (irrigation withdrawals), one in `et_act.f90` (the soil
+cover of soil evaporation), one in
+`main.f90.in` and one in `command.f90`: twenty in twelve files. Each returns at once when exchange mode is off.
 
 | Call | Where | What it does in exchange mode |
 |---|---|---|
@@ -71,6 +72,7 @@ three in `sd_channel_control3.f90` (the channel hooks), two in
 | `exch_res_in` | `res_control.f90`, right after the day's inflow is added to the reservoir | adds a set groundwater gain to the reservoir and its inflow |
 | `exch_res` | `res_control.f90`, after the day's outflow, evaporation and seepage are taken, before the area is updated | takes a set groundwater loss, no more than the reservoir holds, as seepage, and keeps the day's water |
 | `exch_hru_soil` | `hru_control.f90`, right after `stmp_solt` | replaces the day's soil layer temperatures that were set |
+| `exch_hru_cover` | `et_act.f90`, right after the soil cover is computed (`cover = pl_mass(j)%ab_gr_com%m + pl_mass(j)%rsd_tot%m`), before `eaj` uses it | replaces the day's cover with the one set, and keeps the cover used for the read |
 | `exch_hru_irr` | `hru_control.f90`, right after `mgt_operatn`, before `surface` | adds the irrigation set for the day to SWAT+'s own: water into the soil to `irrig(j)%applied` (and `hru(j)%irr_yr`), runoff to `irrig(j)%runoff`, nitrate and soluble P to the top soil layer |
 | `exch_hru_gwsoil` | `swr_percmain.f90`, right after gwflow's `gwflow_soil` call, before the day's infiltration and percolation | adds the groundwater set for the day to the HRU's soil layers, counted in `gwsoilq` as gwflow's is |
 | `exch_hru_gwsoil_mass` | `nut_nlch.f90` and `nut_solp.f90`, right after gwflow adds its groundwater's nitrate and P | adds the nitrate and labile P set with the day's groundwater, counted in `gwsoiln`, `gwsoilp` |
@@ -230,6 +232,10 @@ names follow the channel ones. CSDMS lists no aquifer or withdrawal names.
 | `land_irrigation_water__infiltration_volume_flow_rate` | hru | in and out | m3 s-1 | added to `irrig(j)%applied` and `hru(j)%irr_yr` (mm = m3 / (10 x area)) | irrigation applied from outside for the next day, the water that enters the soil; printed in `irr`; reading gives what went in on the day just done (Irrigation applied from outside) |
 | `land_irrigation_water__runoff_volume_flow_rate` | hru | in and out | m3 s-1 | added to `irrig(j)%runoff` (mm) | the water that runs off; `surface` adds it to `surfq` (`surq_cont`) |
 | `land_irrigation_water_no3__mass_flow_rate`, `land_irrigation_water_solp__mass_flow_rate` | hru | in and out | kg s-1 | added to `soil1(j)%mn(1)%no3`, `soil1(j)%mp(1)%lab` (kg/ha) | the water's nitrate (N) and soluble P, into the top soil layer; set only with water into the soil |
+| `soil_surface_cover__mass-per-area_density` | hru | in and out | kg m-2 | replaces `cover` in `et_act.f90` (kg/ha) | the soil cover of the day's soil evaporation, for the next day (The soil cover); reading gives the cover used the day just done, set or SWAT+'s own, NaN on a day `et_act` computed none |
+| `land_vegetation__above-ground_mass-per-area_density` | hru | out | kg m-2 | `pl_mass(j)%ab_gr_com%m` (kg/ha) | the plant community's above-ground mass as SWAT+ last summed it (`pl_community`, before the day's growth, less what senescence dropped since): with the residue, the next day's soil cover |
+| `land_vegetation_leaf__mass-per-area_density` | hru | out | kg m-2 | `pl_mass(j)%leaf_com%m` (kg/ha) | the community's leaf mass, summed the same way |
+| `land_surface_residue__mass-per-area_density` | hru | out | kg m-2 | `pl_mass(j)%rsd_tot%m` (kg/ha) | the surface residue, `residue` in `hru_pw_day.txt` (but on December 31: the read is after the end-of-year processing) |
 | `soil_layer_water__groundwater_inflow_rate` | hly | in and out | m s-1 | added to `soil(j)%phys(k)%st` (mm) and `gwsoilq(j)` | a flux for the next day (Groundwater into the soil); reading gives what went in on the day just done |
 | `soil_water__groundwater_inflow_rate` | hru | out | m s-1 | `hwb_d(j)%gwsoil` (`gwsoilq`, mm/day) | `gwsoilq` in `hru_wb_day.txt`: gwflow's and what was set |
 | `soil_layer_bottom__depth`, `soil_layer__thickness` | hly | out | m | `soil(j)%phys(k)%d`, `%thick` (mm) | SWAT+'s layers: a 10 mm top layer, then the file's, or the depths in `soil_lyr_depths.sol` with the file's properties averaged mm by mm (`soils_init`) |
@@ -646,6 +652,11 @@ lag), so no heat is accounted for. A study that sets a state states the
 rule it used and why. With gwflow's heat transport on, gwflow can change
 layer temperatures later in the day (`gwflow_soil.f90`).
 
+The soil cover of soil evaporation is the second (The soil cover, below).
+It is not a state SWAT+ carries from day to day but a value it computes
+and uses within the day, so the hook replaces it for that day's soil
+evaporation only, and what it changes carries on through the soil water.
+
 **Adding another state** takes, for each one:
 1. the point in SWAT+'s day after it is computed and before anything uses
    it, and nothing later in the day that changes it again;
@@ -655,6 +666,64 @@ layer temperatures later in the day (`gwflow_soil.f90`).
    SWAT+'s own value back every day is stock; a set changes that day and
    then only through SWAT+'s own carry-over; it runs in bounds on the
    checked build; a set saved before its day applies after loading.
+
+### The soil cover
+
+`et_act.f90` scales each day's potential soil evaporation by a cover
+factor: `cover = pl_mass(j)%ab_gr_com%m + pl_mass(j)%rsd_tot%m`, the plant
+community's above-ground mass plus the surface residue (kg/ha), then
+`eaj = Exp(-5.e-5 * (cover + 0.1))`, or 0.5 under snow (`sno_mm >= 0.5`),
+and `es_max = pet * eaj`. The above-ground mass includes wood: a forest of
+40 t/ha above ground has `eaj` about 0.13, and one of 170 t/ha about
+0.0002, so its soil hardly evaporates in any season, leaf-off included,
+while a dormant grass's (little mass, little residue) evaporates near PET
+(Found in SWAT+ 62.0.1, item 26). The hook, `exch_hru_cover`, is the line
+after `cover` is computed and before `eaj` uses it; a cover set for the
+day replaces SWAT+'s. A rule for a better cover, such as a forest's leaves
+and residue but not its wood, belongs to the caller; the reads give it
+SWAT+'s own pieces.
+
+- `soil_surface_cover__mass-per-area_density` (kg m-2; kg/ha is 10^4
+  times it): set for the next day; read after it, the cover the day's soil
+  evaporation used, set or SWAT+'s own. `et_act` computes no cover on a
+  day the canopy's storage takes the whole PET (`pet <= 1.e-6` after it),
+  and the read is then NaN and a set cover isn't used. Under snow SWAT+
+  takes `eaj = 0.5` whatever the cover, and on a wetland with water its
+  evaporation doesn't use the cover: a set cover is used there as SWAT+'s
+  own would be, not at all. Refused: a negative value.
+- `land_vegetation__above-ground_mass-per-area_density`,
+  `land_vegetation_leaf__mass-per-area_density` and
+  `land_surface_residue__mass-per-area_density` (kg m-2): the community's
+  above-ground and leaf mass and the surface residue at the end of the day.
+  SWAT+ sums the community's masses in `pl_community`, after `et_act` and
+  before the day's growth, and takes off what senescence and dormancy drop
+  later in the day; so the above-ground mass plus the residue read at a
+  pause is, to the bit in SWAT+'s 4-byte arithmetic, the cover the next
+  day's `et_act` computes, unless that day's decision tables (harvest,
+  kill, burn) change it first. The first day's cover is the residue alone:
+  the masses aren't summed until `pl_community` first runs (item 27).
+
+SWAT+ 62.0.1 marks no plant as a tree. Its tree-like logic keys on
+`plants.plt`'s `typ == "perennial"` (`pl_partition`'s 0.02 leaf fraction,
+commented "forest"), which takes in perennial grasses as well, so the
+wrapper doesn't expose a tree flag: a study knows which HRUs are forest
+from its own land use and plant communities (`plant.ini`).
+
+The tests (`tests/test_soil_cover.py`, Osu_1hru made an evergreen forest
+growing from the start, 50 t/ha of biomass and 10 t/ha of residue, two
+years): nothing set is stock; the cover read in one run, set back for the
+same day in another, is stock, byte for byte; each day's cover is the
+above-ground mass plus the residue read before it, to the bit; 1 t/ha set
+on one summer day leaves the days before as stock's, raises that day's
+soil evaporation and the next day's cover is SWAT+'s own again; a cover set
+under snow changes nothing; a cover of the leaves and residue every day
+(about 360 kg/ha, against SWAT+'s 40,000) raises the soil evaporation from
+44 to 250 mm a year and ET from 164 to 370 (the project's PET), and the
+water balance closes day by day as stock's does and over the run within
+0.5 mm; refusals keep nothing and a set lasts one day; a cover every day
+runs in bounds on the checked build; and a set saved or branched before its
+day goes in after. Saved states carry what is set and the day's cover
+(`SWXSTATE-9`); a state saved by 0.15, 0.14 or 0.13 loads with none set.
 
 ### Setting weather records
 
@@ -998,7 +1067,7 @@ The claim is three sentences, and each has its own tests:
    from a first run, gives stock output, byte for byte, and so does a zero
    groundwater exchange every day. A set on one day changes only that day
    (`test_setting.py`, `test_groundwater.py`, `test_gw_soil.py`,
-   `test_irrigation_applied.py`), by
+   `test_irrigation_applied.py`, `test_soil_cover.py`), by
    exactly the water set (balances close). Every kind of set runs on a build with array bounds
    checked (`build.sh --check`). The channel itself is checked apart from SWAT+
    (`test_transport.py`): any 8-byte bit pattern, NaN payloads and
@@ -1256,6 +1325,25 @@ These are worth reporting upstream, separately from the exchange mode:
     nutrient balance (`hru_nb`) has no column for irrigation's. The wrapper's
     nitrate and P set with irrigation go into the top layer instead
     (Irrigation applied from outside). Documented, not patched.
+26. The soil cover that scales soil evaporation counts wood. `et_act.f90`
+    takes `cover = pl_mass(j)%ab_gr_com%m + pl_mass(j)%rsd_tot%m`, the
+    community's whole above-ground mass (stems included) plus the residue,
+    and `eaj = Exp(-5.e-5 * (cover + 0.1))`. A mature forest's 100-200 t/ha
+    of wood gives `eaj` of 0.007 to 0.00005, so its soil hardly evaporates
+    in any season, leaf-off included, while a dormant grass with little
+    mass evaporates near PET. Basin Ledger's Rappahannock study, two
+    iterations into a joint calibration, had its forest's ET 16 mm a year
+    above open land's against an observed 93, with the forest's soil
+    evaporation factor `esco` at its bound. The cover factor is SWAT 2009's
+    (above-ground biomass and residue); whether wood should count is for
+    the SWAT+ team. Documented, not patched; the cover can be set (The soil
+    cover).
+27. The first day's soil cover is the residue alone. `pl_community`, which
+    sums the community's masses (`ab_gr_com`), runs after `et_act` in
+    `hru_control.f90`, and nothing sums them before the first day, so on
+    that day `ab_gr_com` is 0 whatever `plant.ini` gives. From the second
+    day on, `et_act` uses the sums from the day before. Documented, not
+    patched; a day's difference.
 
 Items 7–9 and 12 were found by a study's model build (Nov 6, 2026) and
 confirmed by reading the source. Items 10, 11 and 13–15 were found while
@@ -1264,8 +1352,9 @@ comparisons (Nov 7, 2026), items 17 and 18 while generating the
 reads of every printed column (0.8.0), items 19 and 20 while adding
 parameters at initialize (0.9.0), item 21 by Basin Ledger's
 Rappahannock study (Nov 24, 2026), items 22 and 23 while adding the irrigation
-withdrawals (0.14.0), and items 24 and 25 while adding irrigation applied from outside
-(0.15.0).
+withdrawals (0.14.0), items 24 and 25 while adding irrigation applied from outside
+(0.15.0), item 26 by the Rappahannock study's ET calibration and item 27
+while adding the soil cover (0.16.0).
 
 ### Patches that fix SWAT+
 

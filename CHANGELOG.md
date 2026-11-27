@@ -3,6 +3,39 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
+## 0.16.0 (unreleased)
+
+- The soil cover of SWAT+'s soil evaporation can be set for an HRU's next day, the second
+  settable state after soil temperature (Basin Ledger's Rappahannock study: forest ET too low).
+  SWAT+ 62.0.1's `et_act.f90` scales the day's potential soil evaporation by
+  `eaj = Exp(-5e-5 * (cover + 0.1))` (0.5 under snow), with `cover` the plant community's
+  above-ground mass plus the surface residue, wood included, so a mature forest's soil hardly
+  evaporates in any season. `soil_surface_cover__mass-per-area_density` (hru, kg m-2) replaces
+  `cover` for that day, in a hook right after SWAT+ computes it (`exch_hru_cover`); read after
+  the day, it is the cover used, set or SWAT+'s own, and NaN on a day `et_act` computed none (the
+  canopy's storage took the whole PET), when a set cover isn't used either. Under snow, and on a
+  wetland with water, SWAT+'s soil evaporation doesn't use the cover, so a set one changes
+  nothing there. Refused: a negative value. No new science: the rule for a better cover is the
+  caller's, and with nothing set, or SWAT+'s own cover set back every day, the output is stock's,
+  byte for byte.
+- Three reads of what SWAT+ makes the cover from, hru, kg m-2:
+  `land_vegetation__above-ground_mass-per-area_density` and
+  `land_vegetation_leaf__mass-per-area_density` (`pl_mass(j)%ab_gr_com`, `%leaf_com`), the
+  community's masses as SWAT+ last summed them, and `land_surface_residue__mass-per-area_density`
+  (`rsd_tot`, `residue` in `hru_pw`). The above-ground mass plus the residue read at a pause is
+  the next day's cover, to the bit, unless that day's decision tables change it first. SWAT+
+  marks no plant as a tree (its tree logic keys on `perennial`, which takes in perennial grasses),
+  so no tree flag is exposed: a study knows its forest HRUs from its own land use.
+- Found and documented, not patched (docs/design.md, Found in SWAT+ 62.0.1, items 26 and 27):
+  the soil cover counts wood; and the first day's cover is the residue alone, since SWAT+ sums the
+  community's masses (`pl_community`) after `et_act` and not before the first day.
+- Saved states carry the cover set and the day's cover used (`SWXSTATE-9`). A state saved by 0.15
+  (`SWXSTATE-8`), 0.14 or 0.13 still loads, with none set; SWAT+'s own variables are saved in the
+  same layout, and the serializer's digest is unchanged, so warm-up states carry over.
+- The build hash changes (the exchange patch and module), so an executable built by 0.15 is
+  refused: rebuild with `swatplus-bmi build`, or install the wheel with SWAT+ inside. The patch
+  is now twenty calls in twelve SWAT+ files (`et_act.f90` added).
+
 ## 0.15.0 (2026-11-26)
 
 - Irrigation can be applied to an HRU from outside SWAT+, for a study's reported irrigators or

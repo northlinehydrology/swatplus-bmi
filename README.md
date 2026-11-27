@@ -460,6 +460,9 @@ objects in a project are left out. Landscape units and the basin (for the
 | `land_irrigation_water__infiltration_volume_flow_rate` | HRUs | yes (the next day; not a wetland or paddy) | m3 s-1 | irrigation applied from outside that enters the soil: added to SWAT+'s own irrigation that day, printed in `irr`; read after the day, what went in |
 | `land_irrigation_water__runoff_volume_flow_rate` | HRUs | yes (the next day; not a wetland or paddy) | m3 s-1 | irrigation applied from outside that runs off, added to the day's surface runoff (`surq_cont`) |
 | `land_irrigation_water_no3__mass_flow_rate`, `land_irrigation_water_solp__mass_flow_rate` | HRUs | with water into the soil | kg s-1 | the irrigation water's nitrate (N) and soluble P, into the top soil layer |
+| `soil_surface_cover__mass-per-area_density` | HRUs | yes (the next day) | kg m-2 | the soil cover that scales the day's soil evaporation (`et_act.f90`): SWAT+'s is the above-ground plant mass plus the residue; read after the day, the cover used, NaN on a day none was computed |
+| `land_vegetation__above-ground_mass-per-area_density`, `land_vegetation_leaf__mass-per-area_density` | HRUs | no | kg m-2 | the plant community's above-ground and leaf mass, as SWAT+ last summed them |
+| `land_surface_residue__mass-per-area_density` | HRUs | no | kg m-2 | `residue` in `hru_pw_day.txt` |
 | `soil_layer_water__groundwater_inflow_rate` | HRU soil layers | yes (the next day) | m s-1 | groundwater into the layer, where gwflow puts its own; read after the day, what went in |
 | `soil_water__groundwater_inflow_rate` | HRUs | no | m s-1 | `gwsoilq` in `hru_wb_day.txt`: groundwater into the soil profile, gwflow's or set |
 | `soil_layer_bottom__depth` | HRU soil layers | no | m | the layer's bottom below the surface (`d`) |
@@ -562,7 +565,7 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   setting SWAT+'s own values back doesn't either. The suite checks every output file against
   unpatched SWAT+, including 46 years of Ames_sub1, and CI checks that every SWAT+ file the
   patch doesn't touch compiles to the same object as in the stock build.
-- **Small and off by default.** Nineteen calls in eleven SWAT+ files, one Fortran module, and a C file
+- **Small and off by default.** Twenty calls in twelve SWAT+ files, one Fortran module, and a C file
   of nine short functions, for `fork` and for whole reads and writes of arrays. With the mode off, SWAT+ behaves exactly as it does without the
   patch. It's meant to be proposed to the SWAT+ team (`docs/upstream-issue.md`).
 - **No linking.** Text lines and raw arrays over standard input and output. The Python
@@ -768,6 +771,28 @@ January–March soil temperature from about −7 °C to about −1 °C, and perc
 122 mm a year. Setting a state
 overrides SWAT+'s own model of it, and SWAT+'s soil temperature is an empirical lag, not an
 energy balance, so no heat is accounted for: a study that sets it states the rule and why.
+
+The soil cover of soil evaporation is the second (0.16.0). SWAT+ 62.0.1 scales an HRU's potential
+soil evaporation by `Exp(-5e-5 * cover)`, with the cover the plants' above-ground mass plus the
+residue in kg/ha, wood included (`et_act.f90`), so a mature forest's soil hardly evaporates even
+in leaf-off months. A study that wants a forest's cover to be its leaves and residue sets it each
+day from SWAT+'s own reads:
+
+```python
+COVER = "soil_surface_cover__mass-per-area_density"
+LEAF, RSD = "land_vegetation_leaf__mass-per-area_density", "land_surface_residue__mass-per-area_density"
+forest = np.array([...])                     # the forest HRUs' indices, from the study's land use
+leaf, rsd = np.empty(n_hru), np.empty(n_hru)
+while m.get_current_time() < m.get_end_time():
+    m.get_value(LEAF, leaf)
+    m.get_value(RSD, rsd)
+    m.set_value_at_indices(COVER, forest, leaf[forest] + rsd[forest])   # kg m-2
+    m.update()
+```
+
+The set cover replaces SWAT+'s for that day's soil evaporation only; under snow SWAT+ uses half
+of PET whatever the cover. SWAT+ marks no plant as a tree, so which HRUs are forest is the
+study's to say (docs/design.md, The soil cover).
 
 ## What the patch never does
 
