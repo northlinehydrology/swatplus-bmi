@@ -239,22 +239,56 @@ def test_a_full_profile_makes_saturation_excess_runoff():
 
 
 def test_a_released_layer_drains_through_percolation():
-    """The bottom three layers held and filled for the summer, then released with nothing more
-    set: the water they held leaves as percolation in the weeks after."""
+    """The bottom three layers held and filled for the summer, then released one by one, top
+    first, with nothing more set: the water they held leaves as percolation in the weeks after,
+    and the printed balance closes every day as stock's, through the release and after."""
+    stock = stock_run("wt-release-stock")
     need(EXCHANGE)
+    steps = {SPRING: BOTTOM3, 300: np.array([0, 0, 0, 0, 1, 1.0]), 303: np.array([0, 0, 0, 0, 0, 1.0]),
+             306: np.zeros(6)}
 
     def plan(d, m):
-        if d == SPRING:
-            return BOTTOM3, None
-        if d == 300:
-            return np.zeros(6), None
-        return None, np.array([0, 0, 0, 0, 0, 10.0]) if 120 <= d < 300 else None
+        return steps.get(d), np.array([0, 0, 0, 0, 0, 10.0]) if 120 <= d < 300 else None
 
     run, back, ul = held_run("wt-release", plan)
-    wb = wb_of(run)
-    np.testing.assert_allclose(back[299][ST][3:] * 1000, ul[3:], rtol=1e-5)
-    assert wb["perc"][300:330].sum() > 5
-    assert back[330][ST][3:].sum() < back[299][ST][3:].sum()
+    wb, st = wb_of(run), wb_of(stock)
+    np.testing.assert_array_equal(back[306][HELD], np.zeros(6))
+    assert ul[3:].sum() - back[299][ST][3:].sum() * 1000 <= wb["eplant"][299] + 1e-3
+    assert wb["perc"][300:340].sum() > 5
+    assert back[340][ST][3:].sum() < back[299][ST][3:].sum()
+    np.testing.assert_allclose(resid(wb), resid(st), atol=0.02)
+    assert abs(resid(wb)[300:].sum() - resid(st)[300:].sum()) < 0.1
+
+
+def test_on_a_paddy_the_balance_closes_with_its_ponded_water():
+    """Osu_1hru as it ships, a rice paddy: the whole profile held and filled from February, then
+    released one layer a day, top first, in April, nothing set after. On a ponded HRU the
+    saturation excess goes to the paddy's water (wet_stor), not to surface runoff, and after the
+    release the paddy, irrigated again, seeps into the soil: with the ponded water's change in
+    it, the printed balance misses by no more than stock's does, day by day."""
+    need(STOCK, EXCHANGE)
+    stock = project("Osu_1hru", "wt-paddy-stock", daily=True, years=YEARS)
+    run_stock(stock)
+    m = SwatPlusBmi()
+    m.initialize(str(project("Osu_1hru", "wt-paddy", daily=True, years=YEARS)))
+    sat = []
+    while m.get_current_time() < m.get_end_time():
+        d = int(m.get_current_time())
+        if d == 35:
+            m.set_value(HELD, np.ones(6))
+        if 100 <= d <= 105:
+            m.set_value(HELD, (np.arange(6) > d - 100).astype(float))
+        if 35 <= d < 100:
+            m.set_value(GW, np.full(6, 5.0) / MM_DAY)
+        m.update()
+        sat.append(values(m, SATEX)[0] * MM_DAY)
+    run = finish(m)
+    wb, st = wb_of(run), wb_of(stock)
+    pond = lambda w: resid(w) - np.diff(np.r_[0.0, w["wet_stor"]])
+    assert sum(sat) > 10                                            # spilled into the paddy
+    # SWAT+'s printed paddy balance doesn't close by itself (-38 mm over the two years, stock),
+    # so the check is that holding and releasing add nothing to what it misses, day by day
+    np.testing.assert_allclose(np.cumsum(pond(wb)), np.cumsum(pond(st)), atol=0.1)
 
 
 def test_held_lateral_none_or_swats_own():

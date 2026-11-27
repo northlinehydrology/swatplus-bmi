@@ -537,8 +537,11 @@ saturation and lose water only to ET; nothing percolates out of the
 profile until the held zone is full (but for what plants took after); the
 inflow fills held layers before any goes above them, and isn't all taken
 when the whole profile is held and full; a whole held profile makes
-saturation-excess runoff and no recharge; a released zone drains through
-percolation; `held_lateral` both ways; the printed water balance closes
+saturation-excess runoff and no recharge; a zone released layer by layer
+drains through percolation, the balance closing through the release and
+after; on the paddy as it ships, a held profile spills into the ponded
+water and holding and releasing add nothing to what SWAT+'s printed paddy
+balance misses on its own; `held_lateral` both ways; the printed water balance closes
 every day as stock's does (within 0.02 mm); refusals; save, load and
 branch with the option; and the bounds-checked build.
 
