@@ -239,9 +239,9 @@ names follow the channel ones. CSDMS lists no aquifer or withdrawal names.
 | `land_vegetation__above-ground_mass-per-area_density` | hru | out | kg m-2 | `pl_mass(j)%ab_gr_com%m` (kg/ha) | the plant community's above-ground mass as SWAT+ last summed it (`pl_community`, before the day's growth, less what senescence dropped since): with the residue, the next day's soil cover |
 | `land_vegetation_leaf__mass-per-area_density` | hru | out | kg m-2 | `pl_mass(j)%leaf_com%m` (kg/ha) | the community's leaf mass, summed the same way |
 | `land_surface_residue__mass-per-area_density` | hru | out | kg m-2 | `pl_mass(j)%rsd_tot%m` (kg/ha) | the surface residue, `residue` in `hru_pw_day.txt` (but on December 31: the read is after the end-of-year processing) |
-| `soil_layer_water__groundwater_inflow_rate` | hly | in and out | m s-1 | added to `soil(j)%phys(k)%st` (mm) and `gwsoilq(j)` | a flux for the next day, in before the day's surface runoff (Groundwater into the soil); with held layers, the HRU's set inflow fills them first (The water table); reading gives what went in on the day just done |
+| `soil_layer_water__groundwater_inflow_rate` | hly | in and out | m s-1 | added to `soil(j)%phys(k)%st` (mm) and `gwsoilq(j)` | a flux for the next day, in before the day's surface runoff (Groundwater into the soil); with held layers, the HRU's set inflow fills them and only them (The water table); reading gives what went in on the day just done |
 | `soil_layer__saturated_zone_flag` | hly | in and out | 1 | `hly_held` (the wrapper's) | 1 for a layer held below a water table, 0 if not: a state, kept until set again; a held layer can't be above one that isn't (The water table) |
-| `soil_water__groundwater_inflow_not_taken_rate` | hru | out | m s-1 | `nt_day` (the wrapper's, mm/day) | the groundwater set for the day that didn't fit, every layer held and full (The water table); what was set is what went in plus this, to SWAT+'s 4-byte rounding |
+| `soil_water__groundwater_inflow_not_taken_rate` | hru | out | m s-1 | `nt_day` (the wrapper's, mm/day) | the groundwater set for the day that the held layers couldn't take (The water table); what was set is what went in plus this, to SWAT+'s 4-byte rounding |
 | `land_surface_water__saturation_excess_runoff_rate` | hru | out | m s-1 | what `swr_satexcess` sends out of the top of the profile (mm/day) | the day's saturation excess, part of `surq_gen` (or of a ponded HRU's water), whatever `gw_soil_flag` is (`satex` in `hru_wb_day.txt` only counts it with gwflow) |
 | `soil_water__groundwater_inflow_rate` | hru | out | m s-1 | `hwb_d(j)%gwsoil` (`gwsoilq`, mm/day) | `gwsoilq` in `hru_wb_day.txt`: gwflow's and what was set |
 | `soil_layer_bottom__depth`, `soil_layer__thickness` | hly | out | m | `soil(j)%phys(k)%d`, `%thick` (mm) | SWAT+'s layers: a 10 mm top layer, then the file's, or the depths in `soil_lyr_depths.sol` with the file's properties averaged mm by mm (`soils_init`) |
@@ -488,14 +488,15 @@ the caller's rule; a set that would leave a held layer above one that isn't
 is refused whole. The hooks are boundary conditions on SWAT+'s own
 processes, not new ones:
 
-- **The inflow fills the held zone.** With held layers, `exch_hru_gwsoil`
-  takes the HRU's whole set inflow and fills the held layers from the
-  bottom up, to saturation (`ul`). The rest goes to the unheld layers in
-  proportion to what was set on them, or, with none set on them, to the
-  lowest unheld layer. With every layer held, the rest isn't taken: it
-  stays in the groundwater model, the inflow read gives what went in,
-  layer by layer, and `soil_water__groundwater_inflow_not_taken_rate`
-  what didn't, HRU by HRU. Nitrate and P set with the groundwater go into the
+- **The inflow fills the held zone, and only it.** With held layers,
+  `exch_hru_gwsoil` takes the HRU's whole set inflow and fills the held
+  layers from the bottom up, to saturation (`ul`). What they can't take
+  isn't taken (Andrew's choice, option A, Nov 27): none goes into the
+  layers above the water table, so groundwater reaches the surface only
+  through the caller's own route (a land-surface drain). It stays in the
+  groundwater model: the inflow read gives what went in, layer by layer,
+  and `soil_water__groundwater_inflow_not_taken_rate` what didn't, HRU by
+  HRU. An HRU with no held layer takes the inflow layer by layer as set. Nitrate and P set with the groundwater go into the
   layers they were set on.
 - **A held layer doesn't drain.** `exch_hru_held`, after `swr_percmicro`
   in `swr_percmain`'s layer loop, gives a held layer back its percolation,
@@ -535,8 +536,8 @@ stock byte for byte with every new value read every day; the inflow on a
 rainy day raises that day's curve number; held layers never go above
 saturation and lose water only to ET; nothing percolates out of the
 profile until the held zone is full (but for what plants took after); the
-inflow fills held layers before any goes above them, and isn't all taken
-when the whole profile is held and full; a whole held profile makes
+inflow fills only the held layers, and what they can't take is read as
+not taken, the two adding up to what was set; a whole held profile makes
 saturation-excess runoff and no recharge; a zone released layer by layer
 drains through percolation, the balance closing through the release and
 after; on the paddy as it ships, a held profile spills into the ponded

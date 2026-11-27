@@ -10,7 +10,7 @@ For a groundwater model coupled through the BMI (Basin Ledger's link to MODFLOW 
 - The groundwater inflow (soil_layer_water__groundwater_inflow_rate) goes in after the day's ET
   and management, before surface runoff, for every run (exch_hru_gwsoil, now in hru_control),
   so the day's curve number sees it. With held layers, the HRU's set inflow fills them first,
-  bottom up, to saturation; the rest goes to the unheld layers.
+  bottom up, to saturation, and only them; what they can't take is read as not taken.
 - land_surface_water__saturation_excess_runoff_rate reads what swr_satexcess sends out of the
   top of the profile, whatever gw_soil_flag is (exch_hru_satex).
 
@@ -180,41 +180,27 @@ def test_held_layers_keep_their_water_and_the_balance_closes():
     np.testing.assert_allclose(resid(wb), resid(st), atol=0.02)
 
 
-def test_the_inflow_fills_held_layers_bottom_up_and_the_rest_goes_above():
+def test_the_inflow_fills_only_held_layers_and_the_rest_is_not_taken():
     """The bottom three layers held, 20 mm/day set into the bottom layer from May: the inflow
-    fills the held layers first, so whenever any went into a layer above them, every held layer
-    is full at the end of the day but for what the plants took after (eplant: pl_grow comes after
-    the hook); and with every layer held and full, what doesn't fit isn't taken (read back as
-    less than set)."""
+    fills the held layers, bottom up, and none goes above the water table. What they can't take
+    isn't taken, read as not taken, and then they are full but for what the plants took after
+    (eplant: pl_grow comes after the hook). What went in plus what wasn't taken is what was set."""
     stock = stock_run("wt-fill-stock")
     need(EXCHANGE)
     put = np.array([0, 0, 0, 0, 0, 20.0])
-
-    def plan(d, m):
-        if d == SPRING:
-            return BOTTOM3, None
-        if d == 400:
-            return np.ones(6), None
-        return None, put if d >= 120 else None
-
-    run, back, ul = held_run("wt-fill", plan)
-    above = [d for d in back if 120 <= d < 400 and back[d][GW][:3].sum() > 0]
-    assert above                                                     # the zone filled
+    run, back, ul = held_run("wt-fill", lambda d, m: (BOTTOM3 if d == SPRING else None,
+                                                      put if d >= 120 else None))
     wb, st = wb_of(run), wb_of(stock)
-    for d in above:
-        assert ul[3:].sum() - back[d][ST][3:].sum() * 1000 <= wb["eplant"][d] + 1e-3
-        assert back[d][GW].sum() * MM_DAY == pytest.approx(20.0, rel=1e-5)
-        assert back[d][GW][2] * MM_DAY > 0                         # the lowest unheld layer
-    for d in back:
-        if d < 400:
-            assert back[d][NOT][0] == 0                              # an unheld layer takes it
-    full = [d for d in back if d > 420]
-    assert any(back[d][GW].sum() * MM_DAY < 19.99 for d in full)     # not all of it taken
-    for d in full:
-        assert back[d][GWH][0] == pytest.approx(back[d][GW].sum(), rel=1e-5)
-        # what went in plus what wasn't taken is what was set, to SWAT+'s 4-byte rounding
+    days = [d for d in back if d >= 120]
+    for d in days:
+        assert (back[d][GW][:3] == 0).all()                          # nothing above the table
         assert (back[d][GW].sum() + back[d][NOT][0]) * MM_DAY == pytest.approx(20.0, abs=2e-5)
-    assert any(back[d][NOT][0] > 0 for d in full)
+        assert back[d][GWH][0] == pytest.approx(back[d][GW].sum(), rel=1e-5)
+    spill = [d for d in days if back[d][NOT][0] > 0]
+    assert spill                                                     # the zone filled
+    for d in spill:
+        assert ul[3:].sum() - back[d][ST][3:].sum() * 1000 <= wb["eplant"][d] + 1e-3
+    assert all(back[d][NOT][0] == 0 for d in back if d < 120)
     np.testing.assert_allclose(wb["gwsoilq"], [back[d][GWH][0] * MM_DAY for d in sorted(back)],
                                rtol=5e-4, atol=6e-4)
     np.testing.assert_allclose(resid(wb), resid(st), atol=0.02)

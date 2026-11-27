@@ -24,10 +24,10 @@ SWAT+ releases each version supports are in COMPATIBILITY.md.
   before surface runoff (`hru_control`), not after the curve number in `swr_percmain`, so the
   day's curve number sees the groundwater that came up overnight. A coupled run that sets it gets
   more runoff than with 0.16 on wet days; nothing set is still stock. In an HRU with held layers,
-  the HRU's set inflow fills them first, bottom up, to saturation, and the rest goes to the unheld
-  layers (in proportion to what was set on them, else to the lowest); with the whole profile held
-  and full, what doesn't fit isn't taken: the inflow read gives what went in, and
-  `soil_water__groundwater_inflow_not_taken_rate` (hru, m s-1, read only) what didn't.
+  the HRU's set inflow fills them, bottom up, to saturation, and none goes above the water table:
+  what they can't take isn't taken. The inflow read gives what went in, and
+  `soil_water__groundwater_inflow_not_taken_rate` (hru, m s-1, read only) what didn't, for the
+  groundwater model to keep.
 - `land_surface_water__saturation_excess_runoff_rate` (hru, m s-1, read only): the water
   `swr_satexcess` sends out of the top of the profile on the day, part of the surface runoff,
   whatever `gw_soil_flag` is. SWAT+ counts it (`satex` in `hru_wb`) only with gwflow (docs/design.md,

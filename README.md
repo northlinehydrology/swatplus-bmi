@@ -310,8 +310,9 @@ model.set_value(HELD, flags)
 ```
 
 A held layer gives up no percolation (nor lateral flow, unless the config has
-`held_lateral = "swat"`). The groundwater inflow set for an HRU fills its held layers first,
-from the bottom up. The layer above the table percolates as SWAT+'s bottom layer does, into the
+`held_lateral = "swat"`). The groundwater inflow set for an HRU with held layers fills them, from
+the bottom up, and only them: what they can't take is read back with
+`soil_water__groundwater_inflow_not_taken_rate`, for the groundwater model to keep. The layer above the table percolates as SWAT+'s bottom layer does, into the
 held zone; what a full zone can't hold leaves as `soil_water__percolation_rate`, the recharge.
 With the whole profile held and full, rain that can't infiltrate runs off as saturation excess,
 read with `land_surface_water__saturation_excess_runoff_rate`. A held layer can't be above one
@@ -485,8 +486,8 @@ objects in a project are left out. Landscape units and the basin (for the
 | `land_surface_residue__mass-per-area_density` | HRUs | no | kg m-2 | `residue` in `hru_pw_day.txt` |
 | `soil_layer_water__groundwater_inflow_rate` | HRU soil layers | yes (the next day) | m s-1 | groundwater into the layer, where gwflow puts its own; read after the day, what went in |
 | `soil_water__groundwater_inflow_rate` | HRUs | no | m s-1 | `gwsoilq` in `hru_wb_day.txt`: groundwater into the soil profile, gwflow's or set |
-| `soil_layer__saturated_zone_flag` | HRU soil layers | yes (kept until set again) | 1 | 1 for a layer held below a water table: it doesn't drain, and the groundwater inflow fills it first |
-| `soil_water__groundwater_inflow_not_taken_rate` | HRUs | no | m s-1 | the groundwater set that didn't fit (every layer held and full): give it back to the groundwater model |
+| `soil_layer__saturated_zone_flag` | HRU soil layers | yes (kept until set again) | 1 | 1 for a layer held below a water table: it doesn't drain, and the groundwater inflow goes only into held layers |
+| `soil_water__groundwater_inflow_not_taken_rate` | HRUs | no | m s-1 | the groundwater set that the held layers couldn't take: give it back to the groundwater model |
 | `land_surface_water__saturation_excess_runoff_rate` | HRUs | no | m s-1 | the day's saturation excess, the water the profile couldn't hold, part of the surface runoff |
 | `soil_layer_bottom__depth` | HRU soil layers | no | m | the layer's bottom below the surface (`d`) |
 | `soil_layer__thickness` | HRU soil layers | no | m | `thick` |

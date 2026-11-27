@@ -1024,11 +1024,10 @@
 !!    gwsoilq), then sums the profile's water again (soil(j)%sw), which the
 !!    day's curve number (sq_dailycn) reads. In an HRU with held layers (below
 !!    a water table, exch_hru_held) the HRU's whole set inflow fills the held
-!!    layers first, bottom up, to saturation (ul); the rest goes to the unheld
-!!    layers in proportion to what was set on them, or, with none set on
-!!    them, to the lowest; with every layer held, the rest isn't taken. What
-!!    went into each layer is kept for reading (hly_gw_day), and what wasn't
-!!    taken (nt_day)
+!!    layers, bottom up, to saturation (ul), and what they can't take isn't
+!!    taken: none goes into the layers above the water table. What went into
+!!    each layer is kept for reading (hly_gw_day), and what wasn't taken
+!!    (nt_day), for the groundwater model to keep
 
       use soil_module, only : soil
       use hru_module, only : gwsoilq
@@ -1038,9 +1037,7 @@
       integer :: i = 0
       integer :: i1 = 0                                   !the HRU's first layer on the hly grid
       integer :: nly = 0
-      integer :: kt = 0                                   !the top held layer
       real :: rest = 0.                                   !mm  |set inflow still to place
-      real :: setun = 0.                                  !mm  |set on the unheld layers
       real :: add = 0.                                    !mm
 
       if (.not. exch_on) return
@@ -1059,45 +1056,22 @@
         end do
       else
         rest = 0.
-        setun = 0.
         do k = 1, nly
           i = i1 + k - 1
-          if (.not. hly_gw_on(i)) cycle
-          rest = rest + hly_gw(i)
-          if (.not. hly_held(i)) setun = setun + hly_gw(i)
+          if (hly_gw_on(i)) rest = rest + hly_gw(i)
         end do
-        !! held layers are the bottom ones (set_held): fill them from the bottom up
-        kt = nly + 1
+        !! held layers are the bottom ones (held_order): fill them from the bottom up
         do k = nly, 1, -1
           i = i1 + k - 1
           if (.not. hly_held(i)) exit
-          kt = k
           add = min(rest, max(0., soil(j)%phys(k)%ul - soil(j)%phys(k)%st))
           soil(j)%phys(k)%st = soil(j)%phys(k)%st + add
           gwsoilq(j) = gwsoilq(j) + add
           hly_gw_day(i) = add
           rest = rest - add
         end do
-        !! the rest to the unheld layers above
-        if (rest > 0. .and. kt > 1) then
-          if (setun > 0.) then
-            do k = 1, kt - 1
-              i = i1 + k - 1
-              if (.not. hly_gw_on(i)) cycle
-              add = rest * (hly_gw(i) / setun)
-              soil(j)%phys(k)%st = soil(j)%phys(k)%st + add
-              gwsoilq(j) = gwsoilq(j) + add
-              hly_gw_day(i) = add
-            end do
-          else
-            i = i1 + kt - 2
-            soil(j)%phys(kt-1)%st = soil(j)%phys(kt-1)%st + rest
-            gwsoilq(j) = gwsoilq(j) + rest
-            hly_gw_day(i) = rest
-          end if
-        else if (rest > 0.) then
-          if (j <= size(nt_day)) nt_day(j) = rest           !every layer held and full
-        end if
+        !! what the held layers couldn't take stays with the groundwater model
+        if (rest > 0. .and. j <= size(nt_day)) nt_day(j) = rest
       end if
       hly_gw_on(i1:i1+nly-1) = .false.
       soil(j)%sw = 0.
