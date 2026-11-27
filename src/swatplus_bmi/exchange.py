@@ -116,7 +116,8 @@ class Exchange:
     before day ``days_done + 1`` (or has ended, once ``ended`` is true).
     """
 
-    def __init__(self, executable: str | os.PathLike, run_dir: str | os.PathLike):
+    def __init__(self, executable: str | os.PathLike, run_dir: str | os.PathLike,
+                 options: tuple[str, ...] = ()):
         self.run_dir = Path(run_dir)
         self.executable = Path(executable)
         self.days_done = 0
@@ -128,7 +129,7 @@ class Exchange:
         self._log = self.run_dir / "exchange.log"
         self._err = open(self.run_dir / "exchange.err", "wb")
         self.proc = subprocess.Popen(
-            [str(self.executable.resolve()), "--exchange"],
+            [str(self.executable.resolve()), "--exchange", *options],
             cwd=self.run_dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=self._err)           # buffered: replies are read a line at a time, commands flushed
         self._in, self._out = self.proc.stdin, self.proc.stdout

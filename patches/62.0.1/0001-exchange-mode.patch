@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index efa4e69..33f8c1e 100644
+index efa4e69..cbbaf2d 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -160,6 +160,9 @@ endif()
@@ -13,6 +13,7 @@ index efa4e69..33f8c1e 100644
  
  #############################################################################
 diff --git a/src/actions.f90 b/src/actions.f90
+index 5251075..8025a5f 100644
 --- a/src/actions.f90
 +++ b/src/actions.f90
 @@ -29,6 +29,7 @@
@@ -53,6 +54,7 @@ index fc8e026..4b9dddc 100644
        if (time%yrs > pco%nyskip) then
        
 diff --git a/src/et_act.f90 b/src/et_act.f90
+index 07c51ed..2b701ab 100644
 --- a/src/et_act.f90
 +++ b/src/et_act.f90
 @@ -44,6 +44,7 @@
@@ -72,13 +74,14 @@ diff --git a/src/et_act.f90 b/src/et_act.f90
            eaj = 0.5
          else
 diff --git a/src/hru_control.f90 b/src/hru_control.f90
+index 8d202f9..52b6817 100644
 --- a/src/hru_control.f90
 +++ b/src/hru_control.f90
 @@ -28,6 +28,7 @@
        use mgt_operations_module
        use reservoir_module
        use output_landscape_module
-+      use bmi_exchange_module, only : exch_hru_soil, exch_hru_irr
++      use bmi_exchange_module, only : exch_hru_soil, exch_hru_irr, exch_hru_gwsoil
        use output_ls_pesticide_module
        use time_module
        use conditional_module
@@ -90,11 +93,12 @@ diff --git a/src/hru_control.f90 b/src/hru_control.f90
          
          !!compute canopy interception
          call sq_canopyint
-@@ -306,6 +308,7 @@
+@@ -306,6 +308,8 @@
  
          !! perform management operations
          if (yr_skip(j) == 0) call mgt_operatn
 +        call exch_hru_irr (j)   !! exchange mode: irrigation set from outside adds to the day's here
++        call exch_hru_gwsoil (j)   !! exchange mode: groundwater set for the day goes into the soil here
          
          !! compute surface runoff processes
          if (ires == 0) then
@@ -160,6 +164,7 @@ index 76271c1..d6d3a28 100644
        hls_d(j)%surqsolp = 0.
        hls_d(j)%lchlabp = 0.
 diff --git a/src/res_control.f90 b/src/res_control.f90
+index 2b4c5f9..19e92bf 100644
 --- a/src/res_control.f90
 +++ b/src/res_control.f90
 @@ -9,6 +9,7 @@
@@ -226,25 +231,45 @@ index 9c5c38d..7ce62f5 100644
        call ch_temp
        
 diff --git a/src/swr_percmain.f90 b/src/swr_percmain.f90
-index 33f9165..4f3eded 100644
+index 33f9165..66c6c57 100644
 --- a/src/swr_percmain.f90
 +++ b/src/swr_percmain.f90
 @@ -39,6 +39,7 @@
        use septic_data_module
        use hydrograph_module
        use basin_module
-+      use bmi_exchange_module, only : exch_hru_gwsoil
++      use bmi_exchange_module, only : exch_hru_held
        
        implicit none
        
-@@ -65,6 +66,7 @@
-       if(bsn_cc%gwflow.eq.1) then
-         call gwflow_soil(j)
-       endif
-+      call exch_hru_gwsoil (j)   !! exchange mode: groundwater set for the day goes into the soil here
+@@ -116,6 +117,7 @@
+           soil(j)%phys(j1)%st = soil(j)%phys(j1)%st - sepday - latlyr - lyrtile
+           soil(j)%phys(j1)%st = Max(1.e-6, soil(j)%phys(j1)%st)
+         end if
++        call exch_hru_held (j, j1)   !! exchange mode: a layer below the water table doesn't drain
  
-       !! initialize water entering first soil layer
-       !! ht1%flo is infiltration from overland flow routing
+         !! summary calculations
+         if (j1 == soil(j)%nly) then
+diff --git a/src/swr_satexcess.f90 b/src/swr_satexcess.f90
+index b06ad88..4ace5cc 100644
+--- a/src/swr_satexcess.f90
++++ b/src/swr_satexcess.f90
+@@ -21,6 +21,7 @@
+       use organic_mineral_mass_module
+       use gwflow_module, only : gw_soil_flag !rtb gwflow
+       use reservoir_module
++      use bmi_exchange_module, only : exch_hru_satex
+       
+       implicit none
+ 
+@@ -70,6 +71,7 @@
+           end if
+           !! if still saturated
+           if (ul_excess > 0.) then
++            call exch_hru_satex (j, ul_excess)   !! exchange mode: count the saturation excess leaving the profile
+             !! if depressional storage, add to ponded water 
+             !! if no depressional storage, add to surface runoff
+             if (ires == 0) then
 diff --git a/src/time_control.f90 b/src/time_control.f90
 index d357b05..c516819 100644
 --- a/src/time_control.f90
@@ -290,6 +315,7 @@ index d357b05..c516819 100644
        !! ave annual calibration output and reset time for next simulation
        call calsoft_ave_output
 diff --git a/src/wet_irrp.f90 b/src/wet_irrp.f90
+index 10c263a..4774c7d 100644
 --- a/src/wet_irrp.f90
 +++ b/src/wet_irrp.f90
 @@ -10,6 +10,7 @@

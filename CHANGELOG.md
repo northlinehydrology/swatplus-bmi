@@ -3,6 +3,42 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
+## 0.17.0 (unreleased)
+
+- A water table in an HRU's soil, for a groundwater model coupled through the BMI (Basin Ledger's
+  link to MODFLOW 6: in the Rappahannock study the soils over shallow water tables got 360 mm a
+  year of groundwater and percolated 502 mm back down, and sat at field capacity before storms,
+  so no saturation-excess runoff formed). `soil_layer__saturated_zone_flag` (HRU soil layers,
+  0 or 1) holds the layers below the water table: a state, kept until set again. A held layer
+  doesn't drain: its percolation is given back, and its lateral flow too unless the run's TOML
+  config has `held_lateral = "swat"` (the default is `"none"`). The layer above the table
+  percolates as SWAT+'s bottom layer does (times the HRU's `perco_lim`); that water fills the
+  held zone, and what a full zone can't hold leaves as SWAT+'s percolation, the recharge
+  (`soil_water__percolation_rate`). With the top layer held, infiltration stays in the profile
+  and what it can't hold runs off as saturation excess, with no recharge. Releasing a layer
+  (flag 0) lets SWAT+ drain it. Refused: a held layer above an unheld one, a value other than 0
+  or 1, a project that runs gwflow. No new process: the hooks are boundary conditions on SWAT+'s
+  own percolation and recharge (docs/design.md, The water table).
+- **Changed for every run:** the groundwater inflow
+  (`soil_layer_water__groundwater_inflow_rate`) now goes in after the day's ET and management and
+  before surface runoff (`hru_control`), not after the curve number in `swr_percmain`, so the
+  day's curve number sees the groundwater that came up overnight. A coupled run that sets it gets
+  more runoff than with 0.16 on wet days; nothing set is still stock. In an HRU with held layers,
+  the HRU's set inflow fills them first, bottom up, to saturation, and the rest goes to the unheld
+  layers (in proportion to what was set on them, else to the lowest); with the whole profile held
+  and full, what doesn't fit isn't taken: the inflow read gives what went in, and
+  `soil_water__groundwater_inflow_not_taken_rate` (hru, m s-1, read only) what didn't.
+- `land_surface_water__saturation_excess_runoff_rate` (hru, m s-1, read only): the water
+  `swr_satexcess` sends out of the top of the profile on the day, part of the surface runoff,
+  whatever `gw_soil_flag` is. SWAT+ counts it (`satex` in `hru_wb`) only with gwflow (docs/design.md,
+  Found in SWAT+ 62.0.1, item 28).
+- Saved states carry the flags, the option, the day's saturation excess and what wasn't taken
+  (`SWXSTATE-10`). A
+  state saved by 0.16 (`SWXSTATE-9`) or before still loads, with no layer held; the serializer's
+  digest is unchanged, so warm-up states carry over.
+- The build hash changes, so an executable built by 0.16 is refused: rebuild. The patch is now
+  twenty-two calls in thirteen SWAT+ files (`swr_satexcess.f90` added).
+
 ## 0.16.0 (2026-11-27)
 
 - The soil cover of SWAT+'s soil evaporation can be set for an HRU's next day, the second

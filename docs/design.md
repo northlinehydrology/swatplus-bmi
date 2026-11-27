@@ -27,8 +27,8 @@ Decisions behind the design:
 ## Pieces
 
 ```
-SWAT+ 62.0.1 (tag)  + patches/62.0.1/0001-*.patch  the exchange hooks: twelve SWAT+ files and
-                                                        CMakeLists.txt, 44 lines added
+SWAT+ 62.0.1 (tag)  + patches/62.0.1/0001-*.patch  the exchange hooks: thirteen SWAT+ files and
+                                                        CMakeLists.txt, 47 lines added
                     + patches/62.0.1/0002-*.patch  a SWAT+ fix: places of use (Found in
                                                         SWAT+ 62.0.1, item 21)
                     + patches/62.0.1/0003-*.patch  a SWAT+ fix: irrigation from a channel
@@ -50,13 +50,14 @@ and talks to it over standard input and output; nothing is linked.
 ## Where SWAT+ pauses
 
 The daily loop is in `time_control.f90`. The patch adds four calls there,
-three in `sd_channel_control3.f90` (the channel hooks), two in
-`hru_control.f90` (the soil temperature hook and irrigation applied from outside), one in `swr_percmain.f90`
-(groundwater into the soil), one each in `nut_nlch.f90` and `nut_solp.f90`
-(its nitrate and phosphorus), two in `res_control.f90` (the reservoir hooks), one in
+three in `sd_channel_control3.f90` (the channel hooks), three in
+`hru_control.f90` (the soil temperature hook, irrigation applied from outside and groundwater
+into the soil), one in `swr_percmain.f90` (layers held below a water table), one in
+`swr_satexcess.f90` (the saturation excess), one each in `nut_nlch.f90` and `nut_solp.f90`
+(the groundwater's nitrate and phosphorus), two in `res_control.f90` (the reservoir hooks), one in
 `actions.f90` and two in `wet_irrp.f90` (irrigation withdrawals), one in `et_act.f90` (the soil
 cover of soil evaporation), one in
-`main.f90.in` and one in `command.f90`: twenty in twelve files. Each returns at once when exchange mode is off.
+`main.f90.in` and one in `command.f90`: twenty-two in thirteen files. Each returns at once when exchange mode is off.
 
 | Call | Where | What it does in exchange mode |
 |---|---|---|
@@ -74,7 +75,9 @@ cover of soil evaporation), one in
 | `exch_hru_soil` | `hru_control.f90`, right after `stmp_solt` | replaces the day's soil layer temperatures that were set |
 | `exch_hru_cover` | `et_act.f90`, right after the soil cover is computed (`cover = pl_mass(j)%ab_gr_com%m + pl_mass(j)%rsd_tot%m`), before `eaj` uses it | replaces the day's cover with the one set, and keeps the cover used for the read |
 | `exch_hru_irr` | `hru_control.f90`, right after `mgt_operatn`, before `surface` | adds the irrigation set for the day to SWAT+'s own: water into the soil to `irrig(j)%applied` (and `hru(j)%irr_yr`), runoff to `irrig(j)%runoff`, nitrate and soluble P to the top soil layer |
-| `exch_hru_gwsoil` | `swr_percmain.f90`, right after gwflow's `gwflow_soil` call, before the day's infiltration and percolation | adds the groundwater set for the day to the HRU's soil layers, counted in `gwsoilq` as gwflow's is |
+| `exch_hru_gwsoil` | `hru_control.f90`, right after `exch_hru_irr`, before `surface` (until 0.16: in `swr_percmain.f90`, after `gwflow_soil`) | adds the groundwater set for the day to the HRU's soil layers, counted in `gwsoilq` as gwflow's is, and sums the profile's water again (`soil(j)%sw`) for the day's curve number; with held layers, fills them first (The water table) |
+| `exch_hru_held` | `swr_percmain.f90`'s layer loop, right after `swr_percmicro` | a held layer gives back its percolation (and lateral flow, unless `held_lateral = "swat"`); the layer above the water table percolates as the bottom of the profile does (`perco_lim`); water percolating into a full held zone leaves as `sepbtm` (The water table) |
+| `exch_hru_satex` | `swr_satexcess.f90`, where water above saturation leaves the top of the profile | adds it to the day's saturation excess for the read; only adds up |
 | `exch_hru_gwsoil_mass` | `nut_nlch.f90` and `nut_solp.f90`, right after gwflow adds its groundwater's nitrate and P | adds the nitrate and labile P set with the day's groundwater, counted in `gwsoiln`, `gwsoilp` |
 | `exch_end` | `time_control`, after the year loop | sends `@ended`, then answers commands until told to finish |
 
@@ -236,7 +239,10 @@ names follow the channel ones. CSDMS lists no aquifer or withdrawal names.
 | `land_vegetation__above-ground_mass-per-area_density` | hru | out | kg m-2 | `pl_mass(j)%ab_gr_com%m` (kg/ha) | the plant community's above-ground mass as SWAT+ last summed it (`pl_community`, before the day's growth, less what senescence dropped since): with the residue, the next day's soil cover |
 | `land_vegetation_leaf__mass-per-area_density` | hru | out | kg m-2 | `pl_mass(j)%leaf_com%m` (kg/ha) | the community's leaf mass, summed the same way |
 | `land_surface_residue__mass-per-area_density` | hru | out | kg m-2 | `pl_mass(j)%rsd_tot%m` (kg/ha) | the surface residue, `residue` in `hru_pw_day.txt` (but on December 31: the read is after the end-of-year processing) |
-| `soil_layer_water__groundwater_inflow_rate` | hly | in and out | m s-1 | added to `soil(j)%phys(k)%st` (mm) and `gwsoilq(j)` | a flux for the next day (Groundwater into the soil); reading gives what went in on the day just done |
+| `soil_layer_water__groundwater_inflow_rate` | hly | in and out | m s-1 | added to `soil(j)%phys(k)%st` (mm) and `gwsoilq(j)` | a flux for the next day, in before the day's surface runoff (Groundwater into the soil); with held layers, the HRU's set inflow fills them first (The water table); reading gives what went in on the day just done |
+| `soil_layer__saturated_zone_flag` | hly | in and out | 1 | `hly_held` (the wrapper's) | 1 for a layer held below a water table, 0 if not: a state, kept until set again; a held layer can't be above one that isn't (The water table) |
+| `soil_water__groundwater_inflow_not_taken_rate` | hru | out | m s-1 | `nt_day` (the wrapper's, mm/day) | the groundwater set for the day that didn't fit, every layer held and full (The water table); what was set is what went in plus this, to SWAT+'s 4-byte rounding |
+| `land_surface_water__saturation_excess_runoff_rate` | hru | out | m s-1 | what `swr_satexcess` sends out of the top of the profile (mm/day) | the day's saturation excess, part of `surq_gen` (or of a ponded HRU's water), whatever `gw_soil_flag` is (`satex` in `hru_wb_day.txt` only counts it with gwflow) |
 | `soil_water__groundwater_inflow_rate` | hru | out | m s-1 | `hwb_d(j)%gwsoil` (`gwsoilq`, mm/day) | `gwsoilq` in `hru_wb_day.txt`: gwflow's and what was set |
 | `soil_layer_bottom__depth`, `soil_layer__thickness` | hly | out | m | `soil(j)%phys(k)%d`, `%thick` (mm) | SWAT+'s layers: a 10 mm top layer, then the file's, or the depths in `soil_lyr_depths.sol` with the file's properties averaged mm by mm (`soils_init`) |
 | `soil_layer_water__depth` | hly | out | m | `soil(j)%phys(k)%st` (mm) | water above the wilting point, as SWAT+ counts it; the layers add up to `soil(j)%sw` |
@@ -423,9 +429,14 @@ below the water table in proportion to how much of each lies below. It
 adds to `soil(j)%phys(k)%st` and counts the water in `gwsoilq(j)`, which
 `hru_control` prints as `gwsoilq` in `hru_wb`; the cell loses it.
 
-The hook, `exch_hru_gwsoil`, is the next line. It adds the water set for
-each of the HRU's layers, the same way, to the same two places. Everything
-after is SWAT+'s own: percolation moves water above field capacity down,
+The hook, `exch_hru_gwsoil`, adds the water set for each of the HRU's
+layers the same way, to the same two places. Since 0.17 it is in
+`hru_control`, after the day's ET (`et_act`) and management and before
+`surface`, and it sums the profile's water again (`soil(j)%sw`), so the
+day's curve number (`sq_dailycn`) sees the groundwater that came up
+overnight; until 0.16 it was the line after `gwflow_soil`, after the curve
+number was set. Plants take up water later in the day (`pl_grow`), as from
+any water. Everything after is SWAT+'s own: percolation moves water above field capacity down,
 saturation excess sends what the profile can't hold to the surface, and
 plants and lateral flow take from the layers as they would. So a coupled
 groundwater model gives water back to the soil where SWAT+'s own would, and
@@ -450,11 +461,86 @@ gain's does. Salts (`salt_lch`, `cs_lch`) are left out: SWAT+ 62.0.1's salt
 module can't run with aquifers. Heat is left out too.
 
 The tests set a different amount into each layer every third day for two
-years and check that it goes in as set, is printed as `gwsoilq`, and closes:
+years and check that it goes in as set, is printed as `gwsoilq`, and closes
+(the totals below are 0.16's; the move changed them by the runoff the
+earlier water makes):
 over the run, the water added, less the irrigation the wetter soil no longer
 needed, leaves as more runoff, lateral flow, percolation and ET, within
 0.5 mm of 2,632 mm. On a 12-HRU basin, water set into one layer of one HRU
 changes that HRU's output only.
+
+### The water table
+
+For a groundwater model whose water table reaches into an HRU's soil
+(Basin Ledger's link to MODFLOW 6, its design note "A water-table link
+between MODFLOW 6 and SWAT+'s soils"). The soil zone is SWAT+'s: the
+groundwater model's top is the bottom of the profile, its water comes up
+through the groundwater inflow, and what SWAT+ percolates out of the bottom
+goes back as recharge. Without a water table in the soil, SWAT+'s
+percolation drains everything above field capacity the same day, the
+bottom layer sends it back down, and the soils sit at field capacity before
+storms, so no saturation-excess runoff forms.
+
+`soil_layer__saturated_zone_flag` holds the layers below the water table, a
+state kept until set again (a set at the pause before day *d* is in force
+from day *d* on). Which layers, the one the table cuts through included, is
+the caller's rule; a set that would leave a held layer above one that isn't
+is refused whole. The hooks are boundary conditions on SWAT+'s own
+processes, not new ones:
+
+- **The inflow fills the held zone.** With held layers, `exch_hru_gwsoil`
+  takes the HRU's whole set inflow and fills the held layers from the
+  bottom up, to saturation (`ul`). The rest goes to the unheld layers in
+  proportion to what was set on them, or, with none set on them, to the
+  lowest unheld layer. With every layer held, the rest isn't taken: it
+  stays in the groundwater model, the inflow read gives what went in,
+  layer by layer, and `soil_water__groundwater_inflow_not_taken_rate`
+  what didn't, HRU by HRU. Nitrate and P set with the groundwater go into the
+  layers they were set on.
+- **A held layer doesn't drain.** `exch_hru_held`, after `swr_percmicro`
+  in `swr_percmain`'s layer loop, gives a held layer back its percolation,
+  and its lateral flow too unless the run was started with
+  `held_lateral = "swat"` (a TOML key; branches and saved states keep it),
+  which keeps the lateral flow SWAT+ computes for the layer.
+- **The water table is the bottom of the profile.** The layer just above
+  it percolates as SWAT+'s bottom layer does: what `swr_percmicro` gives,
+  times the HRU's `perco_lim`, the rest staying in the layer. That water
+  fills the held zone from the bottom up; what a full zone can't hold
+  leaves as `sepbtm`, SWAT+'s percolation out of the profile, read as
+  `soil_water__percolation_rate`, the recharge. It is counted as
+  percolation out of each held layer it passes (`soil%ly%prk`), so
+  SWAT+'s nitrate leaching carries its nitrate down as for any recharge.
+- **With the top layer held** (the water table at the surface), the day's
+  infiltration stays in it, `swr_satexcess` sends what the profile can't
+  hold to the surface, and nothing recharges.
+- **Still SWAT+'s own:** ET from held layers (soil evaporation before the
+  inflow, plant uptake after), tile flow on a tile-drained HRU (taken after
+  the loop from any layer above field capacity), and `swr_satexcess`
+  filling held layers that have room from above.
+- **A released layer** (flag back to 0) drains by SWAT+'s percolation over
+  the following days, out of the profile as recharge.
+
+`land_surface_water__saturation_excess_runoff_rate` reads what
+`swr_satexcess` sends out of the top of the profile on the day
+(`exch_hru_satex`), whatever `gw_soil_flag` is. It is part of the surface
+runoff, which SWAT+ prints after its surface lag (`surq_gen`), or of a
+ponded HRU's water. The flags are refused in a project that runs gwflow,
+which keeps its own water table in the soil. Saved states carry the
+flags, the option, the day's saturation excess and what wasn't taken (`SWXSTATE-10`); a state
+saved by 0.16 or before loads with no layer held.
+
+The tests (`test_water_table.py`) make Osu_1hru an evergreen forest
+without its paddy and check: nothing held, or flags of 0 set every day, is
+stock byte for byte with every new value read every day; the inflow on a
+rainy day raises that day's curve number; held layers never go above
+saturation and lose water only to ET; nothing percolates out of the
+profile until the held zone is full (but for what plants took after); the
+inflow fills held layers before any goes above them, and isn't all taken
+when the whole profile is held and full; a whole held profile makes
+saturation-excess runoff and no recharge; a released zone drains through
+percolation; `held_lateral` both ways; the printed water balance closes
+every day as stock's does (within 0.02 mm); refusals; save, load and
+branch with the option; and the bounds-checked build.
 
 ### HRU irrigation
 
@@ -656,6 +742,10 @@ The soil cover of soil evaporation is the second (The soil cover, below).
 It is not a state SWAT+ carries from day to day but a value it computes
 and uses within the day, so the hook replaces it for that day's soil
 evaporation only, and what it changes carries on through the soil water.
+
+The saturated zone flags (The water table) are the wrapper's own state,
+not SWAT+'s: nothing in SWAT+ computes them, so a set is kept until set
+again, not for one day.
 
 **Adding another state** takes, for each one:
 1. the point in SWAT+'s day after it is computed and before anything uses
@@ -1067,7 +1157,7 @@ The claim is three sentences, and each has its own tests:
    from a first run, gives stock output, byte for byte, and so does a zero
    groundwater exchange every day. A set on one day changes only that day
    (`test_setting.py`, `test_groundwater.py`, `test_gw_soil.py`,
-   `test_irrigation_applied.py`, `test_soil_cover.py`), by
+   `test_irrigation_applied.py`, `test_soil_cover.py`, `test_water_table.py`), by
    exactly the water set (balances close). Every kind of set runs on a build with array bounds
    checked (`build.sh --check`). The channel itself is checked apart from SWAT+
    (`test_transport.py`): any 8-byte bit pattern, NaN payloads and
@@ -1344,6 +1434,13 @@ These are worth reporting upstream, separately from the exchange mode:
     that day `ab_gr_com` is 0 whatever `plant.ini` gives. From the second
     day on, `et_act` uses the sums from the day before. Documented, not
     patched; a day's difference.
+28. The saturation excess that reaches the surface is counted only with
+    gwflow. `swr_satexcess` adds what the profile can't hold to `surfq`
+    (or a ponded HRU's water) in every run, but adds it to `satexq`,
+    printed as `satex` in `hru_wb`, only when gwflow's `gw_soil_flag` is
+    on; otherwise it is in `surq_gen` with nothing to tell it apart.
+    Documented, not patched; the wrapper reads it
+    (`land_surface_water__saturation_excess_runoff_rate`).
 
 Items 7–9 and 12 were found by a study's model build (Nov 6, 2026) and
 confirmed by reading the source. Items 10, 11 and 13–15 were found while
@@ -1353,8 +1450,8 @@ reads of every printed column (0.8.0), items 19 and 20 while adding
 parameters at initialize (0.9.0), item 21 by Basin Ledger's
 Rappahannock study (Nov 24, 2026), items 22 and 23 while adding the irrigation
 withdrawals (0.14.0), items 24 and 25 while adding irrigation applied from outside
-(0.15.0), item 26 by the Rappahannock study's ET calibration and item 27
-while adding the soil cover (0.16.0).
+(0.15.0), item 26 by the Rappahannock study's ET calibration, item 27
+while adding the soil cover (0.16.0) and item 28 while adding the water table (0.17.0).
 
 ### Patches that fix SWAT+
 
