@@ -3,7 +3,7 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
-## 0.18.0 (unreleased)
+## 0.18.0 (2026-11-27)
 
 - An opt-in fix for a confirmed SWAT+ 62.0.1 bug: Muskingum routing (`rte_cha` 1) on a daily step
   runs each day as one step with the coefficients computed for a substep, so every reach delays
