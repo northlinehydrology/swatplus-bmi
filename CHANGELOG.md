@@ -3,7 +3,7 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
-## 0.17.0 (unreleased)
+## 0.17.0 (2026-11-27)
 
 - A water table in an HRU's soil, for a groundwater model coupled through the BMI (Basin Ledger's
   link to MODFLOW 6: in the Rappahannock study the soils over shallow water tables got 360 mm a
