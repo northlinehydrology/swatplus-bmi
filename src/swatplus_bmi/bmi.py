@@ -116,6 +116,7 @@ class SwatPlusBmi(Bmi):
             run_dir = "runs/scenario-a"      # optional: copy the project here and run the copy
             executable = "bin/swatplus-62.0.1-exchange"   # optional
             held_lateral = "none"            # optional: "none" or "swat"
+            routing_fix = "none"             # optional: "none" or "muskingum_daily"
 
             [[parameter]]                    # optional, any number; needs run_dir
             name = "cn2"
@@ -129,6 +130,13 @@ class SwatPlusBmi(Bmi):
         ``held_lateral`` is the lateral flow from a soil layer held below a
         water table (``soil_layer__saturated_zone_flag``): ``"none"`` (the
         default) or ``"swat"``, the lateral flow SWAT+ computes for it.
+
+        ``routing_fix = "muskingum_daily"`` turns on the fix for a SWAT+ 62.0.1 bug in
+        Muskingum routing (``rte_cha`` 1) on a daily step, which runs each day as one step with
+        a substep's coefficients, so every reach delays about 0.63 day whatever its K
+        (``patches/62.0.1/0004``; docs/design.md). ``"none"``, the default, routes as stock
+        SWAT+. With ``rte_cha`` 0 or a sub-daily step it changes nothing. A saved state and a
+        branch keep the setting they were saved with, as for ``held_lateral``.
         """
         if config_file is None:
             raise ValueError("initialize needs a SWAT+ project folder or a TOML config file")
@@ -158,8 +166,13 @@ class SwatPlusBmi(Bmi):
         held_lateral = cfg.get("held_lateral", "none")
         if held_lateral not in ("none", "swat"):
             raise ValueError(f'held_lateral is "none" or "swat", not {held_lateral!r}')
+        routing_fix = cfg.get("routing_fix", "none")
+        if routing_fix not in ("none", "muskingum_daily"):
+            raise ValueError(f'routing_fix is "none" or "muskingum_daily", not {routing_fix!r}')
+        options = (("--held-lateral=swat",) if held_lateral == "swat" else ()) + \
+                  (("--routing-fix=muskingum_daily",) if routing_fix == "muskingum_daily" else ())
         exe = find_executable(cfg.get("executable") and str((base / cfg["executable"])))
-        self._x = Exchange(exe, run_dir, ("--held-lateral=swat",) if held_lateral == "swat" else ())
+        self._x = Exchange(exe, run_dir, options)
         cat = self._x.catalog
         want = sources_hash()
         if cat.build != want:

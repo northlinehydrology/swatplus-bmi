@@ -33,6 +33,8 @@ SWAT+ 62.0.1 (tag)  + patches/62.0.1/0001-*.patch  the exchange hooks: thirteen 
                                                         SWAT+ 62.0.1, item 21)
                     + patches/62.0.1/0003-*.patch  a SWAT+ fix: irrigation from a channel
                                                         (Found in SWAT+ 62.0.1, item 22)
+                    + patches/62.0.1/0004-*.patch  a SWAT+ fix, opt in: daily Muskingum
+                                                        routing (item 29; routing_fix)
                     + fortran/bmi_exchange_module.f90   the exchange mode
                     + fortran/bmi_fork.c                fork for branching, whole reads and
                                                         writes for arrays (Mac, Linux)
@@ -101,7 +103,8 @@ So, at a pause before day *d*:
 
 With the mode off, nothing changes (the exchange patch; the two fixes to SWAT+,
 `0002-wallo-withdraw-duty.patch` for places of use and `0003-irrigate-channel-tot-stor.patch`
-for irrigation from a channel, apply with the mode off too: Patches that fix SWAT+). The test suite checks every output file,
+for irrigation from a channel, apply with the mode off too, and `0004-muskingum-daily-opt-in.patch`
+changes nothing unless a run asks for it: Patches that fix SWAT+). The test suite checks every output file,
 byte for byte, against the unpatched release, with the mode off, stepped one
 day at a time, read every day, branched, and saved and loaded (What the tests
 prove, below, says on which projects).
@@ -1152,7 +1155,9 @@ The claim is three sentences, and each has its own tests:
    and loaded there, and compares every file with a stock run, byte for
    byte. `tests/test_stepping.py`, `test_branch.py` and `test_state.py`
    add the mode switched off, branches and saves at the first and last
-   days, and branches of branches. (On the test projects, which have at most
+   days, and branches of branches. `test_routing_fix.py` adds Muskingum
+   routing (`rte_cha` 1) with the routing fix off, and on with `rte_cha` 0
+   or an hourly step, where it changes nothing. (On the test projects, which have at most
    one place of use and don't irrigate from a channel; one with places of
    use on several channels, or several on one, or irrigation from a channel,
    differs from stock 62.0.1 by the fixes, Patches that fix SWAT+.)
@@ -1445,6 +1450,39 @@ These are worth reporting upstream, separately from the exchange mode:
     on; otherwise it is in `surq_gen` with nothing to tell it apart.
     Documented, not patched; the wrapper reads it
     (`land_surface_water__saturation_excess_runoff_rate`).
+29. Muskingum routing (`rte_cha` 1) on a daily step runs each day as one
+    step with a substep's coefficients. `sd_hydsed_init.f90` splits the day
+    into the substeps the Muskingum stability limit needs (`detmax = 2K(1 -
+    X)`) and computes c1, c2 and c3 for one substep; `ch_rtmusk.f90` then
+    resets the substeps to 1 on every call when `time%step` is 1. Since the
+    substep is chosen just under `detmax`, the coefficients go to a fixed
+    point whatever K (c1 0.375, c2 0.625, c3 0 with `msk_x` 0.2): every
+    reach releases 37.5% of a day's inflow that day and the rest the next,
+    about 0.63 day of delay whatever its length, slope or roughness. Two
+    more faults in the same path show once the substeps are kept:
+    `command.f90` builds a channel's inflow hydrograph `tsin` from an HRU's
+    total flow plus its lateral and tile flow again (right on a sub-daily
+    step, where `hyd_flo` is surface runoff only), hidden today by
+    `sd_channel_control3.f90` setting `tsin(1) = ht1` when there is one step;
+    and `ch_rtmusk.f90`'s inflow `inflo`, a saved local, keeps the last
+    channel's value on a substep with no inflow, and its rate for the rating
+    curve is a substep's volume over a day. Found by Basin Ledger's
+    Rappahannock study: at Fredericksburg (50 reaches from a headwater on
+    the median path) the outlet lags the `rte_cha` 0 run by 31-36 days in
+    water year 2014, peak 70 m3/s against 306 (observed 1,419), daily NSE
+    -0.02 against 0.18, and doubling Manning's n moves it one day. **Patched,
+    opt in** (`patches/62.0.1/0004-muskingum-daily-opt-in.patch`,
+    `routing_fix = "muskingum_daily"`; Patches that fix SWAT+, below). With
+    it: on the observed day, 1 day behind `rte_cha` 0, peak 156 m3/s, NSE
+    0.18, and doubled n adds a day; stock 62.0.1 on an hourly step, where
+    the reset doesn't apply, gives the same lag (peak 193, NSE 0.23). Not
+    taken: `sd_hydsed_init.f90`'s initial Muskingum volumes divide a rate by a
+    time (`rcurv%flo_rate / (86400. / nsteps)`), but `rcurv` isn't set for
+    the channel there, so they are 0 either way; and the channel
+    cross-section (`a = b * dep + dep / chss`, not an area, with the side
+    slope read two ways), which shortens K by 1.15-1.4 times on the study's
+    small channels, is a geometry choice for the SWAT+ team. (`tests/test_routing_fix.py`;
+    draft issue in docs/upstream-issue-muskingum-daily.md.)
 
 Items 7–9 and 12 were found by a study's model build (Nov 6, 2026) and
 confirmed by reading the source. Items 10, 11 and 13–15 were found while
@@ -1455,15 +1493,16 @@ parameters at initialize (0.9.0), item 21 by Basin Ledger's
 Rappahannock study (Nov 24, 2026), items 22 and 23 while adding the irrigation
 withdrawals (0.14.0), items 24 and 25 while adding irrigation applied from outside
 (0.15.0), item 26 by the Rappahannock study's ET calibration, item 27
-while adding the soil cover (0.16.0) and item 28 while adding the water table (0.17.0).
+while adding the soil cover (0.16.0), item 28 while adding the water table (0.17.0), and item 29
+by the Rappahannock study's routing (Nov 27, 2026).
 
 ### Patches that fix SWAT+
 
 The exchange patch never changes what SWAT+ does. A SWAT+ bug is documented
 above and drafted upstream, and a test pins it, so it fails when SWAT+
-fixes it (the aquifer withdrawal, item 3). Two are patched instead, each in
+fixes it (the aquifer withdrawal, item 3). Three are patched instead, each in
 its own file applied after the exchange patch, where stock 62.0.1 gives no
-result a model can rely on:
+result a model can rely on; the third only when a run asks for it:
 
 - Item 21, `0002-wallo-withdraw-duty.patch`: a place of use past the first
   channel reads memory beyond its array, so what it withdraws depends on
@@ -1479,9 +1518,60 @@ result a model can rely on:
   two lines, `tot_stor = ch_stor + fp_stor` after the cut in `actions.f90`
   and `wet_irrp.f90`, and changes nothing a project that doesn't irrigate
   from a channel does; one that does differs from stock 62.0.1 by the fix.
+- Item 29, `0004-muskingum-daily-opt-in.patch`: daily Muskingum routing
+  delays every reach the same 0.63 day. Opt in, and temporary: Opt-in fixes
+  for documented SWAT+ bugs, below.
 
 The stock comparisons still hold for every test project as shipped, and the
 stock build (`--stock`) stays unpatched.
+
+### Opt-in fixes for documented SWAT+ bugs
+
+Some SWAT+ bugs leave a study with no usable result but have a fix that is
+plain from the code. For those, the exchange build can carry a fix a run
+turns on (Andrew's rule, Nov 27, 2026). Each one:
+
+- **is tied to a documented bug**: an item in Found in SWAT+ 62.0.1 above,
+  with the code lines, and a draft upstream report in
+  `docs/upstream-issue-*.md` (or the study's `SWATPLUS_ISSUES.md`), written
+  alongside the fix for Andrew to file;
+- **is opt in**: a TOML key, passed to SWAT+ as a start option. The default
+  is stock, byte for byte, and the identity tests (What the tests prove)
+  hold it there, with the fix off and with it on wherever it shouldn't
+  apply;
+- **is temporary**: a patch file of its own, `patches/<tag>/NNNN-*-opt-in.patch`,
+  with every change behind its flag and marked `swatplus-bmi`, so it can be
+  dropped whole from the first SWAT+ release that fixes the bug. The key then
+  changes nothing, since SWAT+ itself is right, and the fix's tests check
+  stock instead;
+- **is tested**: that it changes what the bug is about (against the
+  documented effect), that balances close, and that saved states and
+  branches carry the setting;
+- **is only what a study needs**: other bugs found stay documented, not
+  fixed, until a study needs them (on an hourly step with the curve number,
+  canopy interception and HRU sediment yield; others in the list above).
+
+| Fix | TOML key | Bug | Upstream report | Removed when |
+|---|---|---|---|---|
+| `0004-muskingum-daily-opt-in.patch` (0.18.0) | `routing_fix = "muskingum_daily"` | Item 29: Muskingum routing (`rte_cha` 1) on a daily step runs one step with a substep's coefficients, about 0.63 day per reach whatever K; Rappahannock study, `SWATPLUS_ISSUES.md` issue 6 | `docs/upstream-issue-muskingum-daily.md`, drafted, not yet filed | SWAT+ keeps the Muskingum substeps on a daily step and counts lateral and tile flow once in `tsin` |
+
+What the fix does: with it on, and only on a daily step with `rte_cha` 1,
+`ch_rtmusk.f90` keeps the substeps, sets the inflow to 0 on a substep with
+none and gives the rating curve the substep's rate, and
+`sd_channel_control3.f90` sets `tsin(1) = ht1` on any daily step. SWAT+ is
+started with `--routing-fix=muskingum_daily`, read into `exch_msk_daily`.
+With `rte_cha` 0, or a sub-daily step, it changes nothing (tested byte for
+byte). A saved state carries the setting (SWXSTATE-11), so a load and a
+branch go on as the run was routed, whatever the loading process was
+started with; a state saved by 0.17 or before loads with it off, as it was
+routed. On `Osu_1hru`'s one 3.4 km channel, a day's pulse has a mean delay
+of 0.64 day at Manning's n 0.05 and 0.69 at 0.10 in stock, and 0.050 and
+0.111 day with the fix; the channel's water balance closes as stock's does
+(`tests/test_routing_fix.py`).
+
+The always-on fixes (0002 and 0003, above) came first, before this rule.
+They are for bugs where stock gives no result at all (memory past an array,
+water from nowhere), and they stay always on.
 
 ## Limits
 
