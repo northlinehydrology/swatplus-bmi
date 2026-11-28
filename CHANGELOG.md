@@ -3,6 +3,26 @@
 Changes that matter to someone using swatplus-bmi. Versions follow semantic versioning; the
 SWAT+ releases each version supports are in COMPATIBILITY.md.
 
+## 0.18.0 (2026-11-27)
+
+- An opt-in fix for a confirmed SWAT+ 62.0.1 bug: Muskingum routing (`rte_cha` 1) on a daily step
+  runs each day as one step with the coefficients computed for a substep, so every reach delays
+  about 0.63 day whatever its K (Basin Ledger's Rappahannock study: the outlet at Fredericksburg,
+  50 reaches down the median path, a month late in water year 2014). With
+  `routing_fix = "muskingum_daily"` in the TOML config, SWAT+ keeps the substeps, takes the
+  day's inflow once (with the substeps kept, it would count lateral and tile flow twice), routes no
+  inflow on a substep with none, and gives the rating curve the substep's inflow rate
+  (`patches/62.0.1/0004-muskingum-daily-opt-in.patch`; docs/design.md, Found in SWAT+ 62.0.1,
+  item 29). The study's outlet is then on the observed day, with a peak of 156 m3/s against 306 and
+  daily NSE 0.18, and doubling Manning's n adds a day. **Off by default**: a run that doesn't ask
+  for it routes as stock, byte for byte, and with `rte_cha` 0 or a sub-daily step it changes
+  nothing. To be removed when SWAT+ fixes it; the upstream report is drafted
+  (`docs/upstream-issue-muskingum-daily.md`), not yet filed.
+- Saved states carry the setting (`SWXSTATE-11`), so a load or a branch goes on routed as the run
+  was. A state saved by 0.17 (`SWXSTATE-10`) or before still loads, with the fix off; the
+  serializer's digest is unchanged, so warm-up states carry over.
+- The build hash changes, so an executable built by 0.17 is refused: rebuild.
+
 ## 0.17.0 (2026-11-27)
 
 - A water table in an HRU's soil, for a groundwater model coupled through the BMI (Basin Ledger's

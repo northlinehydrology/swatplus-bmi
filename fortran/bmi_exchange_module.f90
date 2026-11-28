@@ -78,7 +78,7 @@
       public :: exch_on, exch_open, exch_start, exch_pause, exch_apply, exch_record, exch_end,     &
                 exch_channel, exch_channel_in, exch_channel_cs, exch_hru_soil, exch_hru_gwsoil,   &
                 exch_hru_gwsoil_mass, exch_res_in, exch_res, exch_irr_take, exch_hru_irr,   &
-                exch_hru_cover, exch_hru_held, exch_hru_satex
+                exch_hru_cover, exch_hru_held, exch_hru_satex, exch_msk_daily
 
       logical :: exch_on = .false.        !! exchange mode is on
       integer :: cmd_unit = input_unit    !! commands in
@@ -92,12 +92,14 @@
       logical :: ended = .false.          !! the simulation has ended (exch_end)
       integer, parameter :: unit_max = 1000000   !! highest unit number branch looks at
       character(len=80) :: paused_line = ""      !! the last @paused reply
-      character(len=16), parameter :: state_magic = "SWXSTATE-10"
-      !! states saved by 0.16 (SWXSTATE-9), 0.15 (SWXSTATE-8), 0.14 (SWXSTATE-7) and 0.13
-      !! (SWXSTATE-6) load too: 9 is this layout without the water table (hly_held, held_lat,
+      character(len=16), parameter :: state_magic = "SWXSTATE-11"
+      !! states saved by 0.17 (SWXSTATE-10), 0.16 (SWXSTATE-9), 0.15 (SWXSTATE-8), 0.14 (SWXSTATE-7) and 0.13
+      !! (SWXSTATE-6) load too: 10 is this layout without the routing fix (exch_msk_daily, which
+      !! loads as off), 9 without the water table (hly_held, held_lat,
       !! sat_day), 8 without the soil cover (cov_*) as well, 7 without the irrigation applied
       !! from outside (ira_*) as well, and 6 without the irrigation withdrawals (irr_*) as
       !! well, which load as zero, or as nothing set
+      character(len=16), parameter :: state_magic_10 = "SWXSTATE-10"
       character(len=16), parameter :: state_magic_9 = "SWXSTATE-9"
       character(len=16), parameter :: state_magic_8 = "SWXSTATE-8"
       character(len=16), parameter :: state_magic_7 = "SWXSTATE-7"
@@ -213,6 +215,12 @@
       logical :: held_lat = .false.
       real, dimension(:), allocatable :: sat_day
       real, dimension(:), allocatable :: nt_day          !! mm  |groundwater set and not taken, by HRU number
+
+      !! the opt-in fix for SWAT+'s daily Muskingum routing (patches/<tag>/0004, read in
+      !! ch_rtmusk and sd_channel_control3): on when SWAT+ is started with
+      !! --routing-fix=muskingum_daily (routing_fix = "muskingum_daily" in the TOML config).
+      !! A saved state and a branch keep it, as they were routed
+      logical :: exch_msk_daily = .false.
 
       !! the catalog: the water variables, the chemistry variables, one per species, then
       !! every column of the daily output records (exch_start). var_fam is 0 for a water
@@ -386,6 +394,8 @@
         if (trim(arg) == "--exchange") exch_on = .true.
         if (trim(arg) == "--held-lateral=swat") held_lat = .true.
         if (trim(arg) == "--held-lateral=none") held_lat = .false.
+        if (trim(arg) == "--routing-fix=muskingum_daily") exch_msk_daily = .true.
+        if (trim(arg) == "--routing-fix=none") exch_msk_daily = .false.
       end do
       if (.not. exch_on) return
 
@@ -1806,6 +1816,7 @@
       write (u) size(ira_set,2), ira_set, ira_on, ira_day
       write (u) size(cov_set), cov_set, cov_on, cov_day
       write (u) n_hly, size(sat_day), hly_held, held_lat, sat_day, nt_day
+      write (u) exch_msk_daily
       write (u) size(chx_day), chx_day
       write (u) size(rsx_flo), rsx_flo, rsx_on, rsv_day
       write (u) size(rec_flo), rec_flo, rec_flo_on, dmd_flo, dmd_flo_on, chx_flo, chx_on
@@ -1934,8 +1945,8 @@
       end if
       read (u, iostat=ios) magic, digest, load_day
       close (u)
-      if (ios /= 0 .or. (magic /= state_magic .and. magic /= state_magic_9 .and. magic /= state_magic_8 .and.    &
-          magic /= state_magic_7 .and. magic /= state_magic_6)) then
+      if (ios /= 0 .or. (magic /= state_magic .and. magic /= state_magic_10 .and. magic /= state_magic_9 .and.  &
+          magic /= state_magic_8 .and. magic /= state_magic_7 .and. magic /= state_magic_6)) then
         call reply ("@error not a saved SWAT+ state: " // path)
       else if (digest /= swx_state_digest) then
         call reply ("@error the state was saved by a different build (" // trim(digest) //         &
@@ -2034,6 +2045,13 @@
           error stop 7
         end if
         read (u) hly_held, held_lat, sat_day, nt_day
+      end if
+      if (magic == state_magic) then
+        read (u) exch_msk_daily
+      else
+        !! saved by 0.17 or before: routed as stock (the substeps a daily Muskingum run
+        !! keeps were reset in the state), and goes on that way
+        exch_msk_daily = .false.
       end if
       read (u) n
       if (n /= size(chx_day)) then

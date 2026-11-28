@@ -1,0 +1,82 @@
+SWAT+ 62.0.1 bug fix, opt in: off unless a run asks for it (routing_fix = "muskingum_daily" in
+the TOML config, which starts SWAT+ with --routing-fix=muskingum_daily), so by default the
+exchange build routes exactly as stock. Muskingum routing (rte_cha 1) on a daily step:
+sd_hydsed_init.f90 splits the day into the substeps the Muskingum stability limit needs and
+computes c1, c2 and c3 for one substep, but ch_rtmusk.f90 resets the substeps to 1 on every
+call when time%step is 1, so each day is one step with substep coefficients. They go to a
+fixed point (c1 0.375, c2 0.625 with msk_x 0.2) whatever K: every reach delays about 0.63 day,
+whatever its length, slope or roughness. With the fix, the reset is skipped for rte_cha 1, and:
+- sd_channel_control3.f90 sets the day's inflow hydrograph to ht1 on any daily step, not only
+  when nsteps is 1. command.f90 builds tsin from the HRUs' total flow plus their lateral and
+  tile flow again, so with the substeps kept lateral and tile flow would come in twice;
+- ch_rtmusk.f90's inflow is set to 0 for a substep with no inflow; it was the saved value
+  from the last channel routed;
+- the inflow rate for the rating curve is the substep's volume over the substep's length,
+  not over a day.
+rte_cha 0 and sub-daily steps are untouched. To be removed once SWAT+ fixes it upstream.
+docs/upstream-issue-muskingum-daily.md; tests/test_routing_fix.py.
+
+diff --git a/src/ch_rtmusk.f90 b/src/ch_rtmusk.f90
+index aba806c..b1f5146 100644
+--- a/src/ch_rtmusk.f90
++++ b/src/ch_rtmusk.f90
+@@ -21,6 +21,7 @@
+       use reservoir_data_module
+       use water_body_module
+       use conditional_module
++      use bmi_exchange_module, only : exch_msk_daily   !! swatplus-bmi: routing_fix = "muskingum_daily"
+       
+       implicit none
+       
+@@ -88,7 +89,8 @@
+       tot_stor_init = ch_stor_init + fp_stor_init
+       
+       !! set for daily time step
+-      if (time%step == 1) then
++      !! (swatplus-bmi routing_fix: Muskingum keeps the stability substeps its coefficients are for)
++      if (time%step == 1 .and. .not. (exch_msk_daily .and. bsn_cc%rte == 1)) then
+         sd_ch(jrch)%msk%nsteps = 1
+         sd_ch(jrch)%msk%substeps = 1
+       end if
+@@ -106,6 +108,9 @@
+           isubstep = 1
+         end if
+         
++        !! swatplus-bmi routing_fix: a channel with no inflow routes none, not the last channel's
++        if (exch_msk_daily .and. time%step == 1 .and. bsn_cc%rte == 1) inflo = 0.
++
+         !! add inflow to total storage
+         if (ht1%flo > 1.e-6) then
+           if (sd_ch(jrch)%msk%nsteps > 1) then
+@@ -126,6 +131,8 @@
+         !! interpolate rating curve using inflow rates
+         icha = jrch
+         inflo_rate = inflo / 86400.
++        !! swatplus-bmi routing_fix: inflo is a substep's volume
++        if (exch_msk_daily .and. time%step == 1 .and. bsn_cc%rte == 1) inflo_rate = inflo / dts
+         call rcurv_interp_flo (icha, inflo_rate)
+         ch_rcurv(jrch)%in2 = rcurv
+         
+diff --git a/src/sd_channel_control3.f90 b/src/sd_channel_control3.f90
+index 7ce62f5..4e6b1bb 100644
+--- a/src/sd_channel_control3.f90
++++ b/src/sd_channel_control3.f90
+@@ -21,6 +21,7 @@
+       use maximum_data_module
+       use pesticide_data_module, only : pestdb  !! BUG FIX: needed for per-pesticide kd
+       use bmi_exchange_module, only : exch_channel, exch_channel_in, exch_channel_cs
++      use bmi_exchange_module, only : exch_msk_daily   !! swatplus-bmi: routing_fix = "muskingum_daily"
+       
+       implicit none     
+       
+@@ -111,7 +112,9 @@
+       ht1%temp = 5.0 + 0.75 * wst(iwst)%weat%tave
+       wtemp = 5.0 + 0.75 * wst(iwst)%weat%tave
+ 
+-      if (sd_ch(ich)%msk%nsteps == 1) then
++      !! (swatplus-bmi routing_fix: on a daily step tsin counts lateral and tile flow twice, so the
++      !! day's inflow is ht1 whatever the substeps)
++      if (sd_ch(ich)%msk%nsteps == 1 .or. (exch_msk_daily .and. time%step == 1)) then
+         ob(icmd)%tsin(1) = ht1%flo
+       end if
+             

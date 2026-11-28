@@ -223,6 +223,7 @@ project = "path/to/TxtInOut"
 run_dir = "runs/scenario-a"            # copied from project, then run there
 executable = "bin/swatplus-62.0.1-exchange"   # optional
 held_lateral = "none"                  # optional: lateral flow from held layers, "none" or "swat"
+routing_fix = "none"                   # optional: "muskingum_daily" fixes daily Muskingum (Gotchas)
 ```
 
 ### Same-day feedback
@@ -709,6 +710,22 @@ BMI 2.0 has no state functions. The wrapper adds `save_state`, `load_state`, `ge
   withdrawal out of the channel; a project irrigating from a channel gives other results than stock
   62.0.1. From a reservoir the water always left. (Draft report:
   `docs/upstream-issue-irrigate-channel.md`.)
+- **Muskingum routing (`rte_cha` 1) on a daily step delays every reach about 0.63 day in SWAT+
+  62.0.1, whatever its K.** `ch_rtmusk.f90` resets the stability substeps `sd_hydsed_init.f90`
+  computed, but keeps the coefficients computed for one substep, which then go to the same values
+  for every reach (37.5% of a day's inflow leaves that day, the rest the next). A basin's travel
+  time becomes its number of reaches: at Fredericksburg on the Rappahannock (50 reaches on the
+  median path) the outlet lagged a month in water year 2014, with a peak of 70 m3/s against 306
+  with `rte_cha` 0. swatplus-bmi has a fix for this confirmed bug, **off unless asked for**
+  (0.18.0; `routing_fix = "muskingum_daily"` in the TOML config;
+  `0004-muskingum-daily-opt-in.patch`): it keeps the substeps, takes the day's inflow once (with the
+  substeps kept, SWAT+ would count lateral and tile flow twice), and routes no inflow on a substep
+  with none. With it the study's outlet is on the observed day, peak 156 m3/s, daily NSE 0.18 (as
+  with `rte_cha` 0), and doubling Manning's n adds a day, as K says it should; stock SWAT+ on an
+  hourly step gives the same lag. Off, the default, routes as stock, byte for byte; with `rte_cha`
+  0 or a sub-daily step it changes nothing. A saved state and a branch keep the setting they were
+  made with. It will be removed when SWAT+ fixes the bug (draft report, not yet filed:
+  `docs/upstream-issue-muskingum-daily.md`).
 - **A paddy's scheduled irrigation (`irrp`) applies water only on the operation's day in SWAT+
   62.0.1.** SWAT+ zeroes the irrigation efficiency every day and only the `irrp` operation sets it,
   so on every later day the paddy takes its water from its source and applies none of it. The
@@ -826,11 +843,16 @@ close: before a gain goes into a channel's transfer, the wrapper allocates the t
 constituent arrays, which SWAT+ 62.0.1 forgets; they stay zero, so no value changes, but without
 them the gain would stop the run.) Problems in SWAT+ are documented
 here and drafted as SWAT+ issues (`docs/upstream-issue-*.md`), and any workaround belongs in the
-model setup, not in the patch. A fix is a separate patch with its own name, and there are two,
+model setup, not in the patch. A fix is a separate patch with its own name, and there are three,
 where stock 62.0.1 has no result to stay faithful to (Gotchas):
 `patches/62.0.1/0002-wallo-withdraw-duty.patch`, for places of use, whose demand stock reads past
 the end of an array; and `patches/62.0.1/0003-irrigate-channel-tot-stor.patch`, for irrigation
-from a channel, whose water stock never takes out of the channel. The stock build (`--stock`)
+from a channel, whose water stock never takes out of the channel; and, only when a run asks for it
+(`routing_fix`), `patches/62.0.1/0004-muskingum-daily-opt-in.patch`, for Muskingum routing on a
+daily step, which stock runs with a substep's coefficients. Fixes like that last one are opt in,
+tied to a documented SWAT+ bug with its upstream report, made only when a study needs them, and
+removed when SWAT+ fixes the bug (docs/design.md, Opt-in fixes for documented SWAT+ bugs, lists
+each one and its removal condition). The stock build (`--stock`)
 stays unpatched (docs/design.md, Patches that fix SWAT+).
 
 ## The protocol

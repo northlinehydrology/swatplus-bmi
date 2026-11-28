@@ -162,18 +162,40 @@ def _after_withdrawals(data, off, nh):
     return off + 8 + 8 * 2 * (nc + nr + nh)
 
 
+def _after_cover(data, off, nh):
+    """The offset past the irrigation applied from outside and the soil cover."""
+    off += 4 + 4 * nh * (8 + 4 + 8)                          # ira_set, ira_on, ira_day
+    return off + 4 + nh * (4 + 4 + 4)                        # cov_set, cov_on, cov_day
+
+
+def as_0_17(snap):
+    """Rewrite a saved state as swatplus-bmi 0.17 wrote it (SWXSTATE-10): the same layout without
+    the routing fix option, which follows the water table."""
+    import struct
+    p = snap / "state.bin"
+    data = bytearray(p.read_bytes())
+    assert data[:16] == b"SWXSTATE-11".ljust(16) and data[-16:] == b"SWXSTATE-11".ljust(16)
+    off, nh = _after_hru_irrigation(data)
+    off = _after_cover(data, _after_withdrawals(data, off, nh), nh)
+    nl, n = struct.unpack_from("<ii", data, off)
+    assert n == nh
+    off += 8 + 4 * nl + 4 + 8 * nh                           # hly_held, held_lat, sat_day, nt_day
+    del data[off:off + 4]                                    # exch_msk_daily
+    data[:16] = data[-16:] = b"SWXSTATE-10".ljust(16)
+    p.write_bytes(bytes(data))
+
+
 def as_0_16(snap):
-    """Rewrite a saved state as swatplus-bmi 0.16 wrote it (SWXSTATE-9): the same layout without
+    """Rewrite a saved state as swatplus-bmi 0.16 wrote it (SWXSTATE-9): the 0.17 layout without
     the water table (the held layers, the held_lateral option, the day's saturation excess and
     groundwater not taken), which follows the soil cover."""
     import struct
+    as_0_17(snap)
     p = snap / "state.bin"
     data = bytearray(p.read_bytes())
     assert data[:16] == b"SWXSTATE-10".ljust(16) and data[-16:] == b"SWXSTATE-10".ljust(16)
     off, nh = _after_hru_irrigation(data)
-    off = _after_withdrawals(data, off, nh)
-    off += 4 + 4 * nh * (8 + 4 + 8)                          # ira_set, ira_on, ira_day
-    off += 4 + nh * (4 + 4 + 4)                              # cov_set, cov_on, cov_day
+    off = _after_cover(data, _after_withdrawals(data, off, nh), nh)
     nl, n = struct.unpack_from("<ii", data, off)
     assert n == nh
     del data[off:off + 8 + 4 * nl + 4 + 8 * nh]              # hly_held, held_lat, sat_day, nt_day
@@ -242,14 +264,14 @@ def test_a_state_saved_by_0_13_loads_with_the_withdrawals_zero(tmp_path):
     m = SwatPlusBmi()
     m.initialize(str(project("Osu_1hru", "Osu_1hru-st-013-a", daily=True, edit=from_source())))
     m.update_until(2000)
-    snap = m.save_state(tmp_path / "v10")
+    snap = m.save_state(tmp_path / "v11")
     m.finalize()
     old = tmp_path / "v6"
     shutil.copytree(snap, old)
     as_0_13(old)
 
     reads = {}
-    for name, state in (("v10", snap), ("v6", old)):
+    for name, state in (("v11", snap), ("v6", old)):
         n = SwatPlusBmi()
         n.initialize(str(project("Osu_1hru", f"Osu_1hru-st-013-{name}", daily=True, edit=from_source())))
         n.load_state(state)
@@ -262,9 +284,9 @@ def test_a_state_saved_by_0_13_loads_with_the_withdrawals_zero(tmp_path):
         n.finalize()
         reads[name] = (first, np.array(got))
     assert reads["v6"][0] == 0
-    assert np.array_equal(reads["v6"][1], reads["v10"][1])
+    assert np.array_equal(reads["v6"][1], reads["v11"][1])
     assert (reads["v6"][1][:, 0] > 0).sum() > 10
-    assert differences(RUNS / "Osu_1hru-st-013-v10", RUNS / "Osu_1hru-st-013-v6") == []
+    assert differences(RUNS / "Osu_1hru-st-013-v11", RUNS / "Osu_1hru-st-013-v6") == []
 
 
 def test_a_state_saved_by_0_14_loads_with_nothing_applied(tmp_path):
@@ -277,19 +299,19 @@ def test_a_state_saved_by_0_14_loads_with_nothing_applied(tmp_path):
     m = SwatPlusBmi()
     m.initialize(str(project("Osu_1hru", "Osu_1hru-st-014-a", daily=True, edit=from_source())))
     m.update_until(2000)
-    snap = m.save_state(tmp_path / "v10")
+    snap = m.save_state(tmp_path / "v11")
     m.finalize()
     old = tmp_path / "v7"
     shutil.copytree(snap, old)
     as_0_14(old)
-    for name, state in (("v10", snap), ("v7", old)):
+    for name, state in (("v11", snap), ("v7", old)):
         n = SwatPlusBmi()
         n.initialize(str(project("Osu_1hru", f"Osu_1hru-st-014-{name}", daily=True, edit=from_source())))
         n.load_state(state)
         assert n.get_current_time() == 2000
         n.update_until(n.get_end_time())
         n.finalize()
-    assert differences(RUNS / "Osu_1hru-st-014-v10", RUNS / "Osu_1hru-st-014-v7") == []
+    assert differences(RUNS / "Osu_1hru-st-014-v11", RUNS / "Osu_1hru-st-014-v7") == []
 
 
 def test_a_state_saved_by_0_15_loads_with_no_cover_set(tmp_path):
@@ -302,19 +324,44 @@ def test_a_state_saved_by_0_15_loads_with_no_cover_set(tmp_path):
     m = SwatPlusBmi()
     m.initialize(str(project("Osu_1hru", "Osu_1hru-st-015-a", daily=True, edit=from_source())))
     m.update_until(2000)
-    snap = m.save_state(tmp_path / "v10")
+    snap = m.save_state(tmp_path / "v11")
     m.finalize()
     old = tmp_path / "v8"
     shutil.copytree(snap, old)
     as_0_15(old)
-    for name, state in (("v10", snap), ("v8", old)):
+    for name, state in (("v11", snap), ("v8", old)):
         n = SwatPlusBmi()
         n.initialize(str(project("Osu_1hru", f"Osu_1hru-st-015-{name}", daily=True, edit=from_source())))
         n.load_state(state)
         assert n.get_current_time() == 2000
         n.update_until(n.get_end_time())
         n.finalize()
-    assert differences(RUNS / "Osu_1hru-st-015-v10", RUNS / "Osu_1hru-st-015-v8") == []
+    assert differences(RUNS / "Osu_1hru-st-015-v11", RUNS / "Osu_1hru-st-015-v8") == []
+
+
+def test_a_state_saved_by_0_17_loads_routed_as_stock(tmp_path):
+    """0.18 adds the routing fix option to a saved state (SWXSTATE-11) and changes nothing else in
+    it, so a 0.17 state (SWXSTATE-10) loads routed as stock: the run carries on as from the same
+    state saved by 0.18, every output file byte for byte."""
+    import shutil
+    from test_irrigation import from_source
+    need(EXCHANGE)
+    m = SwatPlusBmi()
+    m.initialize(str(project("Osu_1hru", "Osu_1hru-st-017-a", daily=True, edit=from_source())))
+    m.update_until(2000)
+    snap = m.save_state(tmp_path / "v11")
+    m.finalize()
+    old = tmp_path / "v10"
+    shutil.copytree(snap, old)
+    as_0_17(old)
+    for name, state in (("v11", snap), ("v10", old)):
+        n = SwatPlusBmi()
+        n.initialize(str(project("Osu_1hru", f"Osu_1hru-st-017-{name}", daily=True, edit=from_source())))
+        n.load_state(state)
+        assert n.get_current_time() == 2000
+        n.update_until(n.get_end_time())
+        n.finalize()
+    assert differences(RUNS / "Osu_1hru-st-017-v11", RUNS / "Osu_1hru-st-017-v10") == []
 
 
 def test_a_state_saved_by_0_16_loads_with_nothing_held(tmp_path):
@@ -327,19 +374,19 @@ def test_a_state_saved_by_0_16_loads_with_nothing_held(tmp_path):
     m = SwatPlusBmi()
     m.initialize(str(project("Osu_1hru", "Osu_1hru-st-016-a", daily=True, edit=from_source())))
     m.update_until(2000)
-    snap = m.save_state(tmp_path / "v10")
+    snap = m.save_state(tmp_path / "v11")
     m.finalize()
     old = tmp_path / "v9"
     shutil.copytree(snap, old)
     as_0_16(old)
-    for name, state in (("v10", snap), ("v9", old)):
+    for name, state in (("v11", snap), ("v9", old)):
         n = SwatPlusBmi()
         n.initialize(str(project("Osu_1hru", f"Osu_1hru-st-016-{name}", daily=True, edit=from_source())))
         n.load_state(state)
         assert n.get_current_time() == 2000
         n.update_until(n.get_end_time())
         n.finalize()
-    assert differences(RUNS / "Osu_1hru-st-016-v10", RUNS / "Osu_1hru-st-016-v9") == []
+    assert differences(RUNS / "Osu_1hru-st-016-v11", RUNS / "Osu_1hru-st-016-v9") == []
 
 
 def test_a_state_of_an_unknown_version_is_refused(tmp_path):
