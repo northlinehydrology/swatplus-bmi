@@ -56,6 +56,16 @@
 !!    the set value replaces SWAT+'s for that day only. SWAT+ keeps no soil
 !!    cover from day to day, so the set value carries on only through what
 !!    the day's evaporation did.
+!!
+!!    Groundwater set into an HRU's soil layers goes in after the day's ET and
+!!    management, before surface runoff (exch_hru_gwsoil, in hru_control), so
+!!    the day's curve number sees it. Layers below a water table can be held
+!!    (a state, kept until set again): a held layer doesn't drain
+!!    (exch_hru_held, in swr_percmain's layer loop), the groundwater set for
+!!    the day fills held layers first, and water percolating into a full held
+!!    zone leaves the profile as SWAT+'s percolation, the recharge. The water
+!!    swr_satexcess sends out of the top of the profile is counted
+!!    (exch_hru_satex).
 
       use iso_fortran_env, only : input_unit
       use, intrinsic :: iso_c_binding, only : c_int, c_char, c_null_char, c_size_t, c_int32_t
@@ -68,7 +78,7 @@
       public :: exch_on, exch_open, exch_start, exch_pause, exch_apply, exch_record, exch_end,     &
                 exch_channel, exch_channel_in, exch_channel_cs, exch_hru_soil, exch_hru_gwsoil,   &
                 exch_hru_gwsoil_mass, exch_res_in, exch_res, exch_irr_take, exch_hru_irr,   &
-                exch_hru_cover
+                exch_hru_cover, exch_hru_held, exch_hru_satex
 
       logical :: exch_on = .false.        !! exchange mode is on
       integer :: cmd_unit = input_unit    !! commands in
@@ -82,11 +92,13 @@
       logical :: ended = .false.          !! the simulation has ended (exch_end)
       integer, parameter :: unit_max = 1000000   !! highest unit number branch looks at
       character(len=80) :: paused_line = ""      !! the last @paused reply
-      character(len=16), parameter :: state_magic = "SWXSTATE-9"
-      !! states saved by 0.15 (SWXSTATE-8), 0.14 (SWXSTATE-7) and 0.13 (SWXSTATE-6) load too:
-      !! 8 is this layout without the soil cover (cov_*), 7 without the irrigation applied
+      character(len=16), parameter :: state_magic = "SWXSTATE-10"
+      !! states saved by 0.16 (SWXSTATE-9), 0.15 (SWXSTATE-8), 0.14 (SWXSTATE-7) and 0.13
+      !! (SWXSTATE-6) load too: 9 is this layout without the water table (hly_held, held_lat,
+      !! sat_day), 8 without the soil cover (cov_*) as well, 7 without the irrigation applied
       !! from outside (ira_*) as well, and 6 without the irrigation withdrawals (irr_*) as
       !! well, which load as zero, or as nothing set
+      character(len=16), parameter :: state_magic_9 = "SWXSTATE-9"
       character(len=16), parameter :: state_magic_8 = "SWXSTATE-8"
       character(len=16), parameter :: state_magic_7 = "SWXSTATE-7"
       character(len=16), parameter :: state_magic_6 = "SWXSTATE-6"
@@ -193,11 +205,20 @@
       logical, dimension(:), allocatable :: cov_on
       real, dimension(:), allocatable :: cov_day
 
+      !! the water table: by HRU soil layer, held below it (exch_hru_held), a state kept until
+      !! set again; held_lat keeps SWAT+'s own lateral flow from a held layer (started with
+      !! --held-lateral=swat); by HRU number, the saturation excess swr_satexcess sent out of
+      !! the top of the profile on the day (exch_hru_satex), mm
+      logical, dimension(:), allocatable :: hly_held
+      logical :: held_lat = .false.
+      real, dimension(:), allocatable :: sat_day
+      real, dimension(:), allocatable :: nt_day          !! mm  |groundwater set and not taken, by HRU number
+
       !! the catalog: the water variables, the chemistry variables, one per species, then
       !! every column of the daily output records (exch_start). var_fam is 0 for a water
       !! variable, the chemistry family, or gen_fam for an output column (var_sp its number)
       integer, parameter :: gen_fam = 9
-      integer, parameter :: nbase = 57
+      integer, parameter :: nbase = 60
       character(len=64), dimension(nbase), parameter :: base_name = [character(len=64) ::     &
             "channel_water__volume_outflow_rate",                           &
             "channel_water__volume",                                        &
@@ -255,7 +276,10 @@
             "soil_surface_cover__mass-per-area_density",                    &
             "land_vegetation__above-ground_mass-per-area_density",          &
             "land_vegetation_leaf__mass-per-area_density",                  &
-            "land_surface_residue__mass-per-area_density"]
+            "land_surface_residue__mass-per-area_density",                  &
+            "soil_layer__saturated_zone_flag",                              &
+            "land_surface_water__saturation_excess_runoff_rate",            &
+            "soil_water__groundwater_inflow_not_taken_rate"]
       character(len=8), dimension(nbase), parameter :: base_grid = [character(len=8) ::      &
             "cha", "cha", "cha", "aqu", "aqu", "aqu", "aqu", "rec", "pou", "pou",    &
             "cha", "cha", "hly", "hru", "hru", "hru", "hru", "hru",                  &
@@ -263,7 +287,7 @@
             "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hly", "hru", "hru", "hru", &
             "res", "res", "res", "res", "res", "res", "res", "res",                  &
             "cha", "res", "hru", "hru", "hru", "hru", "hru",                         &
-            "hru", "hru", "hru", "hru"]
+            "hru", "hru", "hru", "hru", "hly", "hru", "hru"]
       character(len=8), dimension(nbase), parameter :: base_units = [character(len=8) ::     &
             "m3 s-1", "m3", "m3 s-1", "m3", "m", "m3 s-1", "m s-1", "m3 s-1", "m3 s-1", "m3 s-1", &
             "m", "m3 s-1", "degC", "m", "m s-1", "m s-1", "m s-1", "m",                  &
@@ -271,7 +295,7 @@
             "m", "m", "m", "m", "m", "m", "m s-1", "kg s-1", "kg s-1", "kg s-1", "kg s-1",      &
             "m3 s-1", "m3", "m2", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1",   &
             "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1", "m3 s-1", "kg s-1", "kg s-1",               &
-            "kg m-2", "kg m-2", "kg m-2", "kg m-2"]
+            "kg m-2", "kg m-2", "kg m-2", "kg m-2", "1", "m s-1", "m s-1"]
       character(len=3), dimension(nbase), parameter :: base_role = [character(len=3) ::      &
             "out", "out", "out", "out", "out", "out", "out", "in", "in", "out",  &
             "out", "in", "in", "out", "out", "out", "out", "out",                    &
@@ -279,7 +303,7 @@
             "out", "out", "out", "out", "out", "out", "out", "in", "in", "out", "out", "out",   &
             "out", "out", "out", "out", "out", "out", "out", "in",                   &
             "out", "out", "out", "in", "in", "in", "in",                             &
-            "in", "out", "out", "out"]
+            "in", "out", "out", "out", "in", "out", "out"]
       !! chemistry families: <prefix><species><suffix>
       integer, parameter :: fam_conc = 1, fam_exch = 2, fam_rchg = 3, fam_load = 4
       character(len=24), dimension(4), parameter :: fam_prefix = [character(len=24) ::      &
@@ -360,6 +384,8 @@
       do i = 1, command_argument_count()
         call get_command_argument (i, arg)
         if (trim(arg) == "--exchange") exch_on = .true.
+        if (trim(arg) == "--held-lateral=swat") held_lat = .true.
+        if (trim(arg) == "--held-lateral=none") held_lat = .false.
       end do
       if (.not. exch_on) return
 
@@ -479,6 +505,9 @@
       allocate (hly_gwm(2,n_hly), source = 0.)
       allocate (hly_gwm_on(2,n_hly), source = .false.)
       allocate (hly_gwm_day(2,n_hly), source = 0.)
+      allocate (hly_held(n_hly), source = .false.)
+      allocate (sat_day(sp_ob%hru), source = 0.)
+      allocate (nt_day(sp_ob%hru), source = 0.)
       n_hly = 0
       do iv = 1, sp_ob%hru
         ihru = ob(sp_ob1%hru + iv - 1)%num
@@ -692,6 +721,10 @@
       ira_day = 0.d0
       !! the soil cover at exch_hru_cover: NaN for an HRU whose et_act computes none
       cov_day = ieee_value (0., ieee_quiet_nan)
+      !! the saturation excess, added up at exch_hru_satex
+      sat_day = 0.
+      !! groundwater not taken, at exch_hru_gwsoil
+      nt_day = 0.
 
       return
       end subroutine exch_apply
@@ -985,11 +1018,16 @@
 !!    --------------------------------------------------------------------
       subroutine exch_hru_gwsoil (j)
 
-!!    called in swr_percmain right after gwflow_soil, where SWAT+'s own
-!!    groundwater model puts groundwater into the soil profile, before the
-!!    day's infiltration and percolation: adds the groundwater set for the
-!!    day to each of the HRU's layers and counts it as SWAT+ counts
-!!    gwflow's (gwsoilq, printed in hru_wb as gwsoilq)
+!!    called in hru_control right after mgt_operatn and exch_hru_irr, before
+!!    surface: adds the groundwater set for the day to the HRU's soil layers
+!!    and counts it as SWAT+ counts gwflow's (gwsoilq, printed in hru_wb as
+!!    gwsoilq), then sums the profile's water again (soil(j)%sw), which the
+!!    day's curve number (sq_dailycn) reads. In an HRU with held layers (below
+!!    a water table, exch_hru_held) the HRU's whole set inflow fills the held
+!!    layers, bottom up, to saturation (ul), and what they can't take isn't
+!!    taken: none goes into the layers above the water table. What went into
+!!    each layer is kept for reading (hly_gw_day), and what wasn't taken
+!!    (nt_day), for the groundwater model to keep
 
       use soil_module, only : soil
       use hru_module, only : gwsoilq
@@ -997,21 +1035,135 @@
       integer, intent(in) :: j                            !HRU number
       integer :: k = 0
       integer :: i = 0
+      integer :: i1 = 0                                   !the HRU's first layer on the hly grid
+      integer :: nly = 0
+      real :: rest = 0.                                   !mm  |set inflow still to place
+      real :: add = 0.                                    !mm
 
       if (.not. exch_on) return
       if (j < lbound(hru_hly1,1) .or. j > ubound(hru_hly1,1)) return
       if (hru_hly1(j) == 0) return
-      do k = 1, soil(j)%nly
-        i = hru_hly1(j) + k - 1
-        if (.not. hly_gw_on(i)) cycle
-        soil(j)%phys(k)%st = soil(j)%phys(k)%st + hly_gw(i)
-        gwsoilq(j) = gwsoilq(j) + hly_gw(i)
-        hly_gw_day(i) = hly_gw(i)
-        hly_gw_on(i) = .false.
+      i1 = hru_hly1(j)
+      nly = soil(j)%nly
+      if (.not. any(hly_gw_on(i1:i1+nly-1))) return
+      if (.not. any(hly_held(i1:i1+nly-1))) then
+        do k = 1, nly
+          i = i1 + k - 1
+          if (.not. hly_gw_on(i)) cycle
+          soil(j)%phys(k)%st = soil(j)%phys(k)%st + hly_gw(i)
+          gwsoilq(j) = gwsoilq(j) + hly_gw(i)
+          hly_gw_day(i) = hly_gw(i)
+        end do
+      else
+        rest = 0.
+        do k = 1, nly
+          i = i1 + k - 1
+          if (hly_gw_on(i)) rest = rest + hly_gw(i)
+        end do
+        !! held layers are the bottom ones (held_order): fill them from the bottom up
+        do k = nly, 1, -1
+          i = i1 + k - 1
+          if (.not. hly_held(i)) exit
+          add = min(rest, max(0., soil(j)%phys(k)%ul - soil(j)%phys(k)%st))
+          soil(j)%phys(k)%st = soil(j)%phys(k)%st + add
+          gwsoilq(j) = gwsoilq(j) + add
+          hly_gw_day(i) = add
+          rest = rest - add
+        end do
+        !! what the held layers couldn't take stays with the groundwater model
+        if (rest > 0. .and. j <= size(nt_day)) nt_day(j) = rest
+      end if
+      hly_gw_on(i1:i1+nly-1) = .false.
+      soil(j)%sw = 0.
+      do k = 1, nly
+        soil(j)%sw = soil(j)%sw + soil(j)%phys(k)%st
       end do
 
       return
       end subroutine exch_hru_gwsoil
+
+!!    --------------------------------------------------------------------
+      subroutine exch_hru_held (j, j1)
+
+!!    called in swr_percmain's layer loop right after swr_percmicro has taken
+!!    the layer's percolation (sepday) and lateral flow (latlyr). The layer
+!!    just above a water table is the bottom of the profile for the day, so
+!!    its percolation is limited as SWAT+ limits the bottom layer's (by the
+!!    HRU's perco_lim), the rest staying in it. A held layer (below the water
+!!    table) gives back its percolation, and its lateral flow too unless
+!!    started with --held-lateral=swat. In the top held layer, what is then
+!!    above saturation (ul), the water that percolated in from above, fills
+!!    the held layers below, bottom up, and the rest leaves the profile as
+!!    SWAT+'s percolation (sepbtm, the recharge), counted as percolation out
+!!    of every held layer it passes (soil%ly%prk), so its nitrate goes down
+!!    with it. With the top layer held (the water table at the surface) the
+!!    day's infiltration stays in it, and swr_satexcess sends what the
+!!    profile can't hold to the surface: no recharge
+
+      use soil_module, only : soil
+      use hru_module, only : hru, sepday, latlyr, sepbtm
+
+      integer, intent(in) :: j                            !HRU number
+      integer, intent(in) :: j1                           !soil layer
+      integer :: k = 0
+      real :: over = 0.                                   !mm
+      real :: add = 0.                                    !mm
+
+      if (.not. exch_on) return
+      if (j < lbound(hru_hly1,1) .or. j > ubound(hru_hly1,1)) return
+      if (hru_hly1(j) == 0) return
+      if (.not. hly_held(hru_hly1(j) + j1 - 1)) then
+        if (j1 < soil(j)%nly) then
+          if (hly_held(hru_hly1(j) + j1)) then
+            add = sepday * hru(j)%hyd%perco_lim
+            soil(j)%phys(j1)%st = soil(j)%phys(j1)%st + (sepday - add)
+            sepday = add
+          end if
+        end if
+        return
+      end if
+      soil(j)%phys(j1)%st = soil(j)%phys(j1)%st + sepday
+      sepday = 0.
+      if (.not. held_lat) then
+        soil(j)%phys(j1)%st = soil(j)%phys(j1)%st + latlyr
+        latlyr = 0.
+      end if
+      if (j1 == 1) return
+      if (hly_held(hru_hly1(j) + j1 - 2)) return             !not the top held layer: nothing came in
+      over = soil(j)%phys(j1)%st - soil(j)%phys(j1)%ul
+      if (over <= 0.) return
+      soil(j)%phys(j1)%st = soil(j)%phys(j1)%ul
+      do k = soil(j)%nly, j1 + 1, -1
+        add = min(over, max(0., soil(j)%phys(k)%ul - soil(j)%phys(k)%st))
+        soil(j)%phys(k)%st = soil(j)%phys(k)%st + add
+        over = over - add
+      end do
+      if (over <= 0.) return
+      sepbtm(j) = sepbtm(j) + over
+      do k = j1, soil(j)%nly
+        soil(j)%ly(k)%prk = soil(j)%ly(k)%prk + over
+      end do
+
+      return
+      end subroutine exch_hru_held
+
+!!    --------------------------------------------------------------------
+      subroutine exch_hru_satex (j, excess)
+
+!!    called in swr_satexcess where water above saturation leaves the top of
+!!    the profile, to the surface runoff or to a ponded HRU's water: adds it
+!!    to the day's saturation excess, whatever gw_soil_flag is. Only adds up
+
+      integer, intent(in) :: j                            !HRU number
+      real, intent(in) :: excess                          !mm
+
+      if (.not. exch_on) return
+      if (.not. allocated(sat_day)) return
+      if (j < 1 .or. j > size(sat_day)) return
+      sat_day(j) = sat_day(j) + excess
+
+      return
+      end subroutine exch_hru_satex
 
 !!    --------------------------------------------------------------------
       subroutine exch_hru_gwsoil_mass (j, k)
@@ -1653,6 +1805,7 @@
                 irr_res_day, irr_hru_now, irr_hru_day
       write (u) size(ira_set,2), ira_set, ira_on, ira_day
       write (u) size(cov_set), cov_set, cov_on, cov_day
+      write (u) n_hly, size(sat_day), hly_held, held_lat, sat_day, nt_day
       write (u) size(chx_day), chx_day
       write (u) size(rsx_flo), rsx_flo, rsx_on, rsv_day
       write (u) size(rec_flo), rec_flo, rec_flo_on, dmd_flo, dmd_flo_on, chx_flo, chx_on
@@ -1781,8 +1934,8 @@
       end if
       read (u, iostat=ios) magic, digest, load_day
       close (u)
-      if (ios /= 0 .or. (magic /= state_magic .and. magic /= state_magic_8 .and. magic /= state_magic_7 .and.     &
-          magic /= state_magic_6)) then
+      if (ios /= 0 .or. (magic /= state_magic .and. magic /= state_magic_9 .and. magic /= state_magic_8 .and.    &
+          magic /= state_magic_7 .and. magic /= state_magic_6)) then
         call reply ("@error not a saved SWAT+ state: " // path)
       else if (digest /= swx_state_digest) then
         call reply ("@error the state was saved by a different build (" // trim(digest) //         &
@@ -1868,6 +2021,19 @@
           error stop 7
         end if
         read (u) cov_set, cov_on, cov_day
+      end if
+      if (magic == state_magic_9 .or. magic == state_magic_8 .or. magic == state_magic_7 .or.       &
+          magic == state_magic_6) then
+        !! saved by 0.16 or before, with no water table: no layer is held, and the option is
+        !! the one this process was started with
+        hly_held = .false.; sat_day = 0.; nt_day = 0.
+      else
+        read (u) n, k
+        if (n /= n_hly .or. k /= size(sat_day)) then
+          call reply ("@error the saved state has a different number of HRUs or soil layers")
+          error stop 7
+        end if
+        read (u) hly_held, held_lat, sat_day, nt_day
       end if
       read (u) n
       if (n /= size(chx_day)) then
@@ -2250,6 +2416,29 @@
           val(i) = ira_day(k, ob(sp_ob1%hru + i - 1)%num) / 86400.d0   !m3/day -> m3/s, kg/day -> kg/s
         end do
 
+      case ("soil_layer__saturated_zone_flag")
+        !! the HRU soil layers held below a water table (exch_hru_held), 1, the others 0
+        allocate (val(n_hly), source = 0.d0)
+        do i = 1, n_hly
+          if (hly_held(i)) val(i) = 1.d0
+        end do
+
+      case ("land_surface_water__saturation_excess_runoff_rate")
+        !! the water swr_satexcess sent out of the top of the profile the day just done
+        !! (exch_hru_satex), part of the surface runoff (or of a ponded HRU's water)
+        allocate (val(sp_ob%hru), source = 0.d0)
+        do i = 1, sp_ob%hru
+          val(i) = sat_day(ob(sp_ob1%hru + i - 1)%num) / 86400000.d0   !mm/day -> m/s
+        end do
+
+      case ("soil_water__groundwater_inflow_not_taken_rate")
+        !! the groundwater set into the HRU's soil the day just done that didn't fit: every layer
+        !! held and full (exch_hru_gwsoil); set less this is what went in
+        allocate (val(sp_ob%hru), source = 0.d0)
+        do i = 1, sp_ob%hru
+          val(i) = nt_day(ob(sp_ob1%hru + i - 1)%num) / 86400000.d0    !mm/day -> m/s
+        end do
+
       case ("soil_surface_cover__mass-per-area_density")
         !! the soil cover the HRU's soil evaporation used the day just done, set or SWAT+'s own
         !! (exch_hru_cover); NaN on a day et_act computed none
@@ -2627,6 +2816,21 @@
             "land_irrigation_water_no3__mass_flow_rate", "land_irrigation_water_solp__mass_flow_rate")
         call take_irrigation (ira_kind(name), i, v, keep, msg)
 
+      case ("soil_layer__saturated_zone_flag")
+        if (i < 1 .or. i > n_hly) then
+          msg = "index out of range"
+          return
+        end if
+        if (v /= 0.d0 .and. v /= 1.d0) then
+          msg = "a saturated zone flag is 0 (not held) or 1 (held below the water table)"
+          return
+        end if
+        if (bsn_cc%gwflow == 1) then
+          msg = "the project runs SWAT+'s gwflow, which keeps its own water table in the soil"
+          return
+        end if
+        if (keep) hly_held(i) = (v == 1.d0)
+
       case ("soil_surface_cover__mass-per-area_density")
         if (i < 1 .or. i > sp_ob%hru) then
           msg = "index out of range"
@@ -2911,6 +3115,14 @@
       real(8), intent(in) :: v
       character(len=400) :: msg = ""
 
+      if (name == "soil_layer__saturated_zone_flag") then
+        call take_value (name, i, v, .false., msg)
+        if (msg == "") msg = held_order([i], [v])
+        if (msg /= "") then
+          call reply ("@error " // trim(msg))
+          return
+        end if
+      end if
       call take_value (name, i, v, .true., msg)
       if (msg /= "") then
         call reply ("@error " // trim(msg))
@@ -2962,6 +3174,13 @@
         call reply ("@error value " // itoa(bad) // ": " // trim(msg))
         return
       end if
+      if (name == "soil_layer__saturated_zone_flag") then
+        msg = held_order(int(idx), val)
+        if (msg /= "") then
+          call reply ("@error " // trim(msg))
+          return
+        end if
+      end if
       do k = 1, n
         call take_value (name, int(idx(k)), val(k), .true., msg)
       end do
@@ -2969,6 +3188,38 @@
 
       return
       end subroutine set_values
+
+!!    --------------------------------------------------------------------
+      function held_order (idx, val) result (msg)
+
+!!    the saturated zone flags as they would be with the values given (hly
+!!    grid indices, 0 or 1): blank if every HRU's held layers are its bottom
+!!    ones, else why not. A water table holds the layers below it, so a held
+!!    layer can't be above one that isn't
+
+      integer, dimension(:), intent(in) :: idx
+      real(8), dimension(:), intent(in) :: val
+      character(len=400) :: msg
+      logical, dimension(:), allocatable :: trial
+      integer :: k = 0
+
+      msg = ""
+      allocate (trial(n_hly), source = hly_held)
+      do k = 1, size(idx)
+        trial(idx(k)) = (val(k) == 1.d0)
+      end do
+      do k = 1, n_hly - 1
+        if (hly_hru(k + 1) /= hly_hru(k)) cycle
+        if (trial(k) .and. .not. trial(k + 1)) then
+          msg = "HRU " // itoa(hly_hru(k)) // ": layer " // itoa(hly_lay(k)) // " would be held " //   &
+                "and layer " // itoa(hly_lay(k + 1)) // " below it not; a water table holds every " // &
+                "layer below it"
+          return
+        end if
+      end do
+
+      return
+      end function held_order
 
 !!    --------------------------------------------------------------------
       integer function var_size (name)

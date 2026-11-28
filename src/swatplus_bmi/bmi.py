@@ -115,6 +115,7 @@ class SwatPlusBmi(Bmi):
             project = "path/to/TxtInOut"     # the SWAT+ project folder
             run_dir = "runs/scenario-a"      # optional: copy the project here and run the copy
             executable = "bin/swatplus-62.0.1-exchange"   # optional
+            held_lateral = "none"            # optional: "none" or "swat"
 
             [[parameter]]                    # optional, any number; needs run_dir
             name = "cn2"
@@ -124,6 +125,10 @@ class SwatPlusBmi(Bmi):
         Parameter changes go into the run copy's calibration.cal, after the
         project's own, and SWAT+ makes them before its first day. A change
         SWAT+ wouldn't make as asked is refused (``swatplus_bmi.calibration``).
+
+        ``held_lateral`` is the lateral flow from a soil layer held below a
+        water table (``soil_layer__saturated_zone_flag``): ``"none"`` (the
+        default) or ``"swat"``, the lateral flow SWAT+ computes for it.
         """
         if config_file is None:
             raise ValueError("initialize needs a SWAT+ project folder or a TOML config file")
@@ -150,8 +155,11 @@ class SwatPlusBmi(Bmi):
             shutil.copytree(project, run_dir)
         for note in write_changes(run_dir, changes) if changes else []:
             warnings.warn(f"parameter {note}", stacklevel=2)
+        held_lateral = cfg.get("held_lateral", "none")
+        if held_lateral not in ("none", "swat"):
+            raise ValueError(f'held_lateral is "none" or "swat", not {held_lateral!r}')
         exe = find_executable(cfg.get("executable") and str((base / cfg["executable"])))
-        self._x = Exchange(exe, run_dir)
+        self._x = Exchange(exe, run_dir, ("--held-lateral=swat",) if held_lateral == "swat" else ())
         cat = self._x.catalog
         want = sources_hash()
         if cat.build != want:
