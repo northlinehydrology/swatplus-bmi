@@ -48,7 +48,7 @@ def config(dest, held_lateral=None):
     if held_lateral is None:
         return str(p)
     toml = p.parent / f"{dest}.toml"
-    toml.write_text(f'project = "{p}"\nheld_lateral = "{held_lateral}"\n')
+    toml.write_text(f"project = '{p}'\nheld_lateral = \"{held_lateral}\"\n")   # literal: D:\\ on Windows
     return str(toml)
 
 
